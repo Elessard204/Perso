@@ -6,19 +6,24 @@ Il associe chaque PDF à son entité grâce aux 5 derniers chiffres (05401 = 54.
 
 **L'outil n'envoie jamais rien lui-même.** En mode `simulation` (par défaut), il produit un aperçu `.eml` de chaque courriel et un rapport de contrôle. En mode `brouillons`, il crée en plus les brouillons dans la boîte finance@, que l'équipe révise et envoie.
 
-## Déroulement d'un mois
+## Utilisation par l'équipe
 
-1. Avant de télécharger les rapports de Hopem, sortir la liste des périodes à extraire. Chaque entité a sa propre fin d'exercice, donc septembre est la période 9 pour une fin en décembre, la période 5 pour une fin en avril, etc.
-   ```
-   python envoi_rapports.py --mois 2026-09 --clients clients_rapports.xlsx
-   ```
-2. Télécharger les rapports de Hopem comme d'habitude, sans changer les noms de fichiers.
-3. Lancer l'outil sur le dossier du mois :
-   ```
-   python envoi_rapports.py --mois 2026-09 --clients clients_rapports.xlsx --exports "<...>/1_CLIENTS/09-septembre 2026"
-   ```
-4. Ouvrir `sortie/2026-09/rapport.html`. Il montre les courriels prêts, ceux qui sont bloqués avec la raison, les fichiers non reconnus et les entités sans envoi ce mois-ci. Corriger ce qui bloque, puis relancer.
-5. Quand tout est vert, relancer avec `--mode brouillons` et réviser les brouillons dans Outlook.
+Double-cliquer sur **Rapports clients.bat**. La première fois, il installe les modules nécessaires (environ une minute), puis ouvre la fenêtre de l'outil. Le mois proposé est le dernier mois terminé.
+
+1. **Étape 1 – Voir les périodes à extraire.** Avant de télécharger les rapports de Hopem : chaque entité a sa propre fin d'exercice, donc septembre est la période 9 pour une fin en décembre, la période 5 pour une fin en avril, etc.
+2. Télécharger les rapports de Hopem comme d'habitude dans `ÉTATS FINANCIERS/1_CLIENTS/<mois>`, sans changer les noms. La première fois, choisir ce dossier avec « Choisir… » : les mois suivants, l'outil le retrouve seul.
+3. **Étape 2 – Vérifier les rapports et préparer les courriels.** Le rapport de contrôle s'ouvre : courriels prêts, courriels bloqués avec la raison, fichiers non reconnus, entités sans envoi ce mois-ci. Corriger ce qui bloque (Excel ou dossier) et recommencer l'étape 2.
+4. **Étape 3 – Créer les brouillons dans Outlook** (une fois la connexion à Outlook configurée). Réviser chaque brouillon dans la boîte finance@ et l'envoyer.
+
+Les aperçus `.eml` des courriels sont dans `sortie/<mois>/apercus` (bouton « Ouvrir les aperçus de courriels »).
+
+## En ligne de commande
+
+```
+python envoi_rapports.py --mois 2026-09 --clients clients_rapports.xlsx
+python envoi_rapports.py --mois 2026-09 --clients clients_rapports.xlsx --exports "<...>/1_CLIENTS/09-septembre 2026" --completer
+python envoi_rapports.py --mois 2026-09 --clients clients_rapports.xlsx --exports ... --mode brouillons
+```
 
 ## Les contrôles
 

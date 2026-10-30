@@ -8,3 +8,4 @@ rapports-clients/demo/*.xlsx
 __pycache__/
 .venv/
 .env
+rapports-clients/parametres.json

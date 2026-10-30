@@ -424,6 +424,11 @@ def ecrire_apercu(client: Client, mois: str, sortie: Path, config: dict) -> None
     client.brouillon = str(chemin.relative_to(sortie))
 
 
+def outlook_configure(chemin_config: Path = ICI / "config.toml") -> bool:
+    config = tomllib.loads(chemin_config.read_text(encoding="utf-8"))
+    return bool(config["graph"]["tenant_id"] and config["graph"]["client_id"] and os.environ.get("GRAPH_CLIENT_SECRET"))
+
+
 class Graph:
     """Création de brouillons dans la boîte de l'expéditeur via Microsoft Graph."""
 
@@ -437,14 +442,14 @@ class Graph:
         self.requests = requests
         secret = os.environ.get("GRAPH_CLIENT_SECRET")
         if not (config["graph"]["tenant_id"] and config["graph"]["client_id"] and secret):
-            sys.exit("Mode brouillons : tenant_id et client_id doivent être remplis dans config.toml "
-                     "et la variable GRAPH_CLIENT_SECRET définie.")
+            raise RuntimeError("La connexion à Outlook n'est pas encore configurée : tenant_id et client_id "
+                               "doivent être remplis dans config.toml et la variable GRAPH_CLIENT_SECRET définie.")
         app = msal.ConfidentialClientApplication(
             config["graph"]["client_id"], client_credential=secret,
             authority=f"https://login.microsoftonline.com/{config['graph']['tenant_id']}")
         jeton = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
         if "access_token" not in jeton:
-            sys.exit(f"Connexion à Microsoft 365 refusée : {jeton.get('error_description')}")
+            raise RuntimeError(f"Connexion à Microsoft 365 refusée : {jeton.get('error_description')}")
         self.entetes = {"Authorization": f"Bearer {jeton['access_token']}"}
         self.boite = f"{self.URL}/users/{config['envoi']['expediteur']}"
 
@@ -649,12 +654,12 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 {f'<section><h2>Pas d&#39;envoi ce mois-ci</h2><div class="discret">{pas_ce_mois_html}</div></section>' if pas_ce_mois else ""}
 {apercu}
 </main></body></html>"""
-    chemin = sortie / "rapport.html"
+    chemin = sortie / ("periodes.html" if mode == "liste" else "rapport.html")
     chemin.write_text(page, encoding="utf-8")
     return chemin
 
 
-def completer_excel(chemin: Path, clients: dict[str, Client], mois: str) -> Path:
+def completer_excel(chemin: Path, clients: dict[str, Client], mois: str) -> Path | None:
     """Copie l'Excel en remplissant les noms vides avec ceux trouvés dans les PDF, pour révision."""
     classeur = load_workbook(chemin)
     trouves = {e.code: e for c in clients.values() for e in c.entites if e.nom_pdf}
@@ -677,10 +682,53 @@ def completer_excel(chemin: Path, clients: dict[str, Client], mois: str) -> Path
             if nom:
                 rangee[i_nom].value = nom
                 remplis += 1
+    if not remplis:
+        return None
     copie = chemin.with_name(f"{chemin.stem}_complete.xlsx")
     classeur.save(copie)
     print(f"{remplis} noms ajoutés à partir des PDF, à réviser : {copie}")
     return copie
+
+
+@dataclass
+class Resultat:
+    rapport: Path
+    prets: int = 0
+    bloques: int = 0
+    alertes: int = 0
+    complete: Path | None = None
+
+
+def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode: str = "simulation",
+             completer: bool = False, sortie: Path | None = None, chemin_config: Path = ICI / "config.toml") -> Resultat:
+    """Fait tout le travail d'un mois. Sans dossier d'exports, produit seulement la liste des périodes."""
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mois):
+        raise ValueError("Le mois doit être au format AAAA-MM, par exemple 2026-09.")
+    config = tomllib.loads(chemin_config.read_text(encoding="utf-8"))
+    sortie = sortie or ICI / "sortie" / mois
+    sortie.mkdir(parents=True, exist_ok=True)
+
+    clients, alertes = charger_clients(chemin_clients, config)
+    if exports is None:
+        return Resultat(ecrire_rapport(clients, alertes, mois, "liste", sortie, config), alertes=len(alertes))
+    alertes += associer_fichiers(exports, clients, mois, config)
+    valider(clients, mois, config)
+    complete = completer_excel(chemin_clients, clients, mois) if completer else None
+
+    graph = Graph(config) if mode == "brouillons" else None
+    for client in clients.values():
+        if not client.pret(mois):
+            continue
+        rediger(client, mois, config)
+        ecrire_apercu(client, mois, sortie, config)
+        if graph:
+            client.brouillon = graph.creer_brouillon(client, mois, config)
+
+    concernes = [c for c in clients.values() if c.a_envoyer(mois)]
+    return Resultat(ecrire_rapport(clients, alertes, mois, mode, sortie, config),
+                    prets=sum(c.pret(mois) for c in concernes),
+                    bloques=sum(not c.pret(mois) for c in concernes),
+                    alertes=len(alertes), complete=complete)
 
 
 def main() -> None:
@@ -696,38 +744,15 @@ def main() -> None:
     parser.add_argument("--completer", action="store_true",
                         help="Écrit une copie de l'Excel où les noms vides sont remplis à partir des PDF.")
     args = parser.parse_args()
-
-    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", args.mois):
-        sys.exit("--mois doit être au format AAAA-MM, par exemple 2026-09.")
-    config = tomllib.loads(args.config.read_text(encoding="utf-8"))
-    sortie = args.sortie or ICI / "sortie" / args.mois
-    sortie.mkdir(parents=True, exist_ok=True)
-
-    clients, alertes = charger_clients(args.clients, config)
+    try:
+        resultat = preparer(args.mois, args.clients, args.exports, args.mode, args.completer, args.sortie, args.config)
+    except (ValueError, RuntimeError) as erreur:
+        sys.exit(str(erreur))
     if args.exports is None:
-        rapport = ecrire_rapport(clients, alertes, args.mois, "liste", sortie, config)
-        print(f"Liste des périodes à extraire : {rapport}")
-        return
-    alertes += associer_fichiers(args.exports, clients, args.mois, config)
-    valider(clients, args.mois, config)
-
-    if args.completer:
-        completer_excel(args.clients, clients, args.mois)
-
-    graph = Graph(config) if args.mode == "brouillons" else None
-    for client in clients.values():
-        if not client.pret(args.mois):
-            continue
-        rediger(client, args.mois, config)
-        ecrire_apercu(client, args.mois, sortie, config)
-        if graph:
-            client.brouillon = graph.creer_brouillon(client, args.mois, config)
-
-    rapport = ecrire_rapport(clients, alertes, args.mois, args.mode, sortie, config)
-    concernes = [c for c in clients.values() if c.a_envoyer(args.mois)]
-    print(f"{sum(c.pret(args.mois) for c in concernes)} courriels prêts, "
-          f"{sum(not c.pret(args.mois) for c in concernes)} bloqués, {len(alertes)} alertes. Rapport : {rapport}")
-
+        print(f"Liste des périodes à extraire : {resultat.rapport}")
+    else:
+        print(f"{resultat.prets} courriels prêts, {resultat.bloques} bloqués, {resultat.alertes} alertes. "
+              f"Rapport : {resultat.rapport}")
 
 if __name__ == "__main__":
     main()
