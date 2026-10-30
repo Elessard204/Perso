@@ -397,7 +397,7 @@ def signature_html(config: dict) -> str:
     """Signature avec le logo Progim, joint au courriel comme image intégrée (cid)."""
     return (
         '<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px"><tr>'
-        f'<td style="padding-right:12px;vertical-align:middle"><img src="cid:{LOGO_CID}" width="52" alt="Progim"></td>'
+        f'<td style="padding-right:12px;vertical-align:middle"><img src="cid:{LOGO_CID}" width="140" alt="Progim"></td>'
         '<td style="vertical-align:middle;border-left:3px solid #EE7203;padding-left:12px;font-family:Segoe UI,Arial,sans-serif">'
         f'<div style="font-weight:bold;color:#131A2F">{html.escape(config["envoi"]["signature"])}</div>'
         f'<div style="font-size:12px;color:#5B6770">{html.escape(config["envoi"]["expediteur"])}</div>'
@@ -606,7 +606,7 @@ body {{ margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }}
 .bandeau-contenu {{ max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }}
 .bandeau-titre {{ display: flex; flex-direction: column; border-left: 1px solid var(--ligne); padding-left: 14px; }}
-.bandeau img {{ height: 52px; width: auto; }}
+.bandeau img {{ height: 40px; width: auto; }}
 .bandeau-titre b {{ font-size: 17px; letter-spacing: .02em; }}
 .bandeau-titre span {{ font-size: 12px; color: var(--discret); }}
 main {{ max-width: 1100px; margin: 0 auto; padding-block: 28px 64px;
