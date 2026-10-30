@@ -80,7 +80,9 @@ class Application(tk.Tk):
 
         self.var_mois = tk.StringVar(value=self.mois_choix[0][1])
         self.var_excel = tk.StringVar(value=self.parametres.get("excel", str(ICI / "clients_rapports.xlsx")))
-        self.var_racine = tk.StringVar(value=self.parametres.get("racine", ""))
+        # Installé dans ÉTATS FINANCIERS, l'outil trouve 1_CLIENTS juste à côté sans qu'on le choisisse.
+        racine_voisine = ICI.parent / "1_CLIENTS"
+        self.var_racine = tk.StringVar(value=self.parametres.get("racine") or (str(racine_voisine) if racine_voisine.is_dir() else ""))
         self.var_dossier = tk.StringVar()
         self.construire()
         self.var_mois.trace_add("write", lambda *_: self.deviner_dossier())
