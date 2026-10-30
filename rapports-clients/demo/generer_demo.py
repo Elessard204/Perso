@@ -21,27 +21,27 @@ TITRES = {"etat_resultats": "Etat des resultats", "bilan": "Bilan",
           "sommaire": "Sommaire mensuel des transactions", "grand_livre": "Grand livre"}
 
 CLIENTS = [
-    # code, nom, contact, à, cc, gestionnaire, courriel gestionnaire, langue, actif
-    ("C001", "Gestion Boréale inc.", "Julie", "julie.gagnon@exemple.com", "", "Marc Bédard", "mbedard@progim.com", "FR", "Oui"),
-    ("C002", "Saint-Laurent Holdings", "David", "david.cohen@exemple.com", "comptable@exemple.com", "Sophie Roy", "sroy@progim.com", "EN", "Oui"),
-    ("C003", "Immeubles Rivière-Noire", "Pierre", "pierre.lavoie@exemple.com", "", "Marc Bédard", "mbedard@progim.com", "FR", "Oui"),
-    ("C004", "Famille Tremblay", "Nathalie", "n.tremblay@exemple.com", "", "Sophie Roy", "sroy@progim.com", "FR", "Oui"),
-    ("C005", "Société Champlain", "Louis", "compta@champlain", "", "Marc Bédard", "mbedard@progim.com", "FR", "Oui"),
-    ("C006", "Ancien client ltée", "Paul", "paul@exemple.com", "", "Sophie Roy", "sroy@progim.com", "FR", "Non"),
-    ("C007", "Groupe Laurentides", "Isabelle", "isabelle.cote@exemple.com", "", "Marc Bédard", "mbedard@progim.com", "FR", "Oui"),
+    # code, nom, contact, courriels clients, gestionnaire, courriel gestionnaires, courriel direction, langue, actif
+    ("C001", "Gestion Boréale inc.", "Julie", "julie.gagnon@exemple.com", "Marc Bédard", "mbedard@progim.com", "", "FR", "Oui"),
+    ("C002", "Saint-Laurent Holdings", "David", "david.cohen@exemple.com; comptable@exemple.com", "Sophie Roy", "sroy@progim.com", "elessard@progim.com", "EN", "Oui"),
+    ("C003", "Immeubles Rivière-Noire", "Pierre", "pierre.lavoie@exemple.com", "Marc Bédard", "mbedard@progim.com", "", "FR", "Oui"),
+    ("C004", "Famille Tremblay", "Nathalie", "n.tremblay@exemple.com", "Sophie Roy", "sroy@progim.com", "", "FR", "Oui"),
+    ("C005", "Société Champlain", "Louis", "compta@champlain", "Marc Bédard", "mbedard@progim.com", "", "FR", "Oui"),
+    ("C006", "Ancien client ltée", "Paul", "paul@exemple.com", "Sophie Roy", "sroy@progim.com", "", "FR", "Non"),
+    ("C007", "Groupe Laurentides", "Isabelle", "isabelle.cote@exemple.com", "Marc Bédard", "mbedard@progim.com", "", "FR", "Oui"),
 ]
 
 ENTITES = [
-    # code, nom, client, documents requis
-    ("E1001", "Boréale Immeubles inc.", "C001", DOCS),
-    ("E1002", "9123-4567 Québec inc.", "C001", DOCS),
-    ("E2001", "SLH Residential LP", "C002", ["etat_resultats", "bilan"]),
-    ("E3001", "Rivière-Noire Habitation inc.", "C003", DOCS),
-    ("E4001", "Tremblay Immobilier inc.", "C004", DOCS),
-    ("E4002", "Résidences Tremblay S.E.C.", "C004", ["etat_resultats", "bilan", "sommaire"]),
-    ("E5001", "Champlain Logements inc.", "C005", DOCS),
-    ("E6001", "Ancien client ltée", "C006", DOCS),
-    ("E7001", "Laurentides Multilogements inc.", "C007", ["etat_resultats", "bilan", "grand_livre"]),
+    # # client Hopem, nom, client, début d'exercice (mois), gestionnaire propre à l'entité, documents requis
+    ("1001", "Boréale Immeubles inc.", "C001", 1, None, DOCS),
+    ("1002", "9123-4567 Québec inc.", "C001", 11, ("Karine Ouellet", "kouellet@progim.com"), DOCS),
+    ("2001", "SLH Residential LP", "C002", 4, None, ["etat_resultats", "bilan"]),
+    ("3001", "Rivière-Noire Habitation inc.", "C003", 1, None, DOCS),
+    ("4001", "Tremblay Immobilier inc.", "C004", 1, None, DOCS),
+    ("4002", "Résidences Tremblay S.E.C.", "C004", 1, None, ["etat_resultats", "bilan", "sommaire"]),
+    ("5001", "Champlain Logements inc.", "C005", 5, None, DOCS),
+    ("6001", "Ancien client ltée", "C006", 1, None, DOCS),
+    ("7001", "Laurentides Multilogements inc.", "C007", 11, None, ["etat_resultats", "bilan", "grand_livre"]),
 ]
 
 
@@ -51,10 +51,12 @@ def creer_excel() -> None:
     fond = PatternFill("solid", fgColor="1F5C4D")
 
     onglets = [
-        ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_a", "courriel_cc",
-                     "gestionnaire_nom", "gestionnaire_courriel", "langue", "actif"], CLIENTS),
-        ("Entites", ["code_entite", "nom_entite", "code_client", *DOCS, "actif"],
-         [(c, n, cl, *["Oui" if d in docs else "Non" for d in DOCS], "Oui") for c, n, cl, docs in ENTITES]),
+        ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "gestionnaire_nom",
+                     "courriel_gestionnaires", "courriel_direction", "langue", "actif"], CLIENTS),
+        ("Entites", ["code_entite", "nom_entite", "code_client", "debut_exercice", "gestionnaire_nom",
+                     "courriel_gestionnaire", *DOCS, "actif"],
+         [(c, n, cl, debut, *(g or ("", "")), *["Oui" if d in docs else "Non" for d in DOCS], "Oui")
+          for c, n, cl, debut, g, docs in ENTITES]),
     ]
     for i, (nom, colonnes, lignes) in enumerate(onglets):
         feuille = classeur.active if i == 0 else classeur.create_sheet()
@@ -80,7 +82,7 @@ def creer_pdf(chemin: Path, code: str, nom: str, doc: str) -> None:
         pdf.setFont("Helvetica-Bold", 14)
         pdf.drawString(50, 740, f"{TITRES[doc]} - {MOIS}")
         pdf.setFont("Helvetica", 10)
-        pdf.drawString(50, 722, f"Entite {code} - {nom}  (donnees fictives)   page {page + 1}/{pages}")
+        pdf.drawString(50, 722, f"No client Hopem {code} - {nom}  (donnees fictives)   page {page + 1}/{pages}")
         y = 690
         for _ in range(25):
             pdf.drawString(50, y, f"{random.randint(1000, 5999)}  Poste fictif")
@@ -96,14 +98,15 @@ def creer_exports() -> None:
     for ancien in dossier.glob("*.pdf"):
         ancien.unlink()
     random.seed(2026)
-    for code, nom, client, docs in ENTITES:
+    for code, nom, client, debut, _, docs in ENTITES:
         for doc in docs:
-            if code == "E3001" and doc == "bilan":
+            if code == "3001" and doc == "bilan":
                 continue  # oubli d'export : le client C003 sera bloqué
-            contenu = ("E4001", "Tremblay Immobilier inc.") if (code, doc) == ("E4002", "sommaire") else (code, nom)
-            creer_pdf(dossier / f"{code} - {TITRES[doc]}.pdf", *contenu, doc)  # E4002 : mauvais fichier
-    creer_pdf(dossier / "Rapport annuel brouillon.pdf", "E1001", "Boréale Immeubles inc.", "bilan")
-    creer_pdf(dossier / "E9999 - Bilan.pdf", "E9999", "Entité inconnue", "bilan")
+            mois = "Septembre" if (code, doc) == ("7001", "grand_livre") else "Octobre"  # fichier du mois passé
+            contenu = ("4001", "Tremblay Immobilier inc.") if (code, doc) == ("4002", "sommaire") else (code, nom)
+            creer_pdf(dossier / f"{nom.rstrip('.')}_{code}_{TITRES[doc]} de {mois}.pdf", *contenu, doc)  # 4002 : mauvais contenu
+    creer_pdf(dossier / "Rapport annuel brouillon.pdf", "1001", "Boréale Immeubles inc.", "bilan")
+    creer_pdf(dossier / "Entite inconnue inc_9999_Bilan de Octobre.pdf", "9999", "Entité inconnue", "bilan")
 
 
 if __name__ == "__main__":

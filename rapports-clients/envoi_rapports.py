@@ -12,6 +12,7 @@ Exemples :
 
 import argparse
 import base64
+import calendar
 import html
 import os
 import re
@@ -39,11 +40,26 @@ class Entite:
     code: str
     nom: str
     code_client: str
+    debut_exercice: int
+    gestionnaire_nom: str
+    gestionnaires: list[str]
     requis: list[str]
     actif: bool
     fichiers: dict[str, Path] = field(default_factory=dict)
     problemes: list[str] = field(default_factory=list)
     pdf: Path | None = None
+
+    def periode(self, mois: str) -> int:
+        """Numéro de période Hopem du mois civil, selon le début de l'exercice."""
+        return (int(mois[5:]) - self.debut_exercice) % 12 + 1
+
+    def fin_exercice(self, mois: str) -> tuple[int, int, int]:
+        """(jour, mois, année) de la fin de l'exercice qui contient ce mois civil."""
+        annee, numero = int(mois[:4]), int(mois[5:])
+        debut_annee = annee if numero >= self.debut_exercice else annee - 1
+        mois_fin = (self.debut_exercice - 2) % 12 + 1
+        annee_fin = debut_annee + (1 if self.debut_exercice > 1 else 0)
+        return calendar.monthrange(annee_fin, mois_fin)[1], mois_fin, annee_fin
 
 
 @dataclass
@@ -52,9 +68,9 @@ class Client:
     nom: str
     nom_contact: str
     a: list[str]
-    cc: list[str]
     gestionnaire_nom: str
-    gestionnaire_courriel: str
+    gestionnaires: list[str]
+    direction: list[str]
     langue: str
     actif: bool
     entites: list[Entite] = field(default_factory=list)
@@ -70,6 +86,10 @@ class Client:
     @property
     def entites_actives(self) -> list[Entite]:
         return [e for e in self.entites if e.actif]
+
+    @property
+    def noms_gestionnaires(self) -> list[str]:
+        return list(dict.fromkeys(e.gestionnaire_nom for e in self.entites_actives if e.gestionnaire_nom))
 
 
 def normaliser(texte: str) -> str:
@@ -105,29 +125,46 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
             code=code,
             nom=str(ligne["nom_client"] or "").strip(),
             nom_contact=str(ligne.get("nom_contact") or ligne["nom_client"] or "").strip(),
-            a=adresses(ligne["courriel_a"]),
-            cc=adresses(ligne.get("courriel_cc")),
+            a=adresses(ligne["courriel_clients"]),
             gestionnaire_nom=str(ligne.get("gestionnaire_nom") or "").strip(),
-            gestionnaire_courriel=str(ligne.get("gestionnaire_courriel") or "").strip(),
+            gestionnaires=adresses(ligne.get("courriel_gestionnaires")),
+            direction=adresses(ligne.get("courriel_direction")) or config["envoi"]["direction_defaut"],
             langue="en" if normaliser(ligne.get("langue") or "fr") in {"en", "anglais"} else "fr",
             actif=oui(ligne.get("actif", "oui")),
         )
 
     for ligne in lire_onglet(classeur, "Entites"):
         code_client = str(ligne["code_client"]).strip()
-        entite = Entite(
-            code=str(ligne["code_entite"]).strip(),
+        client = clients.get(code_client)
+        code = str(ligne["code_entite"]).strip()
+        if client is None:
+            alertes.append(f"Entité {code} rattachée au client {code_client}, absent de l'onglet Clients.")
+            continue
+        try:
+            debut = int(ligne.get("debut_exercice") or 1)
+            assert 1 <= debut <= 12
+        except (ValueError, AssertionError):
+            alertes.append(f"Entité {code} : debut_exercice doit être un mois de 1 à 12.")
+            continue
+        # Le gestionnaire de l'entité remplace celui du client quand il est rempli.
+        gestionnaires = adresses(ligne.get("courriel_gestionnaire"))
+        client.entites.append(Entite(
+            code=code,
             nom=str(ligne["nom_entite"] or "").strip(),
             code_client=code_client,
+            debut_exercice=debut,
+            gestionnaire_nom=str(ligne.get("gestionnaire_nom") or "").strip() if gestionnaires else client.gestionnaire_nom,
+            gestionnaires=gestionnaires or client.gestionnaires,
             requis=[c for c in cles_docs if oui(ligne.get(c))],
             actif=oui(ligne.get("actif", "oui")),
-        )
-        if code_client not in clients:
-            alertes.append(f"Entité {entite.code} rattachée au client {code_client}, absent de l'onglet Clients.")
-            continue
-        clients[code_client].entites.append(entite)
+        ))
 
     return clients, alertes
+
+
+def de_mois(numero: int) -> str:
+    nom = MOIS_FR[numero - 1]
+    return f"d'{nom}" if nom[0] in "aeiou" else f"de {nom}"
 
 
 def identifier_document(nom_doc: str, config: dict) -> str | None:
@@ -138,10 +175,11 @@ def identifier_document(nom_doc: str, config: dict) -> str | None:
     return None
 
 
-def associer_fichiers(dossier: Path, clients: dict[str, Client], config: dict) -> list[str]:
+def associer_fichiers(dossier: Path, clients: dict[str, Client], mois: str, config: dict) -> list[str]:
     """Range chaque PDF du dossier dans son entité. Retourne les fichiers non classés."""
     motif = re.compile(config["fichiers"]["motif"], re.I)
     entites = {e.code.upper(): e for c in clients.values() for e in c.entites}
+    noms_mois = {normaliser(n): i + 1 for noms in (MOIS_FR, MOIS_EN) for i, n in enumerate(noms)}
     non_classes = []
 
     for fichier in sorted(dossier.glob("*.pdf")):
@@ -157,6 +195,11 @@ def associer_fichiers(dossier: Path, clients: dict[str, Client], config: dict) -
         if cle is None:
             non_classes.append(f"{fichier.name} : type de rapport non reconnu.")
             continue
+        mois_fichier = noms_mois.get(normaliser(trouve.groupdict().get("mois") or ""))
+        if mois_fichier and mois_fichier != int(mois[5:]):
+            entite.problemes.append(f"{fichier.name} est le rapport {de_mois(mois_fichier)}, "
+                                    f"pas {de_mois(int(mois[5:]))}.")
+            continue
         if cle in entite.fichiers:
             entite.problemes.append(f"Deux fichiers pour le même rapport : {entite.fichiers[cle].name} et {fichier.name}.")
             continue
@@ -171,15 +214,15 @@ def valider(clients: dict[str, Client], config: dict) -> None:
             continue
         if not client.a:
             client.problemes.append("Aucun destinataire principal.")
-        for adresse in client.a + client.cc + [client.gestionnaire_courriel]:
-            if adresse and not COURRIEL_VALIDE.match(adresse):
+        for adresse in client.a + client.direction + [a for e in client.entites_actives for a in e.gestionnaires]:
+            if not COURRIEL_VALIDE.match(adresse):
                 client.problemes.append(f"Adresse courriel invalide : {adresse}")
-        if not client.gestionnaire_courriel:
-            client.problemes.append("Courriel du gestionnaire manquant.")
         if not client.entites_actives:
             client.problemes.append("Aucune entité active rattachée à ce client.")
 
         for entite in client.entites_actives:
+            if not entite.gestionnaires:
+                entite.problemes.append("Courriel du gestionnaire manquant.")
             if not entite.requis:
                 entite.problemes.append("Aucun document requis coché dans l'Excel.")
             for cle in entite.requis:
@@ -233,9 +276,11 @@ def rediger(client: Client, mois: str, config: dict) -> None:
         "nom_client": client.nom,
         "nom_contact": html.escape(client.nom_contact),
         "mois_texte": mois_texte(mois, langue),
-        "gestionnaire_nom": html.escape(client.gestionnaire_nom),
+        "gestionnaires": html.escape(phrase_gestionnaires(client.noms_gestionnaires, langue)),
         "signature": html.escape(config["envoi"]["signature"]),
-        "liste_entites": "<ul>" + "".join(f"<li>{html.escape(e.nom)}</li>" for e in client.entites_actives) + "</ul>",
+        "liste_entites": "<ul>" + "".join(
+            f"<li>{html.escape(e.nom)} <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
+            for e in client.entites_actives) + "</ul>",
         "liste_documents": ", ".join(
             d[f"libelle_{langue}"].lower() for d in config["documents"]
             if any(d["cle"] in e.requis for e in client.entites_actives)
@@ -246,11 +291,26 @@ def rediger(client: Client, mois: str, config: dict) -> None:
     client.corps = modele.format(**valeurs)
 
 
+def phrase_gestionnaires(noms: list[str], langue: str) -> str:
+    et = " and " if langue == "en" else " et "
+    liste = ", ".join(noms[:-1]) + et + noms[-1] if len(noms) > 1 else "".join(noms)
+    if langue == "en":
+        return f"your property manager{'s' if len(noms) > 1 else ''}, {liste},"
+    return f"{'vos gestionnaires' if len(noms) > 1 else 'votre gestionnaire'}, {liste},"
+
+
+def ligne_periode(entite: Entite, mois: str, langue: str) -> str:
+    jour, mois_fin, annee_fin = entite.fin_exercice(mois)
+    if langue == "en":
+        return f"period {entite.periode(mois)} of the fiscal year ending {MOIS_EN[mois_fin - 1]} {jour}, {annee_fin}"
+    return f"période {entite.periode(mois)} de l'exercice se terminant le {jour} {MOIS_FR[mois_fin - 1]} {annee_fin}"
+
+
 def destinataires_cc(client: Client, config: dict) -> list[str]:
-    cc = client.cc + [client.gestionnaire_courriel] + config["envoi"]["cc_fixes"]
+    cc = [a for e in client.entites_actives for a in e.gestionnaires] + client.direction
     vus, resultat = set(), []
     for adresse in cc:
-        if adresse and adresse.lower() not in vus and adresse.lower() not in {a.lower() for a in client.a}:
+        if adresse.lower() not in vus and adresse.lower() not in {a.lower() for a in client.a}:
             vus.add(adresse.lower())
             resultat.append(adresse)
     return resultat
@@ -345,7 +405,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
     def ligne_client(c: Client) -> str:
         etat = '<span class="pastille ok">Prêt</span>' if c.pret else '<span class="pastille bloque">Bloqué</span>'
         entites = "".join(
-            f'<li><span class="code">{e(x.code)}</span> {e(x.nom)}'
+            f'<li><span class="code">{e(x.code)}</span> {e(x.nom)} <span class="periode">P{x.periode(mois)}</span>'
             + ("".join(f'<div class="probleme">{e(p)}</div>' for p in x.problemes)
                if x.problemes else f' <span class="discret">· {len(x.requis)} rapports</span>')
             + "</li>" for x in c.entites_actives)
@@ -353,11 +413,23 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
         lien = f'<div class="discret">Aperçu : <span class="code">{e(c.brouillon)}</span></div>' if c.brouillon else ""
         return (f'<tr class="{"" if c.pret else "a-voir"}"><td>{etat}</td>'
                 f'<td><strong>{e(c.nom)}</strong><div class="discret code">{e(c.code)}</div></td>'
-                f'<td><div>{e(", ".join(c.a))}</div><div class="discret">cc gestionnaire : {e(c.gestionnaire_nom)}</div></td>'
+                f'<td><div>{e(", ".join(c.a))}</div><div class="discret">cc gestionnaire : {e(", ".join(c.noms_gestionnaires) or "à compléter")}</div></td>'
                 f'<td><ul class="entites">{entites}</ul>{problemes}{lien}</td></tr>')
 
+    # Liste d'extraction : quelle période sortir de Hopem pour chaque entité.
+    par_periode: dict[int, list[Entite]] = {}
+    for c in actifs:
+        for x in c.entites_actives:
+            par_periode.setdefault(x.periode(mois), []).append(x)
+    extraction = "".join(
+        f'<div class="groupe"><div class="groupe-tete"><span class="periode grande">Période {p}</span>'
+        f'<span class="discret">{len(xs)} entité{"s" if len(xs) > 1 else ""} · exercice débutant en '
+        f'{", ".join(sorted({MOIS_FR[x.debut_exercice - 1] for x in xs}))}</span></div>'
+        f'<div class="discret">{" · ".join(f"<span class=code>{e(x.code)}</span> {e(x.nom)}" for x in xs)}</div></div>'
+        for p, xs in sorted(par_periode.items()))
+
     apercu = ""
-    if prets:
+    if prets and mode != "liste":
         c = prets[0]
         apercu = f"""
 <section>
@@ -375,7 +447,9 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
 </section>"""
 
     hors_excel = "".join(f"<li>{e(a)}</li>" for a in alertes)
-    libelle_mode = "Brouillons créés dans Outlook" if mode == "brouillons" else "Simulation : aucun brouillon créé"
+    libelle_mode = {"brouillons": "Brouillons créés dans Outlook",
+                    "simulation": "Simulation : aucun brouillon créé",
+                    "liste": "Liste d'extraction : à faire avant d'exporter de Hopem"}[mode]
     page = f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -398,6 +472,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
   --fond: #121715; --surface: #1a211e; --texte: #e4ebe7; --discret: #9aa8a2;
   --ligne: #2c3632; --accent: #7cc4ad; --ok: #6fd0a0; --ok-fond: #183326;
   --bloque: #f0957a; --bloque-fond: #3a1f17; color-scheme: dark; }}
+[hidden] {{ display: none !important; }}
 body {{ margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 var(--police); }}
 main {{ max-width: 1100px; margin: 0 auto; padding-block: 32px 64px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -425,6 +500,11 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 .entites {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }}
 .probleme {{ color: var(--bloque); font-size: 13px; }}
 .probleme::before {{ content: "→ "; }}
+.periode {{ font: 500 11.5px var(--mono); color: var(--accent); border: 1px solid var(--ligne); border-radius: 4px; padding: 0 5px; }}
+.periode.grande {{ font-size: 13px; padding: 1px 8px; }}
+.extraction {{ display: grid; gap: 1px; background: var(--ligne); border: 1px solid var(--ligne); border-radius: 6px; overflow: hidden; }}
+.groupe {{ background: var(--surface); padding: 12px 16px; display: grid; gap: 4px; }}
+.groupe-tete {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }}
 .alertes {{ margin: 0; padding-left: 20px; color: var(--bloque); }}
 .courriel {{ background: var(--surface); border: 1px solid var(--ligne); border-radius: 6px; overflow: hidden; }}
 .courriel dl {{ margin: 0; padding: 14px 18px; display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px;
@@ -439,14 +519,18 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
   <h1>Envoi des rapports de {e(mois_texte(mois, "fr"))}</h1>
   <div class="discret">{libelle_mode} · préparé le {datetime.now():%Y-%m-%d à %H:%M}</div>
 </header>
-<div class="compteurs">
+<div class="compteurs"{" hidden" if mode == "liste" else ""}>
   <div class="compteur ok"><b>{len(prets)}</b>clients prêts à envoyer</div>
   <div class="compteur bloque"><b>{len(bloques)}</b>clients bloqués</div>
   <div class="compteur"><b>{sum(len(c.entites_actives) for c in prets)}</b>PDF d'entités préparés</div>
   <div class="compteur"><b>{len(inactifs)}</b>clients inactifs ignorés</div>
 </div>
-{f'<section><h2>Fichiers ou lignes à régler</h2><ul class="alertes">{hors_excel}</ul></section>' if alertes else ""}
 <section>
+  <h2>Périodes à extraire dans Hopem</h2>
+  <div class="extraction">{extraction}</div>
+</section>
+{f'<section><h2>Fichiers ou lignes à régler</h2><ul class="alertes">{hors_excel}</ul></section>' if alertes else ""}
+<section{" hidden" if mode == "liste" else ""}>
   <h2>Détail par client</h2>
   <div class="tableau"><table>
     <thead><tr><th>État</th><th>Client</th><th>Destinataires</th><th>Entités et vérifications</th></tr></thead>
@@ -463,7 +547,9 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prépare l'envoi mensuel des rapports clients.")
     parser.add_argument("--mois", required=True, help="Mois des rapports, format AAAA-MM")
-    parser.add_argument("--exports", required=True, type=Path, help="Dossier des exports Hopem du mois")
+    parser.add_argument("--exports", type=Path,
+                        help="Dossier des exports Hopem du mois. Sans ce dossier, l'outil produit seulement "
+                             "la liste des périodes à extraire.")
     parser.add_argument("--clients", required=True, type=Path, help="Excel des clients")
     parser.add_argument("--sortie", type=Path, help="Dossier de sortie (défaut : ./sortie/AAAA-MM)")
     parser.add_argument("--mode", choices=["simulation", "brouillons"], default="simulation")
@@ -477,7 +563,11 @@ def main() -> None:
     sortie.mkdir(parents=True, exist_ok=True)
 
     clients, alertes = charger_clients(args.clients, config)
-    alertes += associer_fichiers(args.exports, clients, config)
+    if args.exports is None:
+        rapport = ecrire_rapport(clients, alertes, args.mois, "liste", sortie, config)
+        print(f"Liste des périodes à extraire : {rapport}")
+        return
+    alertes += associer_fichiers(args.exports, clients, args.mois, config)
     valider(clients, config)
 
     graph = Graph(config) if args.mode == "brouillons" else None

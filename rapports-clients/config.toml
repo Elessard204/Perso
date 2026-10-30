@@ -4,10 +4,11 @@
 
 [envoi]
 expediteur = "finance@progim.com"
-# Toujours en copie, en plus du gestionnaire du client.
-cc_fixes = [
+# Membres de la direction en copie quand la colonne courriel_direction de
+# l'Excel est vide pour un client.
+direction_defaut = [
     "elessard@progim.com",
-    "maxime@progim.com",   # À CONFIRMER
+    "mpaquet@progim.com",
 ]
 objet_fr = "Rapports financiers – {mois_texte} – {nom_client}"
 objet_en = "Financial reports – {mois_texte} – {nom_client}"
@@ -15,11 +16,13 @@ signature = "L'équipe Finance – Progim"
 
 [fichiers]
 # Comment reconnaître un export Hopem à partir de son nom de fichier.
-# Le groupe « entite » doit capturer le code d'entité tel qu'il apparaît dans
-# l'Excel; le groupe « doc » capture le nom du rapport.
-# À AJUSTER quand on aura de vrais exemples de noms de fichiers Hopem.
-motif = '^(?P<entite>[A-Z0-9]+)[ _-]+(?P<doc>.+)\.pdf$'
-# Bloque l'entité si le code d'entité n'apparaît pas dans le texte de la
+# Format Hopem : <entité légale>_<# client Hopem>_<rapport> de <Mois>.pdf
+#   ex. « Boréale Immeubles inc_1001_Bilan de Octobre.pdf »
+# Groupes : « entite » = # client Hopem (colonne code_entite de l'Excel),
+# « doc » = nom du rapport, « mois » = mois écrit dans le nom (vérifié).
+# À VALIDER avec de vrais noms de fichiers.
+motif = '^(?P<nom>.+?)_(?P<entite>\d+)_(?P<doc>.+?)(?:\s+d(?:e\s+|\W\s*)(?P<mois>[^\s.]+))?\.pdf$'
+# Bloque l'entité si le # client Hopem n'apparaît pas dans le texte de la
 # première page du PDF. Protège contre un fichier mal nommé.
 verifier_contenu = true
 
