@@ -569,35 +569,36 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
 <style>
 /* Mise en page : une colonne de contrôle, sommaire d'abord, détail par client ensuite. */
 :root {{
-  --fond: #f6f7f5; --surface: #ffffff; --texte: #1d2522; --discret: #5d6b66;
-  --ligne: #dde3df; --accent: #1f5c4d; --ok: #24734f; --ok-fond: #e3f2ea;
-  --bloque: #a33a1f; --bloque-fond: #fbe9e3; --attention: #8a5a00;
-  --police: "Public Sans", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace;
+  /* Charte Progim : bandeau marine, accent orange, gris clair (même look que l'outil de facturation). */
+  --marine: #131A2F; --orange: #EE7203; --fond: #F3F4F6; --surface: #FFFFFF; --texte: #131A2F;
+  --discret: #5B6770; --pale: #AEB6C8; --ligne: #DDE2E6; --lien: #0B5D7A; --accent: #EE7203;
+  --ok: #2D7A3E; --ok-fond: #E3F2E6; --bloque: #B4471A; --bloque-fond: #FBEAE2; --attention: #6E5000;
+  --police: "Public Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
+  color-scheme: light;
 }}
-@media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{
-  --fond: #121715; --surface: #1a211e; --texte: #e4ebe7; --discret: #9aa8a2;
-  --ligne: #2c3632; --accent: #7cc4ad; --ok: #6fd0a0; --ok-fond: #183326;
-  --bloque: #f0957a; --bloque-fond: #3a1f17; --attention: #e5b85c; color-scheme: dark; }} }}
-:root[data-theme="dark"] {{
-  --fond: #121715; --surface: #1a211e; --texte: #e4ebe7; --discret: #9aa8a2;
-  --ligne: #2c3632; --accent: #7cc4ad; --ok: #6fd0a0; --ok-fond: #183326;
-  --bloque: #f0957a; --bloque-fond: #3a1f17; --attention: #e5b85c; color-scheme: dark; }}
 [hidden] {{ display: none !important; }}
 body {{ margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 var(--police); }}
-main {{ max-width: 1100px; margin: 0 auto; padding-block: 32px 64px;
+.bandeau {{ background: var(--marine); color: #FFFFFF; padding-block: 14px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }}
+.bandeau-contenu {{ max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }}
+.bandeau-titre {{ display: flex; flex-direction: column; }}
+.bandeau-titre b {{ font-size: 17px; letter-spacing: .02em; }}
+.bandeau-titre span {{ font-size: 12px; color: var(--pale); }}
+main {{ max-width: 1100px; margin: 0 auto; padding-block: 28px 64px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  display: grid; gap: 32px; }}
-header {{ display: grid; gap: 6px; }}
-.surtitre {{ font: 500 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }}
+  display: grid; gap: 28px; }}
+header {{ display: grid; gap: 4px; }}
+.surtitre {{ font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--orange); }}
+a {{ color: var(--lien); }}
 h1 {{ margin: 0; font-size: clamp(24px, 4vw, 34px); line-height: 1.15; text-wrap: balance; }}
 h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .discret {{ color: var(--discret); font-size: 13px; }}
 .code {{ font-family: var(--mono); font-size: 12.5px; }}
 .compteurs {{ display: flex; flex-wrap: wrap; gap: 12px; }}
-.compteur {{ flex: 1 1 160px; background: var(--surface); border: 1px solid var(--ligne); border-radius: 6px; padding: 14px 16px; }}
+.compteur {{ flex: 1 1 160px; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; padding: 14px 16px; }}
 .compteur b {{ display: block; font-size: 30px; font-variant-numeric: tabular-nums; line-height: 1.1; }}
 .compteur.ok b {{ color: var(--ok); }} .compteur.bloque b {{ color: var(--bloque); }}
-.tableau {{ overflow-x: auto; background: var(--surface); border: 1px solid var(--ligne); border-radius: 6px; }}
+.tableau {{ overflow-x: auto; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; }}
 table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
 th {{ text-align: left; font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--discret);
   padding: 10px 14px; border-bottom: 1px solid var(--ligne); }}
@@ -614,7 +615,7 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 .consigne {{ font-size: 13px; font-weight: 600; }}
 .avertissement {{ color: var(--attention); font-size: 13px; }}
 .avertissement::before {{ content: "· "; }}
-.periode {{ font: 500 11.5px var(--mono); color: var(--accent); border: 1px solid var(--ligne); border-radius: 4px; padding: 0 5px; }}
+.periode {{ font: 500 11.5px var(--mono); color: var(--lien); border: 1px solid var(--ligne); border-radius: 4px; padding: 0 5px; }}
 .periode.grande {{ font-size: 13px; padding: 1px 8px; }}
 .extraction {{ display: grid; gap: 1px; background: var(--ligne); border: 1px solid var(--ligne); border-radius: 6px; overflow: hidden; }}
 .groupe {{ background: var(--surface); padding: 12px 16px; display: grid; gap: 4px; }}
@@ -627,9 +628,14 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 .piece {{ display: inline-block; font: 12.5px var(--mono); border: 1px solid var(--ligne); border-radius: 4px; padding: 1px 8px; margin: 0 6px 4px 0; }}
 .corps {{ padding: 8px 18px 14px; max-width: 65ch; }}
 </style></head>
-<body><main>
+<body>
+<div class="bandeau"><div class="bandeau-contenu">
+  <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden="true"><path d="M2 12 L10 6 L10 30 L2 30 Z" fill="#EE7203"></path><path d="M12 5 L20 0 L20 30 L12 30 Z" fill="#EE7203"></path><path d="M22 2 L28 0 L28 22 L34 22 L34 30 L22 30 Z" fill="#FFFFFF"></path></svg>
+  <div class="bandeau-titre"><b>Rapports clients</b><span>Progim · Finance</span></div>
+</div></div>
+<main>
 <header>
-  <div class="surtitre">Finance · rapports clients</div>
+  <div class="surtitre">{"Liste d&#39;extraction" if mode == "liste" else "Mois en cours de traitement"}</div>
   <h1>Envoi des rapports {e(de_mois(int(mois[5:])))} {mois[:4]}</h1>
   <div class="discret">{libelle_mode} · préparé le {datetime.now():%Y-%m-%d à %H:%M}</div>
 </header>
@@ -653,7 +659,8 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 </section>
 {f'<section><h2>Pas d&#39;envoi ce mois-ci</h2><div class="discret">{pas_ce_mois_html}</div></section>' if pas_ce_mois else ""}
 {apercu}
-</main></body></html>"""
+</main>
+</body></html>"""
     chemin = sortie / ("periodes.html" if mode == "liste" else "rapport.html")
     chemin.write_text(page, encoding="utf-8")
     return chemin

@@ -15,7 +15,10 @@ from tkinter import filedialog, messagebox, ttk
 from envoi_rapports import ICI, MOIS_FR, outlook_configure, preparer
 
 PARAMETRES = ICI / "parametres.json"
-VERT, ROUGE, GRIS = "#24734f", "#a33a1f", "#5d6b66"
+# Charte Progim (même look que l'outil de facturation de services).
+MARINE, ORANGE, FOND, BLANC, LIGNE = "#131A2F", "#EE7203", "#F3F4F6", "#FFFFFF", "#DDE2E6"
+VERT, ROUGE, GRIS, PALE = "#2D7A3E", "#B4471A", "#5B6770", "#AEB6C8"
+POLICE = "Segoe UI"
 
 
 def lire_parametres() -> dict:
@@ -85,61 +88,94 @@ class Application(tk.Tk):
 
     # Mise en page -----------------------------------------------------------
     def construire(self) -> None:
+        self.configure(background=FOND)
         style = ttk.Style(self)
-        style.configure("Titre.TLabel", font=("Segoe UI", 15, "bold"))
-        style.configure("Etape.TLabel", font=("Segoe UI", 10, "bold"))
-        style.configure("Action.TButton", font=("Segoe UI", 10, "bold"), padding=8)
+        style.theme_use("clam")
+        style.configure(".", background=FOND, foreground=MARINE, font=(POLICE, 10))
+        style.configure("TLabel", background=FOND, foreground=MARINE)
+        style.configure("TFrame", background=FOND)
+        style.configure("TEntry", fieldbackground=BLANC, bordercolor=LIGNE, padding=4)
+        style.configure("TCombobox", fieldbackground=BLANC, bordercolor=LIGNE, padding=4)
+        style.map("TCombobox", fieldbackground=[("readonly", BLANC)])
+        style.configure("Etape.TLabel", font=(POLICE, 9, "bold"), foreground=ORANGE)
 
-        cadre = ttk.Frame(self, padding=16)
+        # Bandeau marine avec le logo Progim
+        bandeau = tk.Frame(self, background=MARINE, padx=20, pady=12)
+        bandeau.pack(fill="x")
+        logo = tk.Canvas(bandeau, width=34, height=30, background=MARINE, highlightthickness=0)
+        logo.create_polygon(2, 12, 10, 6, 10, 30, 2, 30, fill=ORANGE, outline="")
+        logo.create_polygon(12, 5, 20, 0, 20, 30, 12, 30, fill=ORANGE, outline="")
+        logo.create_polygon(22, 2, 28, 0, 28, 22, 34, 22, 34, 30, 22, 30, fill=BLANC, outline="")
+        logo.pack(side="left", padx=(0, 12))
+        titres = tk.Frame(bandeau, background=MARINE)
+        titres.pack(side="left")
+        tk.Label(titres, text="Rapports clients", background=MARINE, foreground=BLANC,
+                 font=(POLICE, 13, "bold")).pack(anchor="w")
+        tk.Label(titres, text="Progim · Finance", background=MARINE, foreground=PALE, font=(POLICE, 9)).pack(anchor="w")
+
+        cadre = ttk.Frame(self, padding=(20, 14, 20, 16))
         cadre.pack(fill="both", expand=True)
         cadre.columnconfigure(1, weight=1)
 
-        ttk.Label(cadre, text="Envoi des rapports clients", style="Titre.TLabel").grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(cadre, text="Rien n'est envoyé aux clients sans que vous cliquiez sur Envoyer dans Outlook.",
-                  foreground=GRIS).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 12))
+                  foreground=GRIS).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
-        ttk.Label(cadre, text="Mois des rapports").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Label(cadre, text="Mois des rapports").grid(row=2, column=0, sticky="w", pady=4, padx=(0, 10))
         ttk.Combobox(cadre, textvariable=self.var_mois, values=[libelle for _, libelle in self.mois_choix],
                      state="readonly", width=20).grid(row=2, column=1, sticky="w", pady=4)
 
-        ttk.Label(cadre, text="Dossier des rapports Hopem").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Label(cadre, text="Dossier des rapports Hopem").grid(row=3, column=0, sticky="w", pady=4, padx=(0, 10))
         ttk.Entry(cadre, textvariable=self.var_dossier).grid(row=3, column=1, sticky="ew", pady=4, padx=(0, 6))
-        ttk.Button(cadre, text="Choisir…", command=self.choisir_dossier).grid(row=3, column=2, pady=4)
+        self.bouton(cadre, "Choisir…", self.choisir_dossier, "secondaire").grid(row=3, column=2, pady=4)
 
-        ttk.Label(cadre, text="Excel des clients").grid(row=4, column=0, sticky="w", pady=4)
+        ttk.Label(cadre, text="Excel des clients").grid(row=4, column=0, sticky="w", pady=4, padx=(0, 10))
         ttk.Entry(cadre, textvariable=self.var_excel).grid(row=4, column=1, sticky="ew", pady=4, padx=(0, 6))
-        ttk.Button(cadre, text="Choisir…", command=self.choisir_excel).grid(row=4, column=2, pady=4)
+        self.bouton(cadre, "Choisir…", self.choisir_excel, "secondaire").grid(row=4, column=2, pady=4)
 
         etapes = ttk.Frame(cadre)
         etapes.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(16, 8))
         etapes.columnconfigure((0, 1, 2), weight=1, uniform="etape")
         self.boutons = []
-        for colonne, (titre, texte, action) in enumerate([
-            ("Étape 1", "Voir les périodes\nà extraire de Hopem", self.etape_periodes),
-            ("Étape 2", "Vérifier les rapports\net préparer les courriels", self.etape_verifier),
-            ("Étape 3", "Créer les brouillons\ndans Outlook", self.etape_brouillons),
+        for colonne, (titre, texte, action, genre) in enumerate([
+            ("ÉTAPE 1", "Voir les périodes\nà extraire de Hopem", self.etape_periodes, "secondaire"),
+            ("ÉTAPE 2", "Vérifier les rapports\net préparer les courriels", self.etape_verifier, "principal"),
+            ("ÉTAPE 3", "Créer les brouillons\ndans Outlook", self.etape_brouillons, "marine"),
         ]):
             ttk.Label(etapes, text=titre, style="Etape.TLabel").grid(row=0, column=colonne, sticky="w", padx=4)
-            bouton = ttk.Button(etapes, text=texte, style="Action.TButton", command=action)
+            bouton = self.bouton(etapes, texte, action, genre, gros=True)
             bouton.grid(row=1, column=colonne, sticky="ew", padx=4, pady=(2, 0))
             self.boutons.append(bouton)
         if not outlook_configure():
-            self.boutons[2].state(["disabled"])
+            self.boutons[2].configure(state="disabled")
             ttk.Label(etapes, text="Pas encore branché à Outlook", foreground=GRIS).grid(row=2, column=2, sticky="w", padx=4)
 
-        self.resume = ttk.Label(cadre, text="", font=("Segoe UI", 11, "bold"))
+        self.resume = ttk.Label(cadre, text="", font=(POLICE, 11, "bold"))
         self.resume.grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 4))
 
-        self.journal = tk.Text(cadre, height=8, wrap="word", relief="flat", background="#f4f6f5", font=("Segoe UI", 9))
+        self.journal = tk.Text(cadre, height=8, wrap="word", relief="flat", borderwidth=0, background=BLANC,
+                               foreground=MARINE, highlightthickness=1, highlightbackground=LIGNE, font=(POLICE, 9), padx=8, pady=6)
         self.journal.grid(row=7, column=0, columnspan=3, sticky="nsew")
         self.journal.configure(state="disabled")
         cadre.rowconfigure(7, weight=1)
 
         bas = ttk.Frame(cadre)
         bas.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        ttk.Button(bas, text="Ouvrir le rapport de contrôle", command=self.ouvrir_rapport).pack(side="left")
-        ttk.Button(bas, text="Ouvrir l'Excel des clients", command=lambda: self.ouvrir_si_existe(Path(self.var_excel.get()))).pack(side="left", padx=6)
-        ttk.Button(bas, text="Ouvrir les aperçus de courriels", command=self.ouvrir_apercus).pack(side="left")
+        self.bouton(bas, "Ouvrir le rapport de contrôle", self.ouvrir_rapport, "secondaire").pack(side="left")
+        self.bouton(bas, "Ouvrir l'Excel des clients", lambda: self.ouvrir_si_existe(Path(self.var_excel.get())),
+                    "secondaire").pack(side="left", padx=6)
+        self.bouton(bas, "Ouvrir les aperçus de courriels", self.ouvrir_apercus, "secondaire").pack(side="left")
+
+    def bouton(self, parent, texte: str, action, genre: str, gros: bool = False) -> tk.Button:
+        """Bouton aux couleurs Progim : principal orange, marine, ou secondaire blanc bordé."""
+        fond, texte_couleur, survol = {"principal": (ORANGE, BLANC, "#D96500"),
+                                       "marine": (MARINE, BLANC, "#26304D"),
+                                       "secondaire": (BLANC, MARINE, "#E8EBEF")}[genre]
+        return tk.Button(parent, text=texte, command=action, background=fond, foreground=texte_couleur,
+                         activebackground=survol, activeforeground=texte_couleur, disabledforeground=PALE,
+                         relief="flat", borderwidth=0, highlightthickness=1 if genre == "secondaire" else 0,
+                         highlightbackground=LIGNE, cursor="hand2",
+                         font=(POLICE, 10, "bold" if gros else "normal"),
+                         padx=12, pady=10 if gros else 5)
 
     # Choix des fichiers -----------------------------------------------------
     @property
@@ -201,7 +237,7 @@ class Application(tk.Tk):
             return
         self.sauvegarder()
         for bouton in self.boutons:
-            bouton.state(["disabled"])
+            bouton.configure(state="disabled")
         self.resume.configure(text=f"{nom} en cours…", foreground=GRIS)
         self.ecrire(f"{nom} – {self.var_mois.get()}…")
         mois = self.mois
@@ -220,9 +256,9 @@ class Application(tk.Tk):
 
     def terminer(self, nom, exports, resultat, erreur) -> None:
         for bouton in self.boutons[:2]:
-            bouton.state(["!disabled"])
+            bouton.configure(state="normal")
         if outlook_configure():
-            self.boutons[2].state(["!disabled"])
+            self.boutons[2].configure(state="normal")
         if erreur:
             self.resume.configure(text=f"{nom} : erreur", foreground=ROUGE)
             self.ecrire(f"Erreur : {erreur}")
