@@ -15,44 +15,18 @@ objet_en = "Financial reports – {mois_texte} – {nom_client}"
 signature = "L'équipe Finance – Progim"
 
 [fichiers]
-# Comment reconnaître un export Hopem à partir de son nom de fichier.
-# Format Hopem : <entité légale>_<# client Hopem>_<rapport> de <Mois>.pdf
-#   ex. « Boréale Immeubles inc_1001_Bilan de Octobre.pdf »
-# Groupes : « entite » = # client Hopem (colonne code_entite de l'Excel),
-# « doc » = nom du rapport, « mois » = mois écrit dans le nom (vérifié).
-# À VALIDER avec de vrais noms de fichiers.
-motif = '^(?P<nom>.+?)_(?P<entite>\d+)_(?P<doc>.+?)(?:\s+d(?:e\s+|\W\s*)(?P<mois>[^\s.]+))?\.pdf$'
-# Bloque l'entité si le # client Hopem n'apparaît pas dans le texte de la
-# première page du PDF. Protège contre un fichier mal nommé.
-verifier_contenu = true
+# Comment reconnaître un rapport téléchargé de Hopem par son nom de fichier.
+# Format actuel : « Rapports mensuels Sept 2026_05401.pdf », où les 5 derniers
+# chiffres sont le code de l'entité : 054 01 = 54.1.
+motif = '^Rapports mensuels (?P<mois>\S+) (?P<annee>\d{4})_(?P<entite>\d{5})\.pdf$'
 
-# Ordre des documents dans le PDF fusionné de chaque entité.
-# « cle » = nom de la colonne dans l'onglet Entités de l'Excel.
-# « mots » = mots qui identifient ce rapport dans le nom du fichier
-# (sans tenir compte des majuscules ni des accents).
-[[documents]]
-cle = "etat_resultats"
-libelle_fr = "État des résultats"
-libelle_en = "Income statement"
-mots = ["etat des resultats", "etat resultats", "resultats"]
-
-[[documents]]
-cle = "bilan"
-libelle_fr = "Bilan"
-libelle_en = "Balance sheet"
-mots = ["bilan"]
-
-[[documents]]
-cle = "sommaire"
-libelle_fr = "Sommaire mensuel des transactions"
-libelle_en = "Monthly transaction summary"
-mots = ["sommaire"]
-
-[[documents]]
-cle = "grand_livre"
-libelle_fr = "Grand livre"
-libelle_en = "General ledger"
-mots = ["grand livre", "grand-livre"]
+[controles]
+# Titres de rapports qui doivent se trouver dans chaque PDF (3e ligne de la page Hopem).
+rapports_obligatoires = ["Bilan", "État des résultats"]
+# Le bilan doit être « Au » dernier jour du mois envoyé.
+verifier_date = true
+# L'état des résultats doit porter la période calculée à partir de la fin d'exercice.
+verifier_periode = true
 
 [graph]
 # Application inscrite dans Entra ID (voir README). Le secret n'est jamais
