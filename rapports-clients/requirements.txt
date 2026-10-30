@@ -2,4 +2,3 @@ openpyxl>=3.1
 pypdf>=4.0
 msal>=1.28
 requests>=2.31
-reportlab>=4.0  # seulement pour demo/generer_demo.py

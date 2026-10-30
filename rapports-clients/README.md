@@ -63,7 +63,7 @@ Le script lit le dernier onglet mensuel, ou celui passé avec `--onglet`. Il reg
 ## Essayer avec des données fictives
 
 ```
-pip install -r requirements.txt
+pip install -r requirements.txt reportlab
 python demo/generer_demo.py
 python envoi_rapports.py --mois 2026-10 --exports demo/exports/2026-10 --clients demo/clients_demo.xlsx
 ```
