@@ -1,0 +1,58 @@
+# Configuration de l'envoi mensuel des rapports clients.
+# Tout ce qui change d'un mois à l'autre (clients, courriels, documents requis)
+# est dans l'Excel des clients, pas ici. Ce fichier change rarement.
+
+[envoi]
+expediteur = "finance@progim.com"
+# Toujours en copie, en plus du gestionnaire du client.
+cc_fixes = [
+    "elessard@progim.com",
+    "maxime@progim.com",   # À CONFIRMER
+]
+objet_fr = "Rapports financiers – {mois_texte} – {nom_client}"
+objet_en = "Financial reports – {mois_texte} – {nom_client}"
+signature = "L'équipe Finance – Progim"
+
+[fichiers]
+# Comment reconnaître un export Hopem à partir de son nom de fichier.
+# Le groupe « entite » doit capturer le code d'entité tel qu'il apparaît dans
+# l'Excel; le groupe « doc » capture le nom du rapport.
+# À AJUSTER quand on aura de vrais exemples de noms de fichiers Hopem.
+motif = '^(?P<entite>[A-Z0-9]+)[ _-]+(?P<doc>.+)\.pdf$'
+# Bloque l'entité si le code d'entité n'apparaît pas dans le texte de la
+# première page du PDF. Protège contre un fichier mal nommé.
+verifier_contenu = true
+
+# Ordre des documents dans le PDF fusionné de chaque entité.
+# « cle » = nom de la colonne dans l'onglet Entités de l'Excel.
+# « mots » = mots qui identifient ce rapport dans le nom du fichier
+# (sans tenir compte des majuscules ni des accents).
+[[documents]]
+cle = "etat_resultats"
+libelle_fr = "État des résultats"
+libelle_en = "Income statement"
+mots = ["etat des resultats", "etat resultats", "resultats"]
+
+[[documents]]
+cle = "bilan"
+libelle_fr = "Bilan"
+libelle_en = "Balance sheet"
+mots = ["bilan"]
+
+[[documents]]
+cle = "sommaire"
+libelle_fr = "Sommaire mensuel des transactions"
+libelle_en = "Monthly transaction summary"
+mots = ["sommaire"]
+
+[[documents]]
+cle = "grand_livre"
+libelle_fr = "Grand livre"
+libelle_en = "General ledger"
+mots = ["grand livre", "grand-livre"]
+
+[graph]
+# Application inscrite dans Entra ID (voir README). Le secret n'est jamais
+# écrit ici : il est lu dans la variable d'environnement GRAPH_CLIENT_SECRET.
+tenant_id = ""
+client_id = ""

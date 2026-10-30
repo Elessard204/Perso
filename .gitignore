@@ -1,0 +1,10 @@
+# Jamais de vraies données clients dans le repo
+rapports-clients/sortie/
+rapports-clients/demo/exports/
+rapports-clients/demo/*.xlsx
+*.xlsx
+*.pdf
+*.eml
+__pycache__/
+.venv/
+.env
