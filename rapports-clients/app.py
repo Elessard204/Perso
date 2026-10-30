@@ -99,19 +99,20 @@ class Application(tk.Tk):
         style.map("TCombobox", fieldbackground=[("readonly", BLANC)])
         style.configure("Etape.TLabel", font=(POLICE, 9, "bold"), foreground=ORANGE)
 
-        # Bandeau marine avec le logo Progim
-        bandeau = tk.Frame(self, background=MARINE, padx=20, pady=12)
+        # Bandeau blanc avec le logo Progim et un filet orange, comme le rapport de contrôle
+        bandeau = tk.Frame(self, background=BLANC, padx=20, pady=10)
         bandeau.pack(fill="x")
-        logo = tk.Canvas(bandeau, width=34, height=30, background=MARINE, highlightthickness=0)
-        logo.create_polygon(2, 12, 10, 6, 10, 30, 2, 30, fill=ORANGE, outline="")
-        logo.create_polygon(12, 5, 20, 0, 20, 30, 12, 30, fill=ORANGE, outline="")
-        logo.create_polygon(22, 2, 28, 0, 28, 22, 34, 22, 34, 30, 22, 30, fill=BLANC, outline="")
-        logo.pack(side="left", padx=(0, 12))
-        titres = tk.Frame(bandeau, background=MARINE)
+        logo_fichier = ICI / "logo_progim.png"
+        if logo_fichier.exists():
+            self.logo = tk.PhotoImage(file=str(logo_fichier)).subsample(3, 3)
+            tk.Label(bandeau, image=self.logo, background=BLANC).pack(side="left", padx=(0, 14))
+        tk.Frame(bandeau, background=LIGNE, width=1).pack(side="left", fill="y", padx=(0, 14))
+        titres = tk.Frame(bandeau, background=BLANC)
         titres.pack(side="left")
-        tk.Label(titres, text="Rapports clients", background=MARINE, foreground=BLANC,
+        tk.Label(titres, text="Rapports clients", background=BLANC, foreground=MARINE,
                  font=(POLICE, 13, "bold")).pack(anchor="w")
-        tk.Label(titres, text="Progim · Finance", background=MARINE, foreground=PALE, font=(POLICE, 9)).pack(anchor="w")
+        tk.Label(titres, text="Finance", background=BLANC, foreground=GRIS, font=(POLICE, 9)).pack(anchor="w")
+        tk.Frame(self, background=ORANGE, height=3).pack(fill="x")
 
         cadre = ttk.Frame(self, padding=(20, 14, 20, 16))
         cadre.pack(fill="both", expand=True)

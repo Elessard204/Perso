@@ -40,6 +40,8 @@ PREFIXES_MOIS = [("jan", 1), ("fe", 2), ("mar", 3), ("av", 4), ("ap", 4), ("mai"
                  ("sep", 9), ("oct", 10), ("nov", 11), ("de", 12)]
 # Mois civils où l'envoi a lieu, selon la fréquence de l'entité.
 FREQUENCES = {"mensuel": set(range(1, 13)), "trimestriel": {3, 6, 9, 12}, "semestriel": {6, 12}}
+LOGO = ICI / "logo_progim.png"
+LOGO_CID = "logo-progim"
 COURRIEL_VALIDE = re.compile(r"^[^@\s;,]+@[^@\s;,]+\.[a-z]{2,}$", re.I)
 
 
@@ -379,7 +381,7 @@ def rediger(client: Client, mois: str, config: dict) -> None:
         "nom_contact": f" {html.escape(client.nom_contact)}" if client.nom_contact else "",
         "mois_texte": mois_texte(mois, langue),
         "gestionnaires": html.escape(phrase_gestionnaires(gestionnaires, langue)),
-        "signature": html.escape(config["envoi"]["signature"]),
+        "signature": signature_html(config),
         "liste_entites": "<ul>" + "".join(
             f"<li>{html.escape(e.nom_affiche)}{f' ({html.escape(e.immeubles)})' if e.immeubles and e.nom_affiche != e.immeubles else ''}"
             f" <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
@@ -389,6 +391,18 @@ def rediger(client: Client, mois: str, config: dict) -> None:
     client.objet = config["envoi"][f"objet_{langue}"].format(**valeurs)
     modele = (ICI / "modeles" / f"courriel_{langue}.html").read_text(encoding="utf-8")
     client.corps = modele.format(**valeurs)
+
+
+def signature_html(config: dict) -> str:
+    """Signature avec le logo Progim, joint au courriel comme image intégrée (cid)."""
+    return (
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:8px"><tr>'
+        f'<td style="padding-right:12px;vertical-align:middle"><img src="cid:{LOGO_CID}" width="52" alt="Progim"></td>'
+        '<td style="vertical-align:middle;border-left:3px solid #EE7203;padding-left:12px;font-family:Segoe UI,Arial,sans-serif">'
+        f'<div style="font-weight:bold;color:#131A2F">{html.escape(config["envoi"]["signature"])}</div>'
+        f'<div style="font-size:12px;color:#5B6770">{html.escape(config["envoi"]["expediteur"])}</div>'
+        '</td></tr></table>'
+    )
 
 
 def destinataires_cc(client: Client, mois: str) -> list[str]:
@@ -412,6 +426,8 @@ def ecrire_apercu(client: Client, mois: str, sortie: Path, config: dict) -> None
     message["X-Unsent"] = "1"
     message.set_content("Ce courriel est en HTML.")
     message.add_alternative(client.corps, subtype="html")
+    if LOGO.exists():
+        message.get_payload()[1].add_related(LOGO.read_bytes(), maintype="image", subtype="png", cid=f"<{LOGO_CID}>")
     for entite in client.a_envoyer(mois):
         message.add_attachment(entite.fichier.read_bytes(), maintype="application", subtype="pdf",
                                filename=entite.nom_piece(mois, client.langue))
@@ -465,6 +481,10 @@ class Graph:
             "toRecipients": [{"emailAddress": {"address": a}} for a in client.a],
             "ccRecipients": [{"emailAddress": {"address": a}} for a in destinataires_cc(client, mois)],
         })
+        if LOGO.exists():
+            self.appel("POST", f"{self.boite}/messages/{message['id']}/attachments", json={
+                "@odata.type": "#microsoft.graph.fileAttachment", "name": LOGO.name, "contentType": "image/png",
+                "isInline": True, "contentId": LOGO_CID, "contentBytes": base64.b64encode(LOGO.read_bytes()).decode()})
         for entite in client.a_envoyer(mois):
             self.joindre(message["id"], entite.fichier, entite.nom_piece(mois, client.langue))
             for annexe in annexes_attendues(entite, config):
@@ -556,6 +576,10 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
 </section>"""
 
     hors_excel = "".join(f"<li>{e(a)}</li>" for a in alertes)
+    logo_html = (f'<img src="data:image/png;base64,{base64.b64encode(LOGO.read_bytes()).decode()}" alt="Progim">'
+                 if LOGO.exists() else "<b>Progim</b>")
+    # Dans l'aperçu du rapport, le logo de la signature (cid) est remplacé par le fichier lui-même.
+    apercu = apercu.replace(f"cid:{LOGO_CID}", f"data:image/png;base64,{base64.b64encode(LOGO.read_bytes()).decode()}") if LOGO.exists() else apercu
     pas_ce_mois_html = " · ".join(f'<span class="code">{e(x.code)}</span> {e(x.nom_affiche)} ({e(x.frequence)})' for x in pas_ce_mois)
     libelle_mode = {"brouillons": "Brouillons créés dans Outlook",
                     "simulation": "Simulation : aucun brouillon créé",
@@ -578,12 +602,13 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
 }}
 [hidden] {{ display: none !important; }}
 body {{ margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 var(--police); }}
-.bandeau {{ background: var(--marine); color: #FFFFFF; padding-block: 14px;
+.bandeau {{ background: var(--surface); color: var(--marine); padding-block: 12px; border-bottom: 3px solid var(--orange);
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }}
 .bandeau-contenu {{ max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }}
-.bandeau-titre {{ display: flex; flex-direction: column; }}
+.bandeau-titre {{ display: flex; flex-direction: column; border-left: 1px solid var(--ligne); padding-left: 14px; }}
+.bandeau img {{ height: 52px; width: auto; }}
 .bandeau-titre b {{ font-size: 17px; letter-spacing: .02em; }}
-.bandeau-titre span {{ font-size: 12px; color: var(--pale); }}
+.bandeau-titre span {{ font-size: 12px; color: var(--discret); }}
 main {{ max-width: 1100px; margin: 0 auto; padding-block: 28px 64px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid; gap: 28px; }}
@@ -599,13 +624,13 @@ h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .compteur b {{ display: block; font-size: 30px; font-variant-numeric: tabular-nums; line-height: 1.1; }}
 .compteur.ok b {{ color: var(--ok); }} .compteur.bloque b {{ color: var(--bloque); }}
 .tableau {{ overflow-x: auto; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; }}
-table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
-th {{ text-align: left; font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--discret);
+.tableau table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
+.tableau th {{ text-align: left; font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--discret);
   padding: 10px 14px; border-bottom: 1px solid var(--ligne); }}
-td {{ padding: 12px 14px; border-bottom: 1px solid var(--ligne); vertical-align: top; }}
-td:last-child {{ width: 50%; }}
-tr:last-child td {{ border-bottom: 0; }}
-tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
+.tableau td {{ padding: 12px 14px; border-bottom: 1px solid var(--ligne); vertical-align: top; }}
+.tableau td:last-child {{ width: 50%; }}
+.tableau tr:last-child td {{ border-bottom: 0; }}
+.tableau tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 .pastille {{ display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }}
 .pastille.ok {{ color: var(--ok); background: var(--ok-fond); }}
 .pastille.bloque {{ color: var(--bloque); background: var(--bloque-fond); }}
@@ -630,8 +655,8 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 </style></head>
 <body>
 <div class="bandeau"><div class="bandeau-contenu">
-  <svg width="34" height="30" viewBox="0 0 34 30" aria-hidden="true"><path d="M2 12 L10 6 L10 30 L2 30 Z" fill="#EE7203"></path><path d="M12 5 L20 0 L20 30 L12 30 Z" fill="#EE7203"></path><path d="M22 2 L28 0 L28 22 L34 22 L34 30 L22 30 Z" fill="#FFFFFF"></path></svg>
-  <div class="bandeau-titre"><b>Rapports clients</b><span>Progim · Finance</span></div>
+  {logo_html}
+  <div class="bandeau-titre"><b>Rapports clients</b><span>Finance</span></div>
 </div></div>
 <main>
 <header>
