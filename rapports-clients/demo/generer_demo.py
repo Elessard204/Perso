@@ -31,7 +31,7 @@ CLIENTS = [
 ]
 
 ENTITES = [
-    # code, nom (adresse), nom imprimé par Hopem, client, fin d'exercice, fréquence, gestionnaire
+    # code, immeuble(s), nom légal imprimé par Hopem, client, fin d'exercice, fréquence, gestionnaire
     ("10.1", "1200 Boréale", "Boréale Immeubles inc.", "C10.1", 12, "mensuel", "Louis"),
     ("10.2", "45-49 Des Pins", "9123-4567 Québec inc.", "C10.1", 10, "mensuel", "Jonathan"),
     ("20.1", "SLH Residential", "SLH Residential LP", "C20.1", 4, "mensuel", "Maxime"),
@@ -53,9 +53,9 @@ def creer_excel() -> None:
     onglets = [
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
          [(c, n, ct, a, "", l, ac) for c, n, ct, a, l, ac in CLIENTS]),
-        ("Entites", ["code_entite", "nom_entite", "nom_hopem", "code_client", "fin_exercice", "frequence",
+        ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
                      "gestionnaire", "courriel_gestionnaire", "actif", "notes"],
-         [(c, n, h, cl, f, fr, g, "", "Oui", "") for c, n, h, cl, f, fr, g in ENTITES]),
+         [(c, h, n, cl, f, fr, g, "", "Oui", "") for c, n, h, cl, f, fr, g in ENTITES]),
         ("Gestionnaires", ["nom", "courriel"], GESTIONNAIRES),
     ]
     for i, (nom, colonnes, lignes) in enumerate(onglets):

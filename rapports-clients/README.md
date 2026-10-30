@@ -29,9 +29,9 @@ Un courriel est bloqué si une de ses entités est dans un des cas suivants :
 - le PDF ne contient pas le bilan ou l'état des résultats;
 - le bilan n'est pas au dernier jour du mois;
 - la période de l'état des résultats ne correspond pas à la fin d'exercice de l'Excel;
-- le nom du propriétaire imprimé en haut du PDF n'est pas celui de la colonne `nom_hopem`.
+- le nom du propriétaire imprimé en haut du PDF n'est pas celui de la colonne `nom_entite`.
 
-Ce dernier contrôle protège contre le pire scénario : un PDF enregistré sous le mauvais numéro, qui partirait chez le mauvais client. Tant que `nom_hopem` est vide, l'outil affiche le nom trouvé dans le PDF pour qu'on l'inscrive, sans bloquer.
+Ce dernier contrôle protège contre le pire scénario : un PDF enregistré sous le mauvais numéro, qui partirait chez le mauvais client. Tant que `nom_entite` est vide, l'outil affiche le nom trouvé dans le PDF sans bloquer. L'option `--completer` écrit une copie de l'Excel (`..._complete.xlsx`) où les noms vides d'entités et de clients sont remplis à partir des PDF du mois. Il reste à la réviser une fois, puis à la garder comme Excel de référence.
 
 Un courriel est aussi bloqué si une adresse courriel est invalide.
 
@@ -39,8 +39,8 @@ Un courriel est aussi bloqué si une adresse courriel est invalide.
 
 Il est créé à partir du fichier de suivi actuel par `importer_excel.py` (voir plus bas) et compte trois onglets.
 
-- **Clients** : une ligne par courriel envoyé, avec `code_client`, `nom_client`, `nom_contact` (pour « Bonjour Julie », facultatif), `courriel_clients`, `courriel_direction` (vide = `direction_defaut` de `config.toml`), `langue` et `actif`.
-- **Entites** : une ligne par entité Hopem, avec `code_entite` (54.1), `nom_entite`, `nom_hopem`, `code_client`, `fin_exercice` (mois de 1 à 12), `frequence` (mensuel, trimestriel, semestriel ou annuel), `gestionnaire`, `courriel_gestionnaire` (facultatif, remplace celui de l'onglet Gestionnaires), `actif`, `notes` et `immeubles`.
+- **Clients** : une ligne par courriel envoyé, avec `code_client`, `nom_client` (le propriétaire, utilisé dans l'objet), `nom_contact` (pour « Bonjour Julie », facultatif), `courriel_clients`, `courriel_direction` (vide = `direction_defaut` de `config.toml`), `langue` et `actif`.
+- **Entites** : une ligne par entité Hopem, avec `code_entite` (54.1), `nom_entite` (nom légal tel qu'imprimé par Hopem), `immeubles` (adresses), `code_client`, `fin_exercice` (mois de 1 à 12), `frequence` (mensuel, trimestriel, semestriel ou annuel), `gestionnaire`, `courriel_gestionnaire` (facultatif, remplace celui de l'onglet Gestionnaires), `actif` et `notes`.
 - **Gestionnaires** : le prénom tel qu'écrit dans l'onglet Entites et son courriel.
 
 Plusieurs adresses vont dans une même cellule, séparées par `;`. Un client avec trois entités reçoit un seul courriel avec trois PDF.

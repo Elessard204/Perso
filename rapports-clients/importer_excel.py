@@ -66,7 +66,7 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
             continue
 
         entite = {
-            "code_entite": cle_code(code), "nom_entite": adresse, "immeubles": [], "emails": emails,
+            "code_entite": cle_code(code), "immeubles": [adresse] if adresse else [], "emails": emails,
             "fin_exercice": numero_mois(re.sub(r"^\d+\s*", "", valeur("fin d'annee fiscale"))),
             "frequence": frequence(valeur("note"), valeur("envoye au client")),
             "gestionnaire": "" if normaliser(valeur("gestionnaire")) in {"", "n/a"} else valeur("gestionnaire").title(),
@@ -100,8 +100,7 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
         entite["code_client"] = clients[cle]["code_client"]
 
     for client in clients.values():
-        noms = [e["nom_entite"] for e in client["entites"]]
-        client["nom_client"] = noms[0] if len(noms) == 1 else f"{noms[0]} (+{len(noms) - 1})"
+        noms = [e["code_entite"] for e in client["entites"]]
         client["actif"] = "Oui" if any(e["actif"] == "Oui" for e in client["entites"]) else "Non"
         if len(noms) > 1:
             a_verifier.append((client["code_client"], f"Regroupe {len(noms)} entités dans un seul courriel "
@@ -109,6 +108,8 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
         if any(e.endswith("@progim.com") for e in client["emails"]):
             a_verifier.append((client["code_client"], "Courriel @progim.com parmi les destinataires clients. Voulu?"))
 
+    a_verifier.insert(0, ("Tous", "nom_entite et nom_client sont vides : lancer envoi_rapports.py avec --completer sur "
+                                  "les PDF du mois pour les remplir à partir des noms imprimés par Hopem, puis réviser."))
     gestionnaires = sorted({e["gestionnaire"] for e in entites if e["gestionnaire"]})
     for nom in gestionnaires:
         if normaliser(nom) not in GESTIONNAIRES_CONNUS:
@@ -117,11 +118,11 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
     classeur = Workbook()
     onglets = [
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
-         [[c["code_client"], c["nom_client"], "", "; ".join(c["emails"]), "", "FR", c["actif"]] for c in clients.values()]),
-        ("Entites", ["code_entite", "nom_entite", "nom_hopem", "code_client", "fin_exercice", "frequence",
-                     "gestionnaire", "courriel_gestionnaire", "actif", "notes", "immeubles"],
-         [[e["code_entite"], e["nom_entite"], "", e["code_client"], e["fin_exercice"], e["frequence"],
-           e["gestionnaire"], "", e["actif"], e["notes"], "; ".join(e["immeubles"])] for e in entites]),
+         [[c["code_client"], "", "", "; ".join(c["emails"]), "", "FR", c["actif"]] for c in clients.values()]),
+        ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
+                     "gestionnaire", "courriel_gestionnaire", "actif", "notes"],
+         [[e["code_entite"], "", "; ".join(e["immeubles"]), e["code_client"], e["fin_exercice"], e["frequence"],
+           e["gestionnaire"], "", e["actif"], e["notes"]] for e in entites]),
         ("Gestionnaires", ["nom", "courriel"],
          [[nom, GESTIONNAIRES_CONNUS.get(normaliser(nom), "")] for nom in gestionnaires]),
         ("A verifier", ["concerne", "a_verifier"], [list(v) for v in a_verifier]),

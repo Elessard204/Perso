@@ -84,8 +84,8 @@ def mois_texte(mois: str, langue: str) -> str:
 @dataclass
 class Entite:
     code: str
-    nom: str
-    nom_hopem: str
+    nom: str          # nom légal, tel qu'imprimé par Hopem en haut du PDF
+    immeubles: str
     code_client: str
     fin_exercice: int
     frequence: str
@@ -107,8 +107,12 @@ class Entite:
         mois_envoi = FREQUENCES.get(self.frequence, {self.fin_exercice})
         return self.actif and int(mois[5:]) in mois_envoi
 
+    @property
+    def nom_affiche(self) -> str:
+        return self.nom or self.nom_pdf or self.immeubles
+
     def nom_piece(self, mois: str, langue: str) -> str:
-        nom = re.sub(r'[\\/:*?"<>|]+', "-", self.nom).strip()
+        nom = re.sub(r'[\\/:*?"<>|]+', "-", self.nom_affiche).strip()
         return f"{nom} - {'Reports' if langue == 'en' else 'Rapports'} {mois_texte(mois, langue)}.pdf"
 
 
@@ -129,6 +133,9 @@ class Client:
 
     def a_envoyer(self, mois: str) -> list[Entite]:
         return [e for e in self.entites if e.a_envoyer(mois)] if self.actif else []
+
+    def nom_affiche(self, mois: str) -> str:
+        return self.nom or " et ".join(dict.fromkeys(e.nom_affiche for e in self.a_envoyer(mois) or self.entites))
 
     def pret(self, mois: str) -> bool:
         a_envoyer = self.a_envoyer(mois)
@@ -195,8 +202,8 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
         gestionnaires = adresses(ligne.get("courriel_gestionnaire")) or courriels_gestionnaires.get(normaliser(gestionnaire), [])
         entite = Entite(
             code=code,
-            nom=texte(ligne["nom_entite"]),
-            nom_hopem=texte(ligne.get("nom_hopem")),
+            nom=texte(ligne.get("nom_entite")),
+            immeubles=texte(ligne.get("immeubles")),
             code_client=client.code,
             fin_exercice=fin,
             frequence=frequence,
@@ -283,10 +290,10 @@ def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
             "Vérifier la fin d'exercice dans l'Excel ou la période extraite.")
 
     # Protège contre un fichier mal numéroté : le nom imprimé par Hopem doit être celui attendu.
-    if entite.nom_hopem and normaliser(entite.nom_hopem) != normaliser(entite.nom_pdf):
-        entite.problemes.append(f"Le PDF est au nom de « {entite.nom_pdf} », attendu « {entite.nom_hopem} ». Mauvais fichier?")
-    elif not entite.nom_hopem:
-        entite.avertissements.append(f"Nom dans le PDF : « {entite.nom_pdf} ». À inscrire dans la colonne nom_hopem.")
+    if entite.nom and normaliser(entite.nom) != normaliser(entite.nom_pdf):
+        entite.problemes.append(f"Le PDF est au nom de « {entite.nom_pdf} », attendu « {entite.nom} ». Mauvais fichier?")
+    elif not entite.nom:
+        entite.avertissements.append(f"Nom dans le PDF : « {entite.nom_pdf} ». À confirmer dans la colonne nom_entite.")
 
 
 def valider(clients: dict[str, Client], mois: str, config: dict) -> None:
@@ -330,13 +337,14 @@ def rediger(client: Client, mois: str, config: dict) -> None:
     gestionnaires = list(dict.fromkeys(e.gestionnaire_nom for e in entites if e.gestionnaires))
     titres = list(dict.fromkeys(t for e in entites for t in e.titres))
     valeurs = {
-        "nom_client": client.nom,
+        "nom_client": client.nom_affiche(mois),
         "nom_contact": f" {html.escape(client.nom_contact)}" if client.nom_contact else "",
         "mois_texte": mois_texte(mois, langue),
         "gestionnaires": html.escape(phrase_gestionnaires(gestionnaires, langue)),
         "signature": html.escape(config["envoi"]["signature"]),
         "liste_entites": "<ul>" + "".join(
-            f"<li>{html.escape(e.nom)} <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
+            f"<li>{html.escape(e.nom_affiche)}{f' ({html.escape(e.immeubles)})' if e.immeubles and e.nom_affiche != e.immeubles else ''}"
+            f" <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
             for e in entites) + "</ul>",
         "liste_documents": html.escape(", ".join(t[0].lower() + t[1:] for t in titres)),
     }
@@ -450,8 +458,9 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
             details.append(x.frequence)
         if x.titres:
             details.append(" · ".join(x.titres))
-        return (f'<li><span class="code">{e(x.code)}</span> {e(x.nom)} <span class="periode">P{x.periode(mois)}</span>'
+        return (f'<li><span class="code">{e(x.code)}</span> {e(x.nom_affiche)} <span class="periode">P{x.periode(mois)}</span>'
                 + (f' <span class="discret">· {e(" · ".join(details))}</span>' if details else "")
+                + (f'<div class="discret">Immeubles : {e(x.immeubles)}</div>' if x.immeubles else "")
                 + (f'<div class="discret">Note : {e(x.notes)}</div>' if x.notes else "")
                 + "".join(f'<div class="probleme">{e(p)}</div>' for p in x.problemes)
                 + "".join(f'<div class="avertissement">{e(a)}</div>' for a in x.avertissements)
@@ -465,7 +474,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
         lien = f'<div class="discret">Aperçu : <span class="code">{e(c.brouillon)}</span></div>' if c.brouillon else ""
         gestionnaires = ", ".join(dict.fromkeys(x.gestionnaire_nom for x in c.a_envoyer(mois) if x.gestionnaire_nom))
         return (f'<tr class="{"" if pret else "a-voir"}"><td>{etat}</td>'
-                f'<td><strong>{e(c.nom)}</strong><div class="discret code">{e(c.code)}</div></td>'
+                f'<td><strong>{e(c.nom_affiche(mois))}</strong><div class="discret code">{e(c.code)}</div></td>'
                 f'<td><div>{e(", ".join(c.a) or "—")}</div><div class="discret">gestionnaire : {e(gestionnaires or "aucun")}</div></td>'
                 f'<td><ul class="entites">{entites}</ul>{problemes}{lien}</td></tr>')
 
@@ -478,7 +487,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
         f'<div class="groupe"><div class="groupe-tete"><span class="periode grande">Période {p}</span>'
         f'<span class="discret">{len(xs)} entité{"s" if len(xs) > 1 else ""} · fin d\'exercice en '
         f'{", ".join(sorted({MOIS_FR[x.fin_exercice - 1] for x in xs}))}</span></div>'
-        f'<div class="discret">{" · ".join(f"<span class=code>{e(x.code)}</span> {e(x.nom)}" for x in xs)}</div></div>'
+        f'<div class="discret">{" · ".join(f"<span class=code>{e(x.code)}</span> {e(x.nom_affiche)}" for x in xs)}</div></div>'
         for p, xs in sorted(par_periode.items()))
 
     apercu = ""
@@ -500,7 +509,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
 </section>"""
 
     hors_excel = "".join(f"<li>{e(a)}</li>" for a in alertes)
-    pas_ce_mois_html = " · ".join(f'<span class="code">{e(x.code)}</span> {e(x.nom)} ({e(x.frequence)})' for x in pas_ce_mois)
+    pas_ce_mois_html = " · ".join(f'<span class="code">{e(x.code)}</span> {e(x.nom_affiche)} ({e(x.frequence)})' for x in pas_ce_mois)
     libelle_mode = {"brouillons": "Brouillons créés dans Outlook",
                     "simulation": "Simulation : aucun brouillon créé",
                     "liste": "Liste d'extraction : à faire avant de télécharger les rapports de Hopem"}[mode]
@@ -602,6 +611,35 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
     return chemin
 
 
+def completer_excel(chemin: Path, clients: dict[str, Client], mois: str) -> Path:
+    """Copie l'Excel en remplissant les noms vides avec ceux trouvés dans les PDF, pour révision."""
+    classeur = load_workbook(chemin)
+    trouves = {e.code: e for c in clients.values() for e in c.entites if e.nom_pdf}
+    remplis = 0
+    for nom_onglet, cle, colonne_nom in (("Entites", "code_entite", "nom_entite"), ("Clients", "code_client", "nom_client")):
+        feuille = classeur[nom_onglet]
+        entetes = [normaliser(c.value or "").replace(" ", "_") for c in feuille[1]]
+        if colonne_nom not in entetes:
+            continue
+        i_cle, i_nom = entetes.index(cle), entetes.index(colonne_nom)
+        for rangee in feuille.iter_rows(min_row=2):
+            if rangee[i_nom].value or rangee[i_cle].value is None:
+                continue
+            if nom_onglet == "Entites":
+                entite = trouves.get(cle_code(rangee[i_cle].value))
+                nom = entite.nom_pdf if entite else ""
+            else:
+                client = clients.get(texte(rangee[i_cle].value))
+                nom = " et ".join(dict.fromkeys(e.nom_pdf for e in client.entites if e.nom_pdf)) if client else ""
+            if nom:
+                rangee[i_nom].value = nom
+                remplis += 1
+    copie = chemin.with_name(f"{chemin.stem}_complete.xlsx")
+    classeur.save(copie)
+    print(f"{remplis} noms ajoutés à partir des PDF, à réviser : {copie}")
+    return copie
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prépare l'envoi mensuel des rapports clients.")
     parser.add_argument("--mois", required=True, help="Mois des rapports, format AAAA-MM")
@@ -612,6 +650,8 @@ def main() -> None:
     parser.add_argument("--sortie", type=Path, help="Dossier de sortie (défaut : ./sortie/AAAA-MM)")
     parser.add_argument("--mode", choices=["simulation", "brouillons"], default="simulation")
     parser.add_argument("--config", type=Path, default=ICI / "config.toml")
+    parser.add_argument("--completer", action="store_true",
+                        help="Écrit une copie de l'Excel où les noms vides sont remplis à partir des PDF.")
     args = parser.parse_args()
 
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", args.mois):
@@ -627,6 +667,9 @@ def main() -> None:
         return
     alertes += associer_fichiers(args.exports, clients, args.mois, config)
     valider(clients, args.mois, config)
+
+    if args.completer:
+        completer_excel(args.clients, clients, args.mois)
 
     graph = Graph(config) if args.mode == "brouillons" else None
     for client in clients.values():
