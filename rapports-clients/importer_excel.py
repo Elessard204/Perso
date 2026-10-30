@@ -15,9 +15,29 @@ from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill
+from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-from envoi_rapports import cle_code, normaliser, numero_mois
+import tomllib
+
+from envoi_rapports import ICI, cle_code, normaliser, numero_mois
+
+CONTENU = tomllib.loads((ICI / "config.toml").read_text(encoding="utf-8"))["contenu"]
+# Mots d'une note qui cochent un élément à inclure.
+INDICES_NOTES = {
+    "transactions_par_compte": ["transaction par", "transactions par"],
+    "factures": ["factur"],
+    "liste_cheques": ["cheque"],
+    "liste_depots": ["depot"],
+    "comptes_a_recevoir": ["compte a recevoir", "comptes a recevoir"],
+    "sommaire_transactions": ["sommaire"],
+}
+
+
+def elements(note: str) -> dict[str, str]:
+    note = normaliser(note)
+    return {item["cle"]: "Oui" if item.get("defaut") or any(m in note for m in INDICES_NOTES.get(item["cle"], []))
+            else "Non" for item in CONTENU}
 
 # Courriels connus des gestionnaires (prénom tel qu'écrit dans le fichier de suivi).
 GESTIONNAIRES_CONNUS = {"maxime": "mpaquet@progim.com"}
@@ -70,7 +90,7 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
             "fin_exercice": numero_mois(re.sub(r"^\d+\s*", "", valeur("fin d'annee fiscale"))),
             "frequence": frequence(valeur("note"), valeur("envoye au client")),
             "gestionnaire": "" if normaliser(valeur("gestionnaire")) in {"", "n/a"} else valeur("gestionnaire").title(),
-            "notes": valeur("note"), "actif": "Oui",
+            "notes": valeur("note"), "actif": "Oui", "contenu": elements(valeur("note")),
         }
         if "." not in code:
             a_verifier.append((entite["code_entite"], f"Code « {code} » sans décimale, interprété comme {entite['code_entite']}. "
@@ -84,7 +104,7 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
         if entite["frequence"] != "mensuel":
             a_verifier.append((entite["code_entite"], f"Envoi {entite['frequence']} déduit de la note. À confirmer."))
         if any(m in normaliser(entite["notes"]) for m in ("ne plus envoyer", "factur", "combiner", "liste des transaction", "envoyer le")):
-            a_verifier.append((entite["code_entite"], f"Note à lire : « {entite['notes']} »"))
+            a_verifier.append((entite["code_entite"], f"Cases cochées d'après la note « {entite['notes']} » : à vérifier."))
         entites.append(entite)
 
     # Un client = un ensemble identique de courriels clients.
@@ -120,9 +140,9 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
          [[c["code_client"], "", "", "; ".join(c["emails"]), "", "FR", c["actif"]] for c in clients.values()]),
         ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
-                     "gestionnaire", "courriel_gestionnaire", "actif", "notes"],
+                     "gestionnaire", "courriel_gestionnaire", "actif", *[i["cle"] for i in CONTENU], "notes"],
          [[e["code_entite"], "", "; ".join(e["immeubles"]), e["code_client"], e["fin_exercice"], e["frequence"],
-           e["gestionnaire"], "", e["actif"], e["notes"]] for e in entites]),
+           e["gestionnaire"], "", e["actif"], *e["contenu"].values(), e["notes"]] for e in entites]),
         ("Gestionnaires", ["nom", "courriel"],
          [[nom, GESTIONNAIRES_CONNUS.get(normaliser(nom), "")] for nom in gestionnaires]),
         ("A verifier", ["concerne", "a_verifier"], [list(v) for v in a_verifier]),
@@ -146,6 +166,14 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
             table.tableStyleInfo = TableStyleInfo(name="TableStyleLight9", showRowStripes=True)
             feuille.add_table(table)
         feuille.freeze_panes = "A2"
+        if nom == "Entites":
+            # Cases Oui/Non : liste déroulante sur l'actif et les éléments à inclure.
+            choix = DataValidation(type="list", formula1='"Oui,Non"', allow_blank=True)
+            feuille.add_data_validation(choix)
+            for i, entete_col in enumerate(colonnes):
+                if entete_col == "actif" or entete_col in {item["cle"] for item in CONTENU}:
+                    lettre = feuille.cell(1, i + 1).column_letter
+                    choix.add(f"{lettre}2:{lettre}{max(feuille.max_row, 200)}")
     classeur.save(sortie)
 
     actives = sum(e["actif"] == "Oui" for e in entites)

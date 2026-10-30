@@ -43,6 +43,9 @@ ENTITES = [
     ("80.1", "2100 Verdun", "Habitations Verdun inc.", "C80.1", 12, "mensuel", ""),
 ]
 
+# Entités dont le client veut aussi ses factures : 10.2 les a, 20.1 ne les a pas encore.
+AVEC_FACTURES = {"10.2", "20.1"}
+
 GESTIONNAIRES = [("Louis", "louis@exemple-progim.com"), ("Jonathan", "jonathan@exemple-progim.com"),
                  ("Maxime", "mpaquet@progim.com")]
 
@@ -54,8 +57,9 @@ def creer_excel() -> None:
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
          [(c, n, ct, a, "", l, ac) for c, n, ct, a, l, ac in CLIENTS]),
         ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
-                     "gestionnaire", "courriel_gestionnaire", "actif", "notes"],
-         [(c, h, n, cl, f, fr, g, "", "Oui", "") for c, n, h, cl, f, fr, g in ENTITES]),
+                     "gestionnaire", "courriel_gestionnaire", "actif", "factures", "notes"],
+         [(c, h, n, cl, f, fr, g, "", "Oui", "Oui" if c in AVEC_FACTURES else "Non",
+           "Joindre les factures du mois" if c in AVEC_FACTURES else "") for c, n, h, cl, f, fr, g in ENTITES]),
         ("Gestionnaires", ["nom", "courriel"], GESTIONNAIRES),
     ]
     for i, (nom, colonnes, lignes) in enumerate(onglets):
@@ -116,6 +120,7 @@ def creer_exports() -> None:
         if code == "80.1":
             nom_fichier = nom_fichier.replace("Oct", "Sept")  # fichier du mois passé
         creer_pdf(dossier / nom_fichier, nom_hopem, periode)
+    creer_pdf(dossier / f"Factures Oct {ANNEE}_01002.pdf", "9123-4567 Québec inc.", 10)
     creer_pdf(dossier / "Facture 2026-118.pdf", "Placements Outremont inc.", 10)
 
 

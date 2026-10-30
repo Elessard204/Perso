@@ -26,7 +26,7 @@ Un courriel est bloqué si une de ses entités est dans un des cas suivants :
 
 - aucun PDF dans le dossier, ou deux PDF pour la même entité;
 - le nom du fichier n'est pas celui du mois envoyé;
-- le PDF ne contient pas le bilan ou l'état des résultats;
+- un élément coché dans l'Excel manque : un rapport absent du PDF Hopem (bilan, sommaire, transactions par compte...), ou une pièce additionnelle absente du dossier (factures...);
 - le bilan n'est pas au dernier jour du mois;
 - la période de l'état des résultats ne correspond pas à la fin d'exercice de l'Excel;
 - le nom du propriétaire imprimé en haut du PDF n'est pas celui de la colonne `nom_entite`.
@@ -40,7 +40,9 @@ Un courriel est aussi bloqué si une adresse courriel est invalide.
 Il est créé à partir du fichier de suivi actuel par `importer_excel.py` (voir plus bas) et compte trois onglets.
 
 - **Clients** : une ligne par courriel envoyé, avec `code_client`, `nom_client` (le propriétaire, utilisé dans l'objet), `nom_contact` (pour « Bonjour Julie », facultatif), `courriel_clients`, `courriel_direction` (vide = `direction_defaut` de `config.toml`), `langue` et `actif`.
-- **Entites** : une ligne par entité Hopem, avec `code_entite` (54.1), `nom_entite` (nom légal tel qu'imprimé par Hopem), `immeubles` (adresses), `code_client`, `fin_exercice` (mois de 1 à 12), `frequence` (mensuel, trimestriel, semestriel ou annuel), `gestionnaire`, `courriel_gestionnaire` (facultatif, remplace celui de l'onglet Gestionnaires), `actif` et `notes`.
+- **Entites** : une ligne par entité Hopem, avec `code_entite` (54.1), `nom_entite` (nom légal tel qu'imprimé par Hopem), `immeubles` (adresses), `code_client`, `fin_exercice` (mois de 1 à 12), `frequence` (mensuel, trimestriel, semestriel ou annuel), `gestionnaire`, `courriel_gestionnaire` (facultatif, remplace celui de l'onglet Gestionnaires), `actif`, une case Oui/Non par élément à inclure (`bilan`, `etat_resultats`, `sommaire_transactions`, `transactions_par_compte`, `liste_depots`, `comptes_a_recevoir`, `liste_cheques`, `factures`) et `notes`, affichée comme consigne dans le rapport de contrôle. La liste des éléments et leurs titres Hopem se modifient dans `config.toml`.
+
+Les pièces additionnelles, comme les factures, sont des PDF séparés dans le même dossier, dont le nom se termine par le numéro de l'entité (« Factures Sept 2026_14001.pdf »). Elles ne sont jointes que si leur case est cochée.
 - **Gestionnaires** : le prénom tel qu'écrit dans l'onglet Entites et son courriel.
 
 Plusieurs adresses vont dans une même cellule, séparées par `;`. Un client avec trois entités reçoit un seul courriel avec trois PDF.

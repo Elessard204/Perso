@@ -19,14 +19,63 @@ signature = "L'équipe Finance – Progim"
 # Format actuel : « Rapports mensuels Sept 2026_05401.pdf », où les 5 derniers
 # chiffres sont le code de l'entité : 054 01 = 54.1.
 motif = '^Rapports mensuels (?P<mois>\S+) (?P<annee>\d{4})_(?P<entite>\d{5})\.pdf$'
+# Pièces additionnelles (factures, liste des chèques...) : tout PDF dont le nom se
+# termine par le même numéro d'entité, ex. « Factures Sept 2026_14001.pdf ».
+motif_annexe = '_(?P<entite>\d{5})\.pdf$'
 
 [controles]
-# Titres de rapports qui doivent se trouver dans chaque PDF (3e ligne de la page Hopem).
-rapports_obligatoires = ["Bilan", "État des résultats"]
 # Le bilan doit être « Au » dernier jour du mois envoyé.
 verifier_date = true
 # L'état des résultats doit porter la période calculée à partir de la fin d'exercice.
 verifier_periode = true
+
+# Ce qui peut être inclus dans l'envoi d'une entité. Chaque « cle » est une colonne
+# Oui/Non de l'onglet Entites; une case vide prend la valeur « defaut ».
+# « titre » : rapport reconnu par son titre dans le PDF Hopem (3e ligne de la page).
+# « annexe » : fichier séparé reconnu par ces mots dans son nom.
+# Les titres Hopem des rapports moins courants sont À CONFIRMER sur de vrais PDF.
+[[contenu]]
+cle = "bilan"
+libelle = "Bilan"
+titre = ["bilan"]
+defaut = true
+
+[[contenu]]
+cle = "etat_resultats"
+libelle = "État des résultats"
+titre = ["etat des resultats"]
+defaut = true
+
+[[contenu]]
+cle = "sommaire_transactions"
+libelle = "Sommaire mensuel des transactions"
+titre = ["sommaire mensuel des transactions", "sommaire des transactions"]
+defaut = true
+
+[[contenu]]
+cle = "transactions_par_compte"
+libelle = "Liste des transactions par compte"
+titre = ["transactions par", "grand livre", "grand-livre"]
+
+[[contenu]]
+cle = "liste_depots"
+libelle = "Liste des dépôts"
+titre = ["depot"]
+
+[[contenu]]
+cle = "comptes_a_recevoir"
+libelle = "Comptes à recevoir"
+titre = ["comptes a recevoir", "compte a recevoir"]
+
+[[contenu]]
+cle = "liste_cheques"
+libelle = "Registre des chèques"
+titre = ["cheque"]
+
+[[contenu]]
+cle = "factures"
+libelle = "Factures du mois"
+annexe = ["facture"]
 
 [graph]
 # Application inscrite dans Entra ID (voir README). Le secret n'est jamais

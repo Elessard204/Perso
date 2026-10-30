@@ -93,7 +93,9 @@ class Entite:
     gestionnaires: list[str]
     actif: bool
     notes: str
+    contenu: list[str] = field(default_factory=list)  # clés cochées dans l'Excel
     fichier: Path | None = None
+    annexes: list[Path] = field(default_factory=list)
     titres: list[str] = field(default_factory=list)
     nom_pdf: str = ""
     problemes: list[str] = field(default_factory=list)
@@ -211,6 +213,8 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
             gestionnaires=gestionnaires,
             actif=oui(ligne.get("actif", "oui")),
             notes=texte(ligne.get("notes")),
+            contenu=[item["cle"] for item in config["contenu"]
+                     if (oui(ligne[item["cle"]]) if texte(ligne.get(item["cle"])) else item.get("defaut", False))],
         )
         if gestionnaire and not gestionnaires:
             entite.avertissements.append(f"Gestionnaire « {gestionnaire} » sans courriel dans l'onglet Gestionnaires : pas en cc.")
@@ -228,7 +232,13 @@ def associer_fichiers(dossier: Path, clients: dict[str, Client], mois: str, conf
     for fichier in sorted(dossier.glob("*.pdf")):
         trouve = motif.match(fichier.name)
         if not trouve:
-            non_classes.append(f"{fichier.name} : nom de fichier non reconnu.")
+            # Pièce additionnelle (factures, liste de chèques...) : même numéro d'entité à la fin du nom.
+            annexe = re.search(config["fichiers"]["motif_annexe"], fichier.name, re.I)
+            entite = entites.get(cle_code(annexe["entite"])) if annexe else None
+            if entite and entite.a_envoyer(mois):
+                entite.annexes.append(fichier)
+            else:
+                non_classes.append(f"{fichier.name} : nom de fichier non reconnu.")
             continue
         entite = entites.get(cle_code(trouve["entite"]))
         if entite is None:
@@ -263,6 +273,37 @@ def lire_pdf(entite: Entite) -> str:
     return "\n".join(tout)
 
 
+def contient(texte_: str, mots: list[str]) -> bool:
+    return any(normaliser(mot) in normaliser(texte_) for mot in mots)
+
+
+def annexes_attendues(entite: Entite, config: dict) -> list[Path]:
+    mots = [m for item in config["contenu"] if item["cle"] in entite.contenu and "annexe" in item for m in item["annexe"]]
+    return [a for a in entite.annexes if contient(a.stem, mots)]
+
+
+def verifier_elements(entite: Entite, config: dict) -> None:
+    """Compare ce qui est coché dans l'Excel avec ce qui se trouve dans le PDF et les pièces additionnelles."""
+    for item in config["contenu"]:
+        coche = item["cle"] in entite.contenu
+        if "titre" in item:
+            present = any(contient(t, item["titre"]) for t in entite.titres)
+        else:
+            present = any(contient(a.stem, item["annexe"]) for a in entite.annexes)
+        if coche and not present:
+            ou = "dans le PDF Hopem" if "titre" in item else f"dans le dossier (fichier se terminant par _{code_fichier(entite.code)}.pdf)"
+            entite.problemes.append(f"{item['libelle']} : coché dans l'Excel mais absent {ou}.")
+        elif present and not coche and "titre" in item:
+            entite.avertissements.append(f"{item['libelle']} présent dans le PDF mais non coché dans l'Excel.")
+    for annexe in set(entite.annexes) - set(annexes_attendues(entite, config)):
+        entite.avertissements.append(f"{annexe.name} : pièce non cochée dans l'Excel, pas jointe.")
+
+
+def code_fichier(code: str) -> str:
+    principal, sous = code.split(".")
+    return f"{int(principal):03d}{int(sous):02d}"
+
+
 def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
     controles = config["controles"]
     try:
@@ -271,10 +312,7 @@ def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
         entite.problemes.append(f"PDF illisible ({erreur}).")
         return
 
-    titres = {normaliser(t) for t in entite.titres}
-    for titre in controles["rapports_obligatoires"]:
-        if normaliser(titre) not in titres:
-            entite.problemes.append(f"{titre} absent du PDF.")
+    verifier_elements(entite, config)
 
     annee, numero = int(mois[:4]), int(mois[5:])
     fin_mois = f"{annee}/{numero:02d}/{calendar.monthrange(annee, numero)[1]:02d}"
@@ -335,7 +373,7 @@ def ligne_periode(entite: Entite, mois: str, langue: str) -> str:
 def rediger(client: Client, mois: str, config: dict) -> None:
     langue, entites = client.langue, client.a_envoyer(mois)
     gestionnaires = list(dict.fromkeys(e.gestionnaire_nom for e in entites if e.gestionnaires))
-    titres = list(dict.fromkeys(t for e in entites for t in e.titres))
+    titres = list(dict.fromkeys(item["libelle"] for e in entites for item in config["contenu"] if item["cle"] in e.contenu))
     valeurs = {
         "nom_client": client.nom_affiche(mois),
         "nom_contact": f" {html.escape(client.nom_contact)}" if client.nom_contact else "",
@@ -377,6 +415,8 @@ def ecrire_apercu(client: Client, mois: str, sortie: Path, config: dict) -> None
     for entite in client.a_envoyer(mois):
         message.add_attachment(entite.fichier.read_bytes(), maintype="application", subtype="pdf",
                                filename=entite.nom_piece(mois, client.langue))
+        for annexe in annexes_attendues(entite, config):
+            message.add_attachment(annexe.read_bytes(), maintype="application", subtype="pdf", filename=annexe.name)
     dossier = sortie / "apercus"
     dossier.mkdir(parents=True, exist_ok=True)
     chemin = dossier / f"{client.code}.eml"
@@ -413,7 +453,7 @@ class Graph:
         reponse.raise_for_status()
         return reponse.json() if reponse.content else {}
 
-    def creer_brouillon(self, client: Client, mois: str) -> str:
+    def creer_brouillon(self, client: Client, mois: str, config: dict) -> str:
         message = self.appel("POST", f"{self.boite}/messages", json={
             "subject": client.objet,
             "body": {"contentType": "HTML", "content": client.corps},
@@ -422,6 +462,8 @@ class Graph:
         })
         for entite in client.a_envoyer(mois):
             self.joindre(message["id"], entite.fichier, entite.nom_piece(mois, client.langue))
+            for annexe in annexes_attendues(entite, config):
+                self.joindre(message["id"], annexe, annexe.name)
         return message["webLink"]
 
     def joindre(self, id_message: str, fichier: Path, nom: str) -> None:
@@ -456,12 +498,12 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
         details = []
         if x.frequence != "mensuel":
             details.append(x.frequence)
-        if x.titres:
-            details.append(" · ".join(x.titres))
+        libelles = {item["cle"]: item["libelle"] for item in config["contenu"]}
+        details.append("à inclure : " + ", ".join(libelles[c] for c in x.contenu))
         return (f'<li><span class="code">{e(x.code)}</span> {e(x.nom_affiche)} <span class="periode">P{x.periode(mois)}</span>'
                 + (f' <span class="discret">· {e(" · ".join(details))}</span>' if details else "")
                 + (f'<div class="discret">Immeubles : {e(x.immeubles)}</div>' if x.immeubles else "")
-                + (f'<div class="discret">Note : {e(x.notes)}</div>' if x.notes else "")
+                + (f'<div class="consigne">Consigne : {e(x.notes)}</div>' if x.notes else "")
                 + "".join(f'<div class="probleme">{e(p)}</div>' for p in x.problemes)
                 + "".join(f'<div class="avertissement">{e(a)}</div>' for a in x.avertissements)
                 + "</li>")
@@ -502,7 +544,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
       <dt>À</dt><dd>{e(", ".join(c.a))}</dd>
       <dt>Cc</dt><dd>{e(", ".join(destinataires_cc(c, mois)))}</dd>
       <dt>Objet</dt><dd><strong>{e(c.objet)}</strong></dd>
-      <dt>Pièces</dt><dd>{"".join(f'<span class="piece">{e(x.nom_piece(mois, c.langue))}</span>' for x in c.a_envoyer(mois))}</dd>
+      <dt>Pièces</dt><dd>{"".join(f'<span class="piece">{e(n)}</span>' for x in c.a_envoyer(mois) for n in [x.nom_piece(mois, c.langue)] + [a.name for a in annexes_attendues(x, config)])}</dd>
     </dl>
     <div class="corps">{c.corps}</div>
   </div>
@@ -564,6 +606,7 @@ tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
 .entites {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }}
 .probleme {{ color: var(--bloque); font-size: 13px; }}
 .probleme::before {{ content: "→ "; }}
+.consigne {{ font-size: 13px; font-weight: 600; }}
 .avertissement {{ color: var(--attention); font-size: 13px; }}
 .avertissement::before {{ content: "· "; }}
 .periode {{ font: 500 11.5px var(--mono); color: var(--accent); border: 1px solid var(--ligne); border-radius: 4px; padding: 0 5px; }}
@@ -678,7 +721,7 @@ def main() -> None:
         rediger(client, args.mois, config)
         ecrire_apercu(client, args.mois, sortie, config)
         if graph:
-            client.brouillon = graph.creer_brouillon(client, args.mois)
+            client.brouillon = graph.creer_brouillon(client, args.mois, config)
 
     rapport = ecrire_rapport(clients, alertes, args.mois, args.mode, sortie, config)
     concernes = [c for c in clients.values() if c.a_envoyer(args.mois)]
