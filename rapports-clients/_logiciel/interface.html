@@ -127,6 +127,7 @@ main.large { max-width: none; }
 .suivi-cellule { display: flex; gap: 8px; align-items: center; }
 .suivi-cellule input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--ok); flex: none; }
 .suivi-cellule input[type=text] { min-width: 220px; padding: 4px 8px; font-size: 13px; }
+.suivi-cellule input.particularite { min-width: 260px; }
 .suivi-cellule input[type=date] { width: auto; padding: 4px 8px; font-size: 13px; }
 .grille tr.fait td { background: #F3FAF4; }
 .grille th .tout { font-size: 12px; font-weight: 700; color: var(--discret); white-space: nowrap; }
@@ -201,11 +202,12 @@ main.large { max-width: none; }
     <div class="grille"><table>
       <thead><tr><th>Code</th><th>Nom légal (Hopem)</th><th>Actif</th>
         <th><label class="case-seule tout"><input type="checkbox" id="tout-conciliation"> Conciliation bancaire</label></th>
+        <th title="Usage interne seulement : la même note que « Notes / consignes » dans la fiche du client">Particularité (interne)</th>
         <th><label class="case-seule tout"><input type="checkbox" id="tout-ef_verifies"> États financiers vérifiés</label></th>
         <th>Date d'envoi</th></tr></thead>
       <tbody id="suivi-corps"></tbody>
     </table></div>
-    <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). Les cases d'en-tête cochent ou décochent toutes les entités affichées. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé à l'étape 3; elle peut être corrigée à la main.</p>
+    <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). Les cases d'en-tête cochent ou décochent toutes les entités affichées. La particularité est une note interne permanente (la même que « Notes / consignes » dans la fiche du client); elle n'est jamais envoyée au client. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé à l'étape 3; elle peut être corrigée à la main.</p>
   </div>
 
   <div id="vue-clients" class="resultat" hidden>
@@ -671,7 +673,7 @@ $("ajouter").addEventListener("click", () => vue === "clients" ? ouvrirFiche(nul
 document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".onglets button").forEach(x => x.setAttribute("aria-selected", x === b));
   for (const v of ["envoi", "suivi", "clients"]) $("vue-" + v).hidden = b.dataset.vue !== v;
-  document.querySelector("main").classList.toggle("large", b.dataset.vue === "clients");
+  document.querySelector("main").classList.toggle("large", b.dataset.vue !== "envoi");
   if (b.dataset.vue === "clients" && !donnees) chargerDonnees();
   // Le suivi s'ouvre sur le mois choisi dans l'envoi.
   if (b.dataset.vue === "suivi" && (!suivi || suivi.mois !== moisChoisi())) { $("suivi-mois").value = moisChoisi(); chargerSuivi(); }
@@ -720,6 +722,7 @@ function afficherSuivi() {
       <td><span class="pastille ${l.actif ? "oui" : "non"}">${l.actif ? "Oui" : "Non"}</span></td>
       <td><div class="suivi-cellule"><input type="checkbox" data-champ="conciliation" aria-label="Conciliation faite" ${l.conciliation ? "checked" : ""}>
         <input type="text" data-champ="conciliation_note" placeholder="Commentaire" value="${echap(l.conciliation_note)}" aria-label="Commentaire sur la conciliation"></div></td>
+      <td><div class="suivi-cellule"><input type="text" class="particularite" data-champ="particularite" placeholder="Ex. joindre la preuve de paiement des taxes" value="${echap(l.particularite)}" aria-label="Particularité du client (usage interne)"></div></td>
       <td><div class="suivi-cellule"><input type="checkbox" data-champ="ef_verifies" aria-label="États financiers vérifiés" ${l.ef_verifies ? "checked" : ""}></div></td>
       <td><div class="suivi-cellule"><input type="date" data-champ="date_envoi" value="${echap(l.date_envoi)}" aria-label="Date d'envoi"></div></td></tr>`).join("");
 }
@@ -730,6 +733,7 @@ $("suivi-corps").addEventListener("change", async (ev) => {
   const r = await appeler("/suivi", {excel: $("excel").dataset.plein, mois: suivi.mois, code: tr.dataset.code, valeurs: {[champ]: valeur}});
   if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
   suivi.lignes.find(l => l.code === tr.dataset.code)[champ] = valeur;
+  if (champ === "particularite") donnees = null;   // l'onglet Clients relira la note à jour
   message("suivi-message", `${tr.dataset.code} : enregistré.`, "ok");
   if (ev.target.type !== "text") afficherSuivi();
 });

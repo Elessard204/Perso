@@ -334,7 +334,7 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
     for _, v in entites:
         code = cle_code(v.get("code_entite", ""))
         s = suivi.get(code, {})
-        resultat.append({"code": code, "nom": v.get("nom_entite", ""),
+        resultat.append({"code": code, "nom": v.get("nom_entite", ""), "particularite": v.get("notes", ""),
                          "actif": normaliser(v.get("actif", "oui")) in {"oui", "o", "x", "1", ""},
                          "conciliation": normaliser(s.get("conciliation", "")) in {"oui", "o", "x", "1"},
                          "conciliation_note": s.get("conciliation_note", ""),
@@ -357,11 +357,24 @@ def ecrire_suivi(classeur, mois: str, code: str, valeurs: dict) -> None:
             feuille.cell(ligne, COLONNES_SUIVI.index(colonne) + 1).value = str(valeur).strip() or None
 
 
+def ecrire_particularite(classeur, code: str, texte: str) -> None:
+    """La particularité du Suivi est la même chose que les « Notes / consignes » de la fiche du client."""
+    feuille = classeur["Clients"]
+    _, entites = lignes(feuille)
+    ligne = next((n for n, v in entites if cle_code(v.get("code_entite", "")) == code), None)
+    if ligne:
+        ecrire_ligne(feuille, ligne, {"notes": texte})
+
+
 def enregistrer_suivi(chemin: Path, mois: str, codes: list[str], valeurs: dict) -> dict:
     """Une case ou un commentaire du suivi (une entité, ou plusieurs avec « tout cocher »), enregistré tout de suite."""
     classeur = load_workbook(chemin)
+    if "particularite" in valeurs:
+        sauvegarder(chemin)   # touche la fiche du client : copie de sauvegarde comme pour une fiche
     for code in codes:
-        ecrire_suivi(classeur, mois, cle_code(code), valeurs)
+        if "particularite" in valeurs:
+            ecrire_particularite(classeur, cle_code(code), valeurs["particularite"])
+        ecrire_suivi(classeur, mois, cle_code(code), {c: v for c, v in valeurs.items() if c != "particularite"})
     classeur.save(chemin)
     return {"ok": True}
 
