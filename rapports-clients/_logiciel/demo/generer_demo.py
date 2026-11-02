@@ -57,8 +57,8 @@ def creer_excel() -> None:
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
          [(c, n, ct, a, "", l, ac) for c, n, ct, a, l, ac in CLIENTS]),
         ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
-                     "gestionnaire", "courriel_gestionnaire", "actif", "factures", "notes"],
-         [(c, h, n, cl, f, fr, g, "", "Oui", "Oui" if c in AVEC_FACTURES else "Non",
+                     "gestionnaire", "actif", "factures", "notes"],
+         [(c, h, n, cl, f, fr, g, "Oui", "Oui" if c in AVEC_FACTURES else "Non",
            "Joindre les factures du mois" if c in AVEC_FACTURES else "") for c, n, h, cl, f, fr, g in ENTITES]),
         ("Gestionnaires", ["nom", "courriel"], GESTIONNAIRES),
     ]

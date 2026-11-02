@@ -196,11 +196,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.json({"ok": bool(cible) and ouvrir(cible)})
         elif url.path == "/lancer":
             self.json(lancer(donnees))
-        elif url.path in ("/fiche", "/gestionnaire", "/gestionnaire/supprimer"):
+        elif url.path in ("/fiche", "/fiche/retirer", "/gestionnaire", "/gestionnaire/supprimer"):
             excel = Path(donnees.get("excel") or excel_clients(lire_parametres()))
             try:
                 if url.path == "/fiche":
                     self.json(edition_excel.enregistrer_fiche(excel, donnees.get("ligne"), donnees.get("valeurs", {})))
+                elif url.path == "/fiche/retirer":
+                    self.json(edition_excel.retirer_fiche(excel, int(donnees.get("ligne") or 0), donnees.get("code", "")))
                 elif url.path == "/gestionnaire":
                     self.json(edition_excel.enregistrer_gestionnaire(excel, donnees.get("ligne"), donnees.get("nom", ""),
                                                                      donnees.get("courriel", "")))

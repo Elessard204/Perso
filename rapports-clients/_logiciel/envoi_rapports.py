@@ -214,7 +214,7 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
             alertes.append(f"Entité {code} : fréquence « {frequence} » inconnue, traitée comme mensuelle.")
             frequence = "mensuel"
         gestionnaire = texte(ligne.get("gestionnaire"))
-        gestionnaires = adresses(ligne.get("courriel_gestionnaire")) or courriels_gestionnaires.get(normaliser(gestionnaire), [])
+        gestionnaires = courriels_gestionnaires.get(normaliser(gestionnaire), [])
         entite = Entite(
             code=code,
             nom=texte(ligne.get("nom_entite")),

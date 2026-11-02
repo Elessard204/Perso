@@ -217,7 +217,6 @@ main.large { max-width: none; }
       <fieldset><legend>Gestion</legend>
         <div class="deux">
           <div class="champ"><label for="f-gestionnaire">Gestionnaire (en copie)</label><select id="f-gestionnaire"></select></div>
-          <div class="champ"><label for="f-courriel_gestionnaire">Courriel du gestionnaire, si différent</label><input id="f-courriel_gestionnaire" type="email"><small>Laisser vide dans la plupart des cas.</small></div>
           <div class="champ"><label for="f-fin_exercice">Fin d'exercice</label><select id="f-fin_exercice"></select></div>
           <div class="champ"><label for="f-frequence">Fréquence d'envoi</label><select id="f-frequence"></select></div>
         </div>
@@ -227,9 +226,25 @@ main.large { max-width: none; }
       <fieldset><legend>Notes / consignes</legend><textarea id="f-notes" rows="3"></textarea></fieldset>
     </div>
     <div class="fiche-pied">
+      <button type="button" id="fiche-retirer" class="danger">Retirer ce client…</button>
       <p class="message" id="fiche-message" aria-live="polite"></p>
       <button type="button" id="fiche-annuler">Annuler</button>
       <button type="button" id="fiche-enregistrer" class="principal">Enregistrer la fiche</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogue-retrait" aria-labelledby="r-titre">
+  <form class="fiche" method="dialog">
+    <div class="fiche-tete"><h2 id="r-titre">Retirer un client</h2></div>
+    <div class="fiche-corps">
+      <p id="r-texte" style="margin:0"></p>
+      <p class="note" style="margin:0">La ligne est déplacée dans l'onglet « Anciens clients » de l'Excel, avec la date du retrait. Le client ne reçoit plus de rapports et n'apparaît plus dans la liste. Si c'est seulement une pause, décochez plutôt « Actif » dans la fiche.</p>
+    </div>
+    <div class="fiche-pied">
+      <p class="message" id="r-message" aria-live="polite"></p>
+      <button type="button" id="r-annuler">Annuler</button>
+      <button type="button" id="r-confirmer" class="principal">Retirer de la liste</button>
     </div>
   </form>
 </dialog>
@@ -383,7 +398,7 @@ function afficher() {
     const lignes = (v) => liste(v).map(x => `<span>${echap(x)}</span>`).join("");
     $("entete").innerHTML = "<tr><th class='fige1'>Code</th><th class='fige2'>Nom légal (Hopem)</th><th>Actif</th><th>Immeubles</th>"
       + "<th class='groupe-col'>Courriels du client</th><th>Direction en copie</th><th>Langue</th>"
-      + "<th class='groupe-col'>Gestionnaire</th><th>Courriel gest. (si différent)</th><th>Fin d'exercice</th><th>Fréquence</th>"
+      + "<th class='groupe-col'>Gestionnaire</th><th>Fin d'exercice</th><th>Fréquence</th>"
       + donnees.contenu.map((c, i) => `<th class="etroit centre${i ? "" : " groupe-col"}" title="${echap(c.libelle)}">${echap(c.libelle)}</th>`).join("")
       + "<th class='groupe-col'>Notes / consignes</th></tr>";
     $("corps").innerHTML = donnees.entites.filter(e => garde(e.valeurs)).map(e => {
@@ -404,7 +419,6 @@ function afficher() {
         <td class="${sp(direction.length)}"><div class="liste-cellule">${direction.length ? lignes(v.courriel_direction) : '<span class="discret">Par défaut</span>'}</div></td>
         <td class="${sp(langue !== "FR")}">${echap(langue)}</td>
         <td class="groupe-col${sp(!v.gestionnaire)}">${echap(v.gestionnaire) || pas}</td>
-        <td class="${sp(v.courriel_gestionnaire)}">${echap(v.courriel_gestionnaire) || pas}</td>
         <td class="${sp(fin !== 12)}">${echap(donnees.mois[fin - 1])}</td>
         <td class="${sp(frequence !== "mensuel")}">${echap(frequence)}</td>
         ${cases}
@@ -446,7 +460,7 @@ function ouvrirFiche(entree) {
   $("appliquer-groupe-boite").hidden = !groupe.length;
   $("f-appliquer-groupe").checked = true;
   $("appliquer-groupe-texte").textContent = `Appliquer aussi ces destinataires et la langue à ${groupe.join(", ")} (même courriel)`;
-  for (const c of ["code_entite", "nom_entite", "courriel_gestionnaire", "notes"]) $("f-" + c).value = v[c] || "";
+  for (const c of ["code_entite", "nom_entite", "notes"]) $("f-" + c).value = v[c] || "";
   $("f-immeubles").value = liste(v.immeubles).join("\n");
   champsCourriels("courriel_clients", v.courriel_clients);
   champsCourriels("courriel_direction", v.courriel_direction);
@@ -465,19 +479,20 @@ function ouvrirFiche(entree) {
     return `<label><input type="checkbox" data-cle="${c.cle}" ${coche ? "checked" : ""}> ${echap(c.libelle)}</label>`;
   }).join("");
   message("fiche-message", "");
+  $("fiche-retirer").hidden = !entree;
   $("dialogue-fiche").showModal();
 }
 
 $("fiche-annuler").addEventListener("click", () => $("dialogue-fiche").close());
 $("fiche-enregistrer").addEventListener("click", async () => {
-  const invalides = ["courriel_clients", "courriel_direction"].flatMap(lireCourriels).concat($("f-courriel_gestionnaire").value.trim() ? [$("f-courriel_gestionnaire").value.trim()] : []).filter(a => !COURRIEL.test(a));
+  const invalides = ["courriel_clients", "courriel_direction"].flatMap(lireCourriels).filter(a => !COURRIEL.test(a));
   if (invalides.length) { message("fiche-message", `Adresse courriel invalide : ${invalides.join(", ")}`, "erreur"); return; }
   if (!$("f-code_entite").value.trim()) { message("fiche-message", "Le code Hopem est obligatoire.", "erreur"); return; }
   const valeurs = {
     code_entite: $("f-code_entite").value.trim(), nom_entite: $("f-nom_entite").value.trim(),
     immeubles: liste($("f-immeubles").value.replace(/;/g, "\n")).join("; "),
     courriel_clients: lireCourriels("courriel_clients").join("; "), courriel_direction: lireCourriels("courriel_direction").join("; "),
-    langue: $("f-langue").value, gestionnaire: $("f-gestionnaire").value, courriel_gestionnaire: $("f-courriel_gestionnaire").value.trim(),
+    langue: $("f-langue").value, gestionnaire: $("f-gestionnaire").value,
     fin_exercice: $("f-fin_exercice").value, frequence: $("f-frequence").value, actif: $("f-actif").checked ? "Oui" : "Non",
     notes: $("f-notes").value.trim(),
   };
@@ -497,6 +512,25 @@ $("fiche-enregistrer").addEventListener("click", async () => {
   $("dialogue-fiche").close();
   await chargerDonnees();
   message("message", r.message + " Les prochaines vérifications utiliseront ces changements.", "ok");
+});
+
+// --- Retrait d'un client (déplacé dans « Anciens clients ») ---
+$("fiche-retirer").addEventListener("click", () => {
+  const v = donnees.entites.find(e => e.ligne === ficheLigne).valeurs;
+  $("r-titre").textContent = `Retirer ${v.code_entite}`;
+  $("r-texte").textContent = `${v.code_entite} ${v.nom_entite || ""} ne sera plus dans la liste des clients.`;
+  message("r-message", "");
+  $("dialogue-retrait").showModal();
+});
+$("r-annuler").addEventListener("click", () => $("dialogue-retrait").close());
+$("r-confirmer").addEventListener("click", async () => {
+  const v = donnees.entites.find(e => e.ligne === ficheLigne).valeurs;
+  const r = await appeler("/fiche/retirer", {excel: $("excel").dataset.plein, ligne: ficheLigne, code: v.code_entite});
+  if (r.erreur) { message("r-message", r.erreur, "erreur"); return; }
+  $("dialogue-retrait").close();
+  $("dialogue-fiche").close();
+  await chargerDonnees();
+  message("message", r.message, "ok");
 });
 
 // --- Gestionnaires ---

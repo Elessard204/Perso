@@ -21,7 +21,10 @@ SAUVEGARDES = ICI / "sauvegardes"
 GARDER_SAUVEGARDES = 30
 FREQUENCES = ["mensuel", "trimestriel", "semestriel", "annuel"]
 COLONNES_DEBUT = ["code_entite", "nom_entite", "immeubles", "courriel_clients", "courriel_direction", "langue",
-                  "gestionnaire", "courriel_gestionnaire", "fin_exercice", "frequence", "actif"]
+                  "gestionnaire", "fin_exercice", "frequence", "actif"]
+# Colonnes qui ne servent plus : retirées de l'Excel si elles sont vides.
+COLONNES_RETIREES = ["courriel_gestionnaire"]
+ANCIENS = "Anciens clients"
 
 
 def config() -> dict:
@@ -73,11 +76,37 @@ def mettre_en_forme(feuille, nom_table: str, colonnes_oui_non: list[str]) -> Non
     feuille.freeze_panes = "C2"
 
 
+def retirer_colonnes_vides(chemin: Path) -> bool:
+    """Retire de l'onglet Clients les colonnes qui ne servent plus, seulement si elles sont vides."""
+    classeur = load_workbook(chemin)
+    if "Clients" not in classeur.sheetnames:
+        return False
+    feuille = classeur["Clients"]
+    entetes, rangees = lignes(feuille)
+    a_retirer = [c for c in COLONNES_RETIREES if c in entetes and not any(v.get(c) for _, v in rangees)]
+    if not a_retirer:
+        return False
+    sauvegarder(chemin)
+    colonnes = [c for c in entetes if c and c not in a_retirer]
+    valeurs = [[cellule for e, cellule in zip(entetes, rangee) if e and e not in a_retirer]
+               for rangee in feuille.iter_rows(min_row=2, values_only=True) if any(v not in (None, "") for v in rangee)]
+    index = classeur.sheetnames.index("Clients")
+    del classeur["Clients"]
+    feuille = classeur.create_sheet("Clients", index)
+    feuille.append(colonnes)
+    for rangee in valeurs:
+        feuille.append(rangee)
+    mettre_en_forme(feuille, "T_Clients", ["actif"] + [item["cle"] for item in config()["contenu"]])
+    classeur.active = index
+    classeur.save(chemin)
+    return True
+
+
 def migrer_si_besoin(chemin: Path) -> bool:
     """Convertit l'ancien format (onglets Clients + Entites) en un seul onglet « Clients ». Retourne True si converti."""
     classeur = load_workbook(chemin)
     if "Entites" not in classeur.sheetnames:
-        return False
+        return retirer_colonnes_vides(chemin)
     sauvegarder(chemin)
     _, anciens_clients = lignes(classeur["Clients"])
     clients = {v.get("code_client", ""): v for _, v in anciens_clients}
@@ -130,7 +159,7 @@ def erreurs_fiche(valeurs: dict) -> list[str]:
     erreurs = []
     if not valeurs.get("code_entite", "").strip():
         erreurs.append("Le code de l'entité est obligatoire.")
-    for colonne in ("courriel_clients", "courriel_direction", "courriel_gestionnaire"):
+    for colonne in ("courriel_clients", "courriel_direction"):
         mauvaises = [a for a in adresses(valeurs.get(colonne, "")) if not COURRIEL_VALIDE.match(a)]
         if mauvaises:
             erreurs.append(f"Adresse courriel invalide : {', '.join(mauvaises)}")
@@ -178,6 +207,37 @@ def enregistrer_fiche(chemin: Path, ligne: int | None, valeurs: dict) -> dict:
     ajuster_tables(feuille)
     classeur.save(chemin)
     return {"ok": True, "message": f"Fiche {code} enregistrée."}
+
+
+def retirer_fiche(chemin: Path, ligne: int, code: str) -> dict:
+    """Retire un client de la liste : sa ligne est déplacée dans l'onglet « Anciens clients », avec la date."""
+    classeur = load_workbook(chemin)
+    feuille = classeur["Clients"]
+    entetes, entites = lignes(feuille)
+    valeurs = next((v for n, v in entites if n == ligne), None)
+    # Vérifie que la ligne n'a pas bougé depuis l'ouverture de la fiche (autre personne, Excel modifié...).
+    if valeurs is None or cle_code(valeurs.get("code_entite", "")) != cle_code(code):
+        return {"erreur": "La liste a changé depuis l'ouverture de la fiche. Fermez la fiche et recommencez."}
+    sauvegarder(chemin)
+    if ANCIENS not in classeur.sheetnames:
+        anciens = classeur.create_sheet(ANCIENS)
+        anciens.append(["date_retrait"] + [e for e in entetes if e])
+        anciens.freeze_panes = "A2"
+    anciens = classeur[ANCIENS]
+    colonnes_anciens = [normaliser(c.value or "").replace(" ", "_") for c in anciens[1]]
+    for e in entetes:
+        if e and e not in colonnes_anciens:
+            anciens.cell(1, len(colonnes_anciens) + 1).value = e
+            colonnes_anciens.append(e)
+    rangee = [datetime.now().strftime("%Y-%m-%d")] + [valeurs.get(c) or None for c in colonnes_anciens[1:]]
+    anciens.append(rangee)
+    for cellule in anciens[1]:
+        cellule.font, cellule.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="131A2F")
+    feuille.delete_rows(ligne)
+    ajuster_tables(feuille)
+    classeur.save(chemin)
+    nom = valeurs.get("nom_entite") or ""
+    return {"ok": True, "message": f"{cle_code(code)} {nom} retiré de la liste (conservé dans l'onglet « {ANCIENS} » de l'Excel)."}
 
 
 def enregistrer_gestionnaire(chemin: Path, ligne: int | None, nom: str, courriel: str) -> dict:

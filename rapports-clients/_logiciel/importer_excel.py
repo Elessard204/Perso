@@ -140,7 +140,7 @@ def convertir(source: Path, onglet: str | None, sortie: Path) -> None:
         ("Clients", ["code_client", "nom_client", "nom_contact", "courriel_clients", "courriel_direction", "langue", "actif"],
          [[c["code_client"], "", "", "; ".join(c["emails"]), "", "FR", c["actif"]] for c in clients.values()]),
         ("Entites", ["code_entite", "nom_entite", "immeubles", "code_client", "fin_exercice", "frequence",
-                     "gestionnaire", "courriel_gestionnaire", "actif", *[i["cle"] for i in CONTENU], "notes"],
+                     "gestionnaire", "actif", *[i["cle"] for i in CONTENU], "notes"],
          [[e["code_entite"], "", "; ".join(e["immeubles"]), e["code_client"], e["fin_exercice"], e["frequence"],
            e["gestionnaire"], "", e["actif"], *e["contenu"].values(), e["notes"]] for e in entites]),
         ("Gestionnaires", ["nom", "courriel"],
