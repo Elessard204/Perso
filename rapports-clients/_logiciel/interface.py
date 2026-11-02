@@ -119,6 +119,19 @@ def ouvrir(chemin: Path) -> bool:
     return True
 
 
+def brouillons_deja_crees(mois: str) -> dict[str, str]:
+    """Courriels déjà créés ce mois-ci, d'après le journal : {code du courriel: date et heure}."""
+    journal = SORTIE / mois / "brouillons.txt"
+    deja = {}
+    if journal.exists():
+        for ligne in journal.read_text(encoding="utf-8").splitlines():
+            trouve = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) par .*? : (.+)$", ligne)
+            if trouve:
+                for code in trouve.group(2).split(","):
+                    deja[code.strip()] = trouve.group(1)
+    return deja
+
+
 def pluriel(nombre: int, singulier: str, pluriel_: str) -> str:
     return f"{nombre} {singulier if nombre <= 1 else pluriel_}"
 
@@ -160,6 +173,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 self.json(edition_excel.lire(excel))
             except Exception as erreur:  # affiché dans la page
                 self.json({"erreur": f"Impossible de lire l'Excel des clients ({erreur})."})
+        elif url.path == "/suivi":
+            excel = Path(params.get("excel") or excel_clients(lire_parametres()))
+            try:
+                self.json(edition_excel.lire_suivi(excel, params.get("mois", "")))
+            except Exception as erreur:  # affiché dans la page
+                self.json({"erreur": f"Impossible de lire le suivi ({erreur})."})
         elif url.path == "/signe-de-vie":
             self.json({"ok": True})
         elif url.path == "/rapport":
@@ -196,10 +215,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.json({"ok": bool(cible) and ouvrir(cible)})
         elif url.path == "/lancer":
             self.json(lancer(donnees))
-        elif url.path in ("/fiche", "/fiche/retirer", "/gestionnaire", "/gestionnaire/supprimer"):
+        elif url.path in ("/fiche", "/fiche/retirer", "/gestionnaire", "/gestionnaire/supprimer", "/suivi"):
             excel = Path(donnees.get("excel") or excel_clients(lire_parametres()))
             try:
-                if url.path == "/fiche":
+                if url.path == "/suivi":
+                    self.json(edition_excel.enregistrer_suivi(excel, donnees.get("mois", ""), donnees.get("code", ""),
+                                                              donnees.get("valeurs", {})))
+                elif url.path == "/fiche":
                     self.json(edition_excel.enregistrer_fiche(excel, donnees.get("ligne"), donnees.get("valeurs", {})))
                 elif url.path == "/fiche/retirer":
                     self.json(edition_excel.retirer_fiche(excel, int(donnees.get("ligne") or 0), donnees.get("code", "")))
@@ -228,18 +250,24 @@ def lancer(donnees: dict) -> dict:
             return {"erreur": "Choisissez le dossier où les rapports Hopem du mois ont été téléchargés."}
         exports = Path(dossier)
     codes = set(donnees["codes"]) if donnees.get("codes") else None
-    journal = SORTIE / mois / "brouillons.txt"
-    if mode == "brouillons" and journal.exists() and not donnees.get("forcer"):
-        # Garde-fou : une deuxième série créerait des doublons dans la boîte Finance.
-        derniere = next((l for l in reversed(journal.read_text(encoding="utf-8").splitlines()) if " par " in l), "")
-        return {"confirmer": f"Des brouillons ont déjà été créés pour ce mois ({derniere.split(' : ')[0]}). "
-                             "Recliquez pour en créer quand même; supprimez les doublons dans Outlook au besoin."}
+    deja = brouillons_deja_crees(mois)
+    if mode == "brouillons" and not donnees.get("forcer"):
+        # Garde-fou : recréer un courriel déjà fait mettrait un doublon dans la boîte Finance.
+        doublons = sorted(c for c in (codes or deja) if c in deja)
+        if doublons:
+            return {"confirmer": f"{pluriel(len(doublons), 'courriel déjà créé', 'courriels déjà créés')} ce mois-ci "
+                                 f"(le {deja[doublons[0]]}). Recliquez pour les recréer quand même; "
+                                 "supprimez les anciens dans Outlook au besoin."}
+    try:
+        verifies = edition_excel.entites_verifiees(excel, mois) if mode != "liste" else None
+    except Exception:  # le suivi est un rappel : il ne doit jamais empêcher la vérification
+        verifies = None
     parametres = lire_parametres()
     parametres["excel"] = str(excel)
     ecrire_parametres(parametres)
     try:
         resultat = preparer(mois, excel, exports, "simulation" if mode == "liste" else mode,
-                            completer=exports is not None, codes=codes)
+                            completer=exports is not None, codes=codes, verifies=verifies)
     except PermissionError:
         return {"erreur": "Un fichier est ouvert ailleurs (probablement l'Excel des clients). Fermez-le et recommencez."}
     except Exception as erreur:  # affiché à l'employé plutôt que d'arrêter l'outil
@@ -254,6 +282,16 @@ def lancer(donnees: dict) -> dict:
                              if resultat.reussi else "La création des brouillons a échoué ou est incomplète.")
         reponse["ok"] = resultat.reussi
         reponse["messages"] = resultat.messages
+        # Date d'envoi inscrite dans l'onglet Suivi pour chaque courriel créé.
+        crees_noms = {l[3:].split(" : brouillon créé")[0] for l in resultat.messages if "brouillon créé" in l}
+        entites = [e for c in resultat.courriels if c["nom"] in crees_noms for e in c["entites"]]
+        if entites:
+            try:
+                edition_excel.marquer_envoi(excel, mois, entites, f"{date.today():%Y-%m-%d}")
+            except Exception:
+                reponse["messages"].append("AVERT|La date d'envoi n'a pas pu être inscrite dans le Suivi "
+                                           "(Excel des clients ouvert ailleurs?).")
+        deja = brouillons_deja_crees(mois)
     else:
         reponse["resume"] = (f"{pluriel(resultat.prets, 'courriel prêt', 'courriels prêts')} · "
                              f"{pluriel(resultat.bloques, 'bloqué', 'bloqués')} · "
@@ -261,7 +299,7 @@ def lancer(donnees: dict) -> dict:
         reponse["ok"] = resultat.bloques == 0
     # Les aperçus n'existent qu'à l'étape 2 et 3, pour les courriels prêts.
     reponse["apercus"] = exports is not None and resultat.prets > 0
-    reponse["courriels"] = resultat.courriels
+    reponse["courriels"] = [{**c, "deja": deja.get(c["code"], "")} for c in resultat.courriels]
     if resultat.complete:
         reponse["complete"] = f"Noms lus dans les PDF ajoutés dans une copie de l'Excel, à réviser : {resultat.complete.name}"
     return reponse

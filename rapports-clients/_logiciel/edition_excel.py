@@ -21,9 +21,13 @@ SAUVEGARDES = ICI / "sauvegardes"
 GARDER_SAUVEGARDES = 30
 FREQUENCES = ["mensuel", "trimestriel", "semestriel", "annuel"]
 COLONNES_DEBUT = ["code_entite", "nom_entite", "immeubles", "courriel_clients", "courriel_direction", "langue",
-                  "gestionnaire", "fin_exercice", "frequence", "actif"]
+                  "courriel_separe", "gestionnaire", "fin_exercice", "frequence", "actif"]
 # Colonnes qui ne servent plus : retirées de l'Excel si elles sont vides.
 COLONNES_RETIREES = ["courriel_gestionnaire"]
+# Colonnes abandonnées : retirées même si elles contiennent quelque chose (la copie de sauvegarde les garde).
+COLONNES_ABANDONNEES = ["liste_cheques"]
+SUIVI = "Suivi"
+COLONNES_SUIVI = ["mois", "code_entite", "conciliation", "conciliation_note", "ef_verifies", "date_envoi"]
 ANCIENS = "Anciens clients"
 
 
@@ -76,27 +80,35 @@ def mettre_en_forme(feuille, nom_table: str, colonnes_oui_non: list[str]) -> Non
     feuille.freeze_panes = "C2"
 
 
-def retirer_colonnes_vides(chemin: Path) -> bool:
-    """Retire de l'onglet Clients les colonnes qui ne servent plus, seulement si elles sont vides."""
+def ajuster_colonnes(chemin: Path) -> bool:
+    """Met l'onglet Clients à jour : ajoute les nouvelles colonnes, retire celles qui ne servent plus."""
     classeur = load_workbook(chemin)
     if "Clients" not in classeur.sheetnames:
         return False
     feuille = classeur["Clients"]
     entetes, rangees = lignes(feuille)
-    a_retirer = [c for c in COLONNES_RETIREES if c in entetes and not any(v.get(c) for _, v in rangees)]
-    if not a_retirer:
+    a_retirer = [c for c in COLONNES_ABANDONNEES if c in entetes]
+    a_retirer += [c for c in COLONNES_RETIREES if c in entetes and not any(v.get(c) for _, v in rangees)]
+    a_ajouter = [c for c in colonnes_clients() if c not in entetes]
+    if not a_retirer and not a_ajouter:
         return False
     sauvegarder(chemin)
     colonnes = [c for c in entetes if c and c not in a_retirer]
-    valeurs = [[cellule for e, cellule in zip(entetes, rangee) if e and e not in a_retirer]
-               for rangee in feuille.iter_rows(min_row=2, values_only=True) if any(v not in (None, "") for v in rangee)]
+    # Les nouvelles colonnes vont à leur place habituelle (ex. courriel_separe après langue).
+    for nouvelle in a_ajouter:
+        ordre = colonnes_clients()
+        avant = [c for c in ordre[:ordre.index(nouvelle)] if c in colonnes]
+        colonnes.insert(colonnes.index(avant[-1]) + 1 if avant else len(colonnes), nouvelle)
+    valeurs = [[v.get(c) or None for c in colonnes] for _, v in rangees]
+    valeurs = [[int(x) if c == "fin_exercice" and x and str(x).isdigit() else x for c, x in zip(colonnes, rangee)]
+               for rangee in valeurs]
     index = classeur.sheetnames.index("Clients")
     del classeur["Clients"]
     feuille = classeur.create_sheet("Clients", index)
     feuille.append(colonnes)
     for rangee in valeurs:
         feuille.append(rangee)
-    mettre_en_forme(feuille, "T_Clients", ["actif"] + [item["cle"] for item in config()["contenu"]])
+    mettre_en_forme(feuille, "T_Clients", ["actif", "courriel_separe"] + [item["cle"] for item in config()["contenu"]])
     classeur.active = index
     classeur.save(chemin)
     return True
@@ -106,7 +118,7 @@ def migrer_si_besoin(chemin: Path) -> bool:
     """Convertit l'ancien format (onglets Clients + Entites) en un seul onglet « Clients ». Retourne True si converti."""
     classeur = load_workbook(chemin)
     if "Entites" not in classeur.sheetnames:
-        return retirer_colonnes_vides(chemin)
+        return ajuster_colonnes(chemin)
     sauvegarder(chemin)
     _, anciens_clients = lignes(classeur["Clients"])
     clients = {v.get("code_client", ""): v for _, v in anciens_clients}
@@ -129,7 +141,7 @@ def migrer_si_besoin(chemin: Path) -> bool:
     feuille.append(colonnes)
     for rangee in nouvelles:
         feuille.append([int(v) if c == "fin_exercice" and v and str(v).isdigit() else v for c, v in zip(colonnes, rangee)])
-    mettre_en_forme(feuille, "T_Clients", ["actif"] + [item["cle"] for item in config()["contenu"]])
+    mettre_en_forme(feuille, "T_Clients", ["actif", "courriel_separe"] + [item["cle"] for item in config()["contenu"]])
     classeur.active = index
     classeur.save(chemin)
     return True
@@ -292,3 +304,74 @@ def supprimer_gestionnaire(chemin: Path, nom: str, remplacant: str) -> dict:
     classeur.save(chemin)
     vers = f" transférées à {remplacant}" if remplacant else " laissées sans gestionnaire"
     return {"ok": True, "message": f"{nom} supprimé. {transferees} entité{'s' if transferees > 1 else ''}{vers}."}
+
+
+# ---- Onglet « Suivi » : une ligne par mois et par entité ----
+
+def feuille_suivi(classeur):
+    if SUIVI not in classeur.sheetnames:
+        feuille = classeur.create_sheet(SUIVI)
+        feuille.append(COLONNES_SUIVI)
+        for cellule in feuille[1]:
+            cellule.font, cellule.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="131A2F")
+        for lettre, largeur in zip("ABCDEF", (10, 12, 14, 50, 12, 14)):
+            feuille.column_dimensions[lettre].width = largeur
+        feuille.freeze_panes = "C2"
+    return classeur[SUIVI]
+
+
+def lire_suivi(chemin: Path, mois: str) -> dict:
+    """Le suivi d'un mois, avec le code, le nom légal et l'état actif repris de l'onglet Clients."""
+    migrer_si_besoin(chemin)
+    classeur = load_workbook(chemin, data_only=True)
+    _, entites = lignes(classeur["Clients"])
+    suivi = {}
+    if SUIVI in classeur.sheetnames:
+        for _, v in lignes(classeur[SUIVI])[1]:
+            if v.get("mois", "")[:7] == mois and v.get("code_entite"):
+                suivi[cle_code(v["code_entite"])] = v
+    resultat = []
+    for _, v in entites:
+        code = cle_code(v.get("code_entite", ""))
+        s = suivi.get(code, {})
+        resultat.append({"code": code, "nom": v.get("nom_entite", ""),
+                         "actif": normaliser(v.get("actif", "oui")) in {"oui", "o", "x", "1", ""},
+                         "conciliation": normaliser(s.get("conciliation", "")) in {"oui", "o", "x", "1"},
+                         "conciliation_note": s.get("conciliation_note", ""),
+                         "ef_verifies": normaliser(s.get("ef_verifies", "")) in {"oui", "o", "x", "1"},
+                         "date_envoi": s.get("date_envoi", "")[:10]})
+    return {"mois": mois, "lignes": resultat}
+
+
+def ecrire_suivi(classeur, mois: str, code: str, valeurs: dict) -> None:
+    feuille = feuille_suivi(classeur)
+    _, rangees = lignes(feuille)
+    ligne = next((n for n, v in rangees if v.get("mois", "")[:7] == mois and cle_code(v.get("code_entite", "")) == code), None)
+    if ligne is None:
+        ligne = feuille.max_row + 1
+        feuille.cell(ligne, 1).value, feuille.cell(ligne, 2).value = mois, code
+    for colonne, valeur in valeurs.items():
+        if colonne in COLONNES_SUIVI[2:]:
+            if isinstance(valeur, bool):
+                valeur = "Oui" if valeur else "Non"
+            feuille.cell(ligne, COLONNES_SUIVI.index(colonne) + 1).value = str(valeur).strip() or None
+
+
+def enregistrer_suivi(chemin: Path, mois: str, code: str, valeurs: dict) -> dict:
+    """Une case ou un commentaire du suivi, enregistré tout de suite (sans copie de sauvegarde)."""
+    classeur = load_workbook(chemin)
+    ecrire_suivi(classeur, mois, cle_code(code), valeurs)
+    classeur.save(chemin)
+    return {"ok": True}
+
+
+def marquer_envoi(chemin: Path, mois: str, codes: list[str], date: str) -> None:
+    """Inscrit la date d'envoi (création du brouillon) des entités d'un lot."""
+    classeur = load_workbook(chemin)
+    for code in codes:
+        ecrire_suivi(classeur, mois, cle_code(code), {"date_envoi": date})
+    classeur.save(chemin)
+
+
+def entites_verifiees(chemin: Path, mois: str) -> set[str]:
+    return {l["code"] for l in lire_suivi(chemin, mois)["lignes"] if l["ef_verifies"]}

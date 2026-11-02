@@ -121,6 +121,14 @@ main.large { max-width: none; }
 .grille td.special { background: #FFF1E0; font-weight: 700; }
 .grille tbody tr:hover td.special { background: #FFE2C2; }
 .coche { color: var(--ok); font-weight: 700; } .sans { color: var(--pale); }
+.compteurs-suivi { display: flex; flex-wrap: wrap; gap: 10px; }
+.compteurs-suivi div { flex: 1 1 180px; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: var(--discret); }
+.compteurs-suivi b { display: block; font-size: 24px; color: var(--marine); font-variant-numeric: tabular-nums; }
+.suivi-cellule { display: flex; gap: 8px; align-items: center; }
+.suivi-cellule input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--ok); flex: none; }
+.suivi-cellule input[type=text] { min-width: 220px; padding: 4px 8px; font-size: 13px; }
+.suivi-cellule input[type=date] { width: auto; padding: 4px 8px; font-size: 13px; }
+.grille tr.fait td { background: #F3FAF4; }
 .legende { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12.5px; color: var(--discret); margin: 0; }
 .legende i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: #FFF1E0; border: 1px solid #F3C99A; vertical-align: -2px; margin-right: 4px; }
 @media (max-width: 700px) {
@@ -137,6 +145,7 @@ main.large { max-width: none; }
 <main>
   <nav class="onglets" aria-label="Sections">
     <button type="button" data-vue="envoi" aria-selected="true">Envoi du mois</button>
+    <button type="button" data-vue="suivi" aria-selected="false">Suivi du mois</button>
     <button type="button" data-vue="clients" aria-selected="false">Clients</button>
   </nav>
 
@@ -179,6 +188,21 @@ main.large { max-width: none; }
   </section>
   </div>
 
+  <div id="vue-suivi" class="resultat" hidden>
+    <div class="barre">
+      <label for="suivi-mois">Mois</label><select id="suivi-mois"></select>
+      <input id="suivi-recherche" type="search" placeholder="Rechercher (code, nom…)" aria-label="Rechercher dans le suivi">
+      <label class="case-seule"><input type="checkbox" id="suivi-inactifs"> Afficher les inactifs</label>
+    </div>
+    <div class="compteurs-suivi" id="suivi-compteurs"></div>
+    <p id="suivi-message" class="message" aria-live="polite"></p>
+    <div class="grille"><table>
+      <thead><tr><th>Code</th><th>Nom légal (Hopem)</th><th>Actif</th><th>Conciliation bancaire</th><th>États financiers vérifiés</th><th>Date d'envoi</th></tr></thead>
+      <tbody id="suivi-corps"></tbody>
+    </table></div>
+    <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). La date d'envoi se remplit toute seule quand le brouillon est créé à l'étape 3; elle peut être corrigée à la main.</p>
+  </div>
+
   <div id="vue-clients" class="resultat" hidden>
     <div class="barre">
       <div class="sous-onglets" role="group" aria-label="Tableau">
@@ -213,6 +237,7 @@ main.large { max-width: none; }
         <div class="champ"><span><b>Direction en copie</b></span><div class="courriels" id="f-courriel_direction"></div>
           <button type="button" class="lien-bouton" data-ajouter="courriel_direction">+ Ajouter une adresse</button>
           <small id="direction-defaut"></small></div>
+        <label class="case-seule"><input type="checkbox" id="f-courriel_separe"> Toujours envoyer dans un courriel séparé (même si les destinataires sont les mêmes qu'une autre entité)</label>
         <label class="case-seule" id="appliquer-groupe-boite" hidden><input type="checkbox" id="f-appliquer-groupe" checked> <span id="appliquer-groupe-texte"></span></label>
         <div class="deux">
           <div class="champ"><label for="f-langue">Langue du courriel</label><select id="f-langue"><option>FR</option><option>EN</option></select></div>
@@ -304,16 +329,21 @@ function moisChoisi() { return $("mois").value; }
 async function charger() {
   etat = await appeler("/etat");
   $("mois").innerHTML = etat.mois.map(m => `<option value="${m.code}">${m.libelle}</option>`).join("");
+  $("suivi-mois").innerHTML = $("mois").innerHTML;
   remplir("excel", etat.excel);
   remplir("dossier", etat.dossiers[moisChoisi()] || {});
   if (!etat.outlook) $("outlook-note").textContent = "Demande Outlook classique sur un poste Windows.";
 }
 
 // Étape 3 : possible seulement après l'étape 2 du même mois, sur un poste avec Outlook classique.
+let courrielsPrets = [];
 function preparerEtape3(courriels) {
+  courrielsPrets = courriels;
   const choix = $("choix-brouillons");
-  choix.innerHTML = `<option value="">Tous les courriels prêts (${courriels.length})</option>`
-    + courriels.map(c => `<option value="${echap(c.code)}">Un seul, pour essai : ${echap(c.nom)}</option>`).join("");
+  const nouveaux = courriels.filter(c => !c.deja);
+  choix.innerHTML = (nouveaux.length && nouveaux.length < courriels.length ? `<option value="@nouveaux">Seulement ceux pas encore créés (${nouveaux.length})</option>` : "")
+    + `<option value="@tous">Tous les courriels prêts (${courriels.length})</option>`
+    + courriels.map(c => `<option value="${echap(c.code)}">Un seul : ${echap(c.nom)}${c.deja ? ` (déjà créé le ${echap(c.deja.slice(0, 10))})` : ""}</option>`).join("");
   choix.hidden = !courriels.length;
   $("etape-3").disabled = !(etat && etat.outlook && courriels.length);
   $("etape-3").dataset.confirmer = ""; $("etape-3").dataset.forcer = "";
@@ -366,7 +396,8 @@ async function lancer(nom, mode, extra) {
     $("rapport").hidden = false;
     $("liens").hidden = false;
     $("ouvrir-apercus").hidden = !r.apercus;
-    if (mode === "simulation") { preparerEtape3(r.courriels || []); etatsAvant[2] = $("etape-3").disabled; }
+    if (mode !== "liste") { preparerEtape3(r.courriels || []); etatsAvant[2] = $("etape-3").disabled; }
+    if (mode === "brouillons") suivi = null;   // la date d'envoi vient d'être inscrite
     if (r.messages && r.messages.length) {
       const classes = {"OK": "ok", "AVERT": "avert", "ERREUR": "erreur"};
       $("messages").innerHTML = r.messages.map(l => { const [t, ...m] = l.split("|"); return `<li class="${classes[t] || ""}">${echap(m.join("|") || l)}</li>`; }).join("");
@@ -386,11 +417,13 @@ $("etape-3").addEventListener("click", () => {
   $("resume").className = "resume";
   $("resume").textContent = "";
   if ($("etape-3").dataset.confirmer === "1") {
-    const code = $("choix-brouillons").value;
+    const choix = $("choix-brouillons").value;
+    const codes = choix === "@tous" ? courrielsPrets.map(c => c.code)
+      : choix === "@nouveaux" ? courrielsPrets.filter(c => !c.deja).map(c => c.code) : [choix];
     const forcer = $("etape-3").dataset.forcer === "1";
     $("etape-3").dataset.confirmer = ""; $("etape-3").dataset.forcer = "";
     $("etape-3").textContent = "Créer les brouillons dans Outlook";
-    lancer("Création des brouillons (laissez Outlook ouvert)", "brouillons", {codes: code ? [code] : null, forcer});
+    lancer("Création des brouillons (laissez Outlook ouvert)", "brouillons", {codes, forcer});
   } else {
     // Confirmation dans la page : un deuxième clic crée les brouillons.
     $("etape-3").dataset.confirmer = "1";
@@ -406,10 +439,11 @@ const echap = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;"
 const oui = (v) => ["oui", "o", "x", "yes", "y", "1", "true", "vrai"].includes(String(v || "").trim().toLowerCase());
 const liste = (v) => String(v || "").split(/[;,\n]/).map(a => a.trim()).filter(Boolean);
 function message(id, texte, genre) { $(id).textContent = texte || ""; $(id).className = "message " + (genre || ""); }
-// Même règle que l'envoi : mêmes courriels clients, même direction et même langue = un seul courriel.
+// Même règle que l'envoi : mêmes courriels clients, même direction et même langue = un seul courriel,
+// sauf pour une entité marquée « courriel séparé ».
 function cleCourriel(v) {
   const a = liste(v.courriel_clients).map(x => x.toLowerCase()).sort();
-  if (!a.length) return "";
+  if (!a.length || oui(v.courriel_separe)) return "";
   const d = (liste(v.courriel_direction).length ? liste(v.courriel_direction) : donnees.direction_defaut).map(x => x.toLowerCase()).sort();
   return a.join(",") + "|" + d.join(",") + "|" + (v.langue || "FR").toUpperCase();
 }
@@ -453,7 +487,7 @@ function afficher() {
         <td class="fige2">${echap(v.nom_entite) || '<span class="discret">À compléter</span>'}</td>
         <td><span class="pastille ${actif ? "oui" : "non"}">${actif ? "Oui" : "Non"}</span></td>
         <td><div class="liste-cellule">${lignes(v.immeubles)}</div></td>
-        <td class="groupe-col${sp(!liste(v.courriel_clients).length)}"><div class="liste-cellule">${lignes(v.courriel_clients) || '<span class="discret">Aucun destinataire</span>'}${groupe.length ? `<span class="pastille groupe">Même courriel que ${echap(groupe.join(", "))}</span>` : ""}</div></td>
+        <td class="groupe-col${sp(!liste(v.courriel_clients).length || oui(v.courriel_separe))}"><div class="liste-cellule">${lignes(v.courriel_clients) || '<span class="discret">Aucun destinataire</span>'}${groupe.length ? `<span class="pastille groupe">Même courriel que ${echap(groupe.join(", "))}</span>` : ""}${oui(v.courriel_separe) ? '<span class="pastille groupe">Courriel séparé</span>' : ""}</div></td>
         <td class="${sp(direction.length)}"><div class="liste-cellule">${direction.length ? lignes(v.courriel_direction) : '<span class="discret">Par défaut</span>'}</div></td>
         <td class="${sp(langue !== "FR")}">${echap(langue)}</td>
         <td class="groupe-col${sp(!v.gestionnaire)}">${echap(v.gestionnaire) || pas}</td>
@@ -512,6 +546,7 @@ function ouvrirFiche(entree) {
   $("f-frequence").innerHTML = donnees.frequences.map(f => `<option>${f}</option>`).join("");
   $("f-frequence").value = v.frequence || "mensuel";
   $("f-actif").checked = oui(v.actif || "oui");
+  $("f-courriel_separe").checked = oui(v.courriel_separe);
   $("f-contenu").innerHTML = donnees.contenu.map(c => {
     const coche = v[c.cle] ? oui(v[c.cle]) : c.defaut;
     return `<label><input type="checkbox" data-cle="${c.cle}" ${coche ? "checked" : ""}> ${echap(c.libelle)}</label>`;
@@ -530,7 +565,7 @@ $("fiche-enregistrer").addEventListener("click", async () => {
     code_entite: $("f-code_entite").value.trim(), nom_entite: $("f-nom_entite").value.trim(),
     immeubles: liste($("f-immeubles").value.replace(/;/g, "\n")).join("; "),
     courriel_clients: lireCourriels("courriel_clients").join("; "), courriel_direction: lireCourriels("courriel_direction").join("; "),
-    langue: $("f-langue").value, gestionnaire: $("f-gestionnaire").value,
+    langue: $("f-langue").value, courriel_separe: $("f-courriel_separe").checked ? "Oui" : "Non", gestionnaire: $("f-gestionnaire").value,
     fin_exercice: $("f-fin_exercice").value, frequence: $("f-frequence").value, actif: $("f-actif").checked ? "Oui" : "Non",
     notes: $("f-notes").value.trim(),
   };
@@ -630,11 +665,51 @@ $("ajouter").addEventListener("click", () => vue === "clients" ? ouvrirFiche(nul
 
 document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".onglets button").forEach(x => x.setAttribute("aria-selected", x === b));
-  $("vue-envoi").hidden = b.dataset.vue !== "envoi";
-  $("vue-clients").hidden = b.dataset.vue !== "clients";
+  for (const v of ["envoi", "suivi", "clients"]) $("vue-" + v).hidden = b.dataset.vue !== v;
   document.querySelector("main").classList.toggle("large", b.dataset.vue === "clients");
   if (b.dataset.vue === "clients" && !donnees) chargerDonnees();
+  // Le suivi s'ouvre sur le mois choisi dans l'envoi.
+  if (b.dataset.vue === "suivi" && (!suivi || suivi.mois !== moisChoisi())) { $("suivi-mois").value = moisChoisi(); chargerSuivi(); }
 }));
+
+// ---- Onglet « Suivi du mois » : conciliation, états financiers vérifiés, date d'envoi ----
+let suivi = null;
+async function chargerSuivi() {
+  const r = await appeler(`/suivi?mois=${$("suivi-mois").value}&excel=` + encodeURIComponent($("excel").dataset.plein || ""));
+  if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
+  suivi = r; afficherSuivi();
+}
+function afficherSuivi() {
+  if (!suivi) return;
+  const filtre = $("suivi-recherche").value.trim().toLowerCase();
+  const actives = suivi.lignes.filter(l => l.actif);
+  const compte = (f) => actives.filter(f).length;
+  $("suivi-compteurs").innerHTML = `<div><b>${compte(l => l.conciliation)} / ${actives.length}</b>conciliations bancaires faites</div>`
+    + `<div><b>${compte(l => l.ef_verifies)} / ${actives.length}</b>états financiers vérifiés</div>`
+    + `<div><b>${compte(l => l.date_envoi)} / ${actives.length}</b>rapports envoyés</div>`;
+  $("suivi-corps").innerHTML = suivi.lignes
+    .filter(l => (l.actif || $("suivi-inactifs").checked) && (!filtre || `${l.code} ${l.nom}`.toLowerCase().includes(filtre)))
+    .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.conciliation && l.ef_verifies && l.date_envoi ? "fait" : ""}">
+      <td class="code">${echap(l.code)}</td><td>${echap(l.nom) || '<span class="discret">À compléter</span>'}</td>
+      <td><span class="pastille ${l.actif ? "oui" : "non"}">${l.actif ? "Oui" : "Non"}</span></td>
+      <td><div class="suivi-cellule"><input type="checkbox" data-champ="conciliation" aria-label="Conciliation faite" ${l.conciliation ? "checked" : ""}>
+        <input type="text" data-champ="conciliation_note" placeholder="Commentaire" value="${echap(l.conciliation_note)}" aria-label="Commentaire sur la conciliation"></div></td>
+      <td><div class="suivi-cellule"><input type="checkbox" data-champ="ef_verifies" aria-label="États financiers vérifiés" ${l.ef_verifies ? "checked" : ""}></div></td>
+      <td><div class="suivi-cellule"><input type="date" data-champ="date_envoi" value="${echap(l.date_envoi)}" aria-label="Date d'envoi"></div></td></tr>`).join("");
+}
+$("suivi-corps").addEventListener("change", async (ev) => {
+  const champ = ev.target.dataset.champ, tr = ev.target.closest("tr");
+  if (!champ || !tr) return;
+  const valeur = ev.target.type === "checkbox" ? ev.target.checked : ev.target.value;
+  const r = await appeler("/suivi", {excel: $("excel").dataset.plein, mois: suivi.mois, code: tr.dataset.code, valeurs: {[champ]: valeur}});
+  if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
+  suivi.lignes.find(l => l.code === tr.dataset.code)[champ] = valeur;
+  message("suivi-message", `${tr.dataset.code} : enregistré.`, "ok");
+  if (ev.target.type !== "text") afficherSuivi();
+});
+$("suivi-mois").addEventListener("change", chargerSuivi);
+$("suivi-inactifs").addEventListener("change", afficherSuivi);
+$("suivi-recherche").addEventListener("input", afficherSuivi);
 
 // Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
 setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);

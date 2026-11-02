@@ -200,8 +200,10 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
         a = adresses(ligne.get("courriel_clients"))
         direction = adresses(ligne.get("courriel_direction")) or config["envoi"]["direction_defaut"]
         langue = "en" if normaliser(ligne.get("langue") or "fr") in {"en", "anglais"} else "fr"
-        # Un seul courriel pour les entités dont tous les destinataires sont identiques.
-        cle = (tuple(sorted(x.lower() for x in a)), tuple(sorted(x.lower() for x in direction)), langue) if a else ("seul", code)
+        # Un seul courriel pour les entités dont tous les destinataires sont identiques,
+        # sauf si l'entité est marquée « courriel séparé » (ex. jamais envoyée en même temps qu'une autre).
+        separe = not a or oui(ligne.get("courriel_separe"))
+        cle = ("seul", code) if separe else (tuple(sorted(x.lower() for x in a)), tuple(sorted(x.lower() for x in direction)), langue)
         if cle not in groupes:
             groupes[cle] = f"C{code}"
             clients[groupes[cle]] = Client(code=groupes[cle], nom="", nom_contact="", a=a, direction=direction,
@@ -308,6 +310,10 @@ def verifier_elements(entite: Entite, config: dict) -> None:
     """Compare ce qui est coché dans l'Excel avec ce qui se trouve dans le PDF et les pièces additionnelles."""
     for item in config["contenu"]:
         coche = item["cle"] in entite.contenu
+        if "manuel" in item:
+            if coche:
+                entite.avertissements.append(f"À faire dans le brouillon : {item['manuel']}.")
+            continue
         if "titre" in item:
             present = any(contient(t, item["titre"]) for t in entite.titres)
         else:
@@ -318,7 +324,7 @@ def verifier_elements(entite: Entite, config: dict) -> None:
         elif present and not coche and "titre" in item:
             entite.avertissements.append(f"{item['libelle']} présent dans le PDF mais non coché dans l'Excel.")
     for annexe in set(entite.annexes) - set(annexes_attendues(entite, config)):
-        entite.avertissements.append(f"{annexe.name} : pièce non cochée dans l'Excel, pas jointe.")
+        entite.avertissements.append(f"{annexe.name} : pas jointe automatiquement (à joindre à la main au besoin).")
 
 
 def noms_proches(a: str, b: str) -> bool:
@@ -521,6 +527,13 @@ def creer_brouillons(clients: list[Client], mois: str, sortie: Path, config: dic
             lignes.append("ERREUR|" + resultat.stderr.strip()[:800])
     finally:
         shutil.rmtree(temporaire, ignore_errors=True)
+    # Rappels des documents à joindre à la main (ex. factures payées).
+    manuels = {item["cle"]: item["manuel"] for item in config["contenu"] if "manuel" in item}
+    for client in clients:
+        for entite in client.a_envoyer(mois):
+            for cle in entite.contenu:
+                if cle in manuels:
+                    lignes.append(f"AVERT|À compléter : {client.nom_affiche(mois)} ({entite.code}) — {manuels[cle]}.")
     # Journal du mois : sert aussi de garde-fou contre une deuxième série de brouillons.
     with open(sortie / "brouillons.txt", "a", encoding="utf-8") as journal:
         journal.write(f"{datetime.now():%Y-%m-%d %H:%M} par {os.environ.get('USERNAME', '?')} : "
@@ -749,7 +762,7 @@ class Resultat:
 
 def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode: str = "simulation",
              completer: bool = False, sortie: Path | None = None, chemin_config: Path = ICI / "config.toml",
-             codes: set[str] | None = None) -> Resultat:
+             codes: set[str] | None = None, verifies: set[str] | None = None) -> Resultat:
     """Fait tout le travail d'un mois. Sans dossier d'exports, produit seulement la liste des périodes."""
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mois):
         raise ValueError("Le mois doit être au format AAAA-MM, par exemple 2026-09.")
@@ -762,6 +775,12 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
         return Resultat(ecrire_rapport(clients, alertes, mois, "liste", sortie, config), alertes=len(alertes))
     alertes += associer_fichiers(exports, clients, mois, config)
     valider(clients, mois, config)
+    if verifies is not None:
+        # Rappel venu de l'onglet Suivi; ne bloque pas l'envoi.
+        for client in clients.values():
+            for entite in client.a_envoyer(mois):
+                if entite.code not in verifies:
+                    entite.avertissements.append("États financiers pas encore cochés « vérifiés » dans l'onglet Suivi.")
     complete = completer_excel(chemin_clients, clients, mois) if completer else None
 
     prets = []
@@ -783,7 +802,8 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
                     prets=sum(c.pret(mois) for c in concernes),
                     bloques=sum(not c.pret(mois) for c in concernes),
                     alertes=len(alertes), complete=complete, messages=messages, reussi=reussi,
-                    courriels=[{"code": c.code, "nom": c.nom_affiche(mois)} for c in prets])
+                    courriels=[{"code": c.code, "nom": c.nom_affiche(mois),
+                                "entites": [e.code for e in c.a_envoyer(mois)]} for c in prets])
 
 
 def main() -> None:

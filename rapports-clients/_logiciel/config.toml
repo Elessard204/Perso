@@ -32,7 +32,7 @@ verifier_periode = true
 # Ce qui peut être inclus dans l'envoi d'une entité. Chaque « cle » est une colonne
 # Oui/Non de l'onglet Entites; une case vide prend la valeur « defaut ».
 # « titre » : rapport reconnu par son titre dans le PDF Hopem (3e ligne de la page).
-# « annexe » : fichier séparé reconnu par ces mots dans son nom.
+# « annexe » : fichier séparé reconnu par ces mots dans son nom, joint automatiquement.
 # Les titres Hopem des rapports moins courants sont À CONFIRMER sur de vrais PDF.
 [[contenu]]
 cle = "bilan"
@@ -67,12 +67,8 @@ cle = "comptes_a_recevoir"
 libelle = "Comptes à recevoir"
 titre = ["comptes a recevoir", "compte a recevoir"]
 
-[[contenu]]
-cle = "liste_cheques"
-libelle = "Registre des chèques"
-titre = ["cheque"]
-
+# « manuel » : document joint à la main dans le brouillon; l'outil le rappelle seulement.
 [[contenu]]
 cle = "factures"
-libelle = "Factures du mois"
-annexe = ["facture"]
+libelle = "Factures payées"
+manuel = "joindre les factures payées au brouillon avant l'envoi"
