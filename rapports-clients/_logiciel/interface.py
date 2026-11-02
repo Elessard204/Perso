@@ -81,8 +81,12 @@ def trouver_dossier_du_mois(racine: str, mois: str) -> str:
 
 
 def excel_clients(parametres: dict) -> str:
-    excel = parametres.get("excel", "")
-    return excel if excel and Path(excel).is_file() else str(DOSSIER_OUTIL / "clients_rapports.xlsx")
+    """L'Excel des clients est rangé dans _logiciel (pour qu'on ne l'ouvre pas pendant que l'outil s'en sert);
+    l'ancien emplacement, à côté de « Rapports clients », est encore accepté."""
+    for excel in (ICI / "clients_rapports.xlsx", DOSSIER_OUTIL / "clients_rapports.xlsx"):
+        if excel.is_file():
+            return str(excel)
+    return str(ICI / "clients_rapports.xlsx")
 
 
 def chemin(plein: str) -> dict:

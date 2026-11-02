@@ -1,6 +1,6 @@
 # Rapports clients mensuels
 
-Organisation du dossier : à la racine, seulement ce que l'équipe utilise (`Rapports clients.bat`, `clients_rapports.xlsx`, `LISEZ-MOI.txt`); tout le reste (code, Python portable, logo, modèles, configuration, démo) est dans `_logiciel`. Les commandes ci-dessous se lancent depuis `_logiciel`.
+Organisation du dossier : à la racine, seulement ce que l'équipe utilise (`Rapports clients.bat`, la procédure, `LISEZ-MOI.txt`); tout le reste (code, Excel des clients `clients_rapports.xlsx`, Python portable, logo, modèles, configuration, démo) est dans `_logiciel`. L'Excel se modifie par l'onglet Clients du logiciel. Les commandes ci-dessous se lancent depuis `_logiciel`.
 
 Cet outil prépare l'envoi mensuel des rapports financiers aux clients. Sabrina télécharge déjà de Hopem un PDF combiné par entité (« Rapports mensuels Sept 2026_05401.pdf ») dans `ÉTATS FINANCIERS/1_CLIENTS/<mois>`. L'outil prend le relais à partir de là.
 
