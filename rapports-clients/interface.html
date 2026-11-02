@@ -13,6 +13,7 @@
   color-scheme: light;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--fond); color: var(--marine); font: 15px/1.5 var(--police); }
 .bandeau { background: var(--surface); border-bottom: 3px solid var(--orange); padding: 12px 24px; }
 .bandeau-contenu { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
@@ -49,6 +50,38 @@ button:disabled { color: var(--pale); cursor: default; background: var(--surface
 .journal { margin: 0; color: var(--discret); font-size: 13px; }
 .liens { display: flex; flex-wrap: wrap; gap: 8px; }
 iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radius: 10px; background: var(--surface); }
+.onglets { display: flex; gap: 4px; border-bottom: 1px solid var(--ligne); }
+.onglets button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 10px 16px;
+  font-weight: 600; color: var(--discret); }
+.onglets button[aria-selected="true"] { color: var(--marine); border-bottom-color: var(--orange); }
+.onglets button:hover { background: none; color: var(--marine); }
+.barre { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sous-onglets { display: flex; gap: 0; border: 1px solid var(--ligne); border-radius: 6px; overflow: hidden; }
+.sous-onglets button { border: 0; border-radius: 0; border-right: 1px solid var(--ligne); }
+.sous-onglets button:last-child { border-right: 0; }
+.sous-onglets button[aria-pressed="true"] { background: var(--marine); color: #FFFFFF; }
+.barre input[type=search] { width: 240px; }
+.barre .espace { flex: 1; }
+.principal { background: var(--orange); color: #FFFFFF; border-color: var(--orange); font-weight: 700; }
+.principal:hover { background: var(--orange-survol); }
+.message { margin: 0; font-weight: 600; min-height: 1.5em; }
+.message.ok { color: var(--ok); } .message.erreur { color: var(--bloque); }
+.grille { overflow: auto; max-height: 68vh; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; }
+.grille table { border-collapse: separate; border-spacing: 0; font-size: 13.5px; min-width: 100%; }
+.grille th { position: sticky; top: 0; z-index: 2; background: var(--fond); text-align: left; font-size: 12px; font-weight: 700;
+  color: var(--discret); padding: 8px; border-bottom: 1px solid var(--ligne); white-space: nowrap; }
+.grille td { padding: 3px 4px; border-bottom: 1px solid var(--ligne); vertical-align: middle; }
+.grille th:first-child, .grille td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1;
+  border-right: 1px solid var(--ligne); }
+.grille th:first-child { z-index: 3; background: var(--fond); }
+.grille td input, .grille td select { border-color: transparent; background: transparent; padding: 5px 6px; width: 100%; }
+.grille td input:hover, .grille td select:hover { border-color: var(--ligne); }
+.grille td select { min-width: 130px; }
+.grille td input.texte { min-width: 120px; } .grille td input.courriel { min-width: 260px; }
+.grille td input.long { min-width: 320px; }
+.grille td.case { text-align: center; } .grille td.case input { width: 18px; height: 18px; accent-color: var(--ok); }
+.grille td.modifie { background: #FFF4E8; } .grille td.invalide input { border-color: var(--bloque); color: var(--bloque); }
+.grille tr.nouvelle td { background: #FFF4E8; }
 @media (max-width: 700px) {
   .champs { grid-template-columns: 1fr; }
   .etapes { grid-template-columns: 1fr; }
@@ -61,6 +94,12 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
   <div class="bandeau-titre"><b>Rapports clients</b><span>Finance</span></div>
 </div></div>
 <main>
+  <nav class="onglets" aria-label="Sections">
+    <button type="button" data-vue="envoi" aria-selected="true">Envoi du mois</button>
+    <button type="button" data-vue="clients" aria-selected="false">Clients et entités</button>
+  </nav>
+
+  <div id="vue-envoi" class="resultat">
   <p class="note">Rien n'est envoyé aux clients sans que vous cliquiez sur Envoyer dans Outlook.</p>
 
   <div class="champs">
@@ -96,6 +135,24 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
     </div>
     <iframe id="rapport" title="Rapport de contrôle" hidden></iframe>
   </section>
+  </div>
+
+  <div id="vue-clients" class="resultat" hidden>
+    <div class="barre">
+      <div class="sous-onglets" role="group" aria-label="Tableau">
+        <button type="button" data-onglet="Clients" aria-pressed="true">Clients</button>
+        <button type="button" data-onglet="Entites" aria-pressed="false">Entités</button>
+        <button type="button" data-onglet="Gestionnaires" aria-pressed="false">Gestionnaires</button>
+      </div>
+      <input id="recherche" type="search" placeholder="Rechercher (nom, code, courriel…)" aria-label="Rechercher">
+      <span class="espace"></span>
+      <button id="ajouter" type="button">Ajouter une ligne</button>
+      <button id="annuler" type="button" disabled>Annuler les modifications</button>
+      <button id="enregistrer" type="button" class="principal" disabled>Enregistrer</button>
+    </div>
+    <p id="message" class="message" aria-live="polite"></p>
+    <div class="grille"><table><thead id="entete"></thead><tbody id="corps"></tbody></table></div>
+  </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -175,6 +232,122 @@ $("etape-3").addEventListener("click", () => {
     $("etape-3").textContent = "Cliquer encore pour confirmer (rien ne sera envoyé)";
   }
 });
+
+// ---- Onglet « Clients et entités » : l'Excel des clients, modifiable ----
+const LIBELLES = {code_client: "Code client", nom_client: "Nom du client", nom_contact: "Contact (Bonjour…)",
+  courriel_clients: "Courriels clients", courriel_direction: "Courriels direction (cc)", langue: "Langue", actif: "Actif",
+  code_entite: "Code", nom_entite: "Nom légal (Hopem)", immeubles: "Immeubles", fin_exercice: "Fin d'exercice",
+  frequence: "Fréquence", gestionnaire: "Gestionnaire", courriel_gestionnaire: "Courriel gestionnaire (si différent)",
+  bilan: "Bilan", etat_resultats: "État des résultats", sommaire_transactions: "Sommaire", transactions_par_compte: "Transactions par compte",
+  liste_depots: "Dépôts", comptes_a_recevoir: "Comptes à recevoir", liste_cheques: "Chèques", factures: "Factures",
+  notes: "Notes / consignes", nom: "Prénom", courriel: "Courriel"};
+const COURRIEL = /^[^@\s;,]+@[^@\s;,]+\.[a-z]{2,}$/i;
+let donnees = null, onglet = "Clients", modifs = {}, nouveau = 0;
+
+const oui = (v) => ["oui", "o", "x", "yes", "y", "1", "true", "vrai"].includes(String(v || "").trim().toLowerCase());
+const nbModifs = () => Object.values(modifs).reduce((n, m) => n + Object.keys(m).length, 0);
+function courrielsInvalides(v) { return String(v || "").split(/[;,\n]/).map(a => a.trim()).filter(a => a && !COURRIEL.test(a)); }
+function message(texte, genre) { $("message").textContent = texte; $("message").className = "message " + (genre || ""); }
+
+async function chargerDonnees() {
+  const r = await appeler("/donnees?excel=" + encodeURIComponent($("excel").dataset.plein || ""));
+  if (r.erreur) { message(r.erreur, "erreur"); return; }
+  donnees = r; modifs = {}; afficherTableau(); majBoutons();
+}
+
+function majBoutons() {
+  const n = nbModifs();
+  $("enregistrer").disabled = n === 0; $("annuler").disabled = n === 0;
+  $("enregistrer").textContent = n ? `Enregistrer (${n})` : "Enregistrer";
+}
+
+function controle(col, valeur, cle) {
+  const attr = `data-cle="${cle}" data-col="${col.nom}" aria-label="${LIBELLES[col.nom] || col.nom}"`;
+  const echap = (t) => String(t).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  if (col.genre === "case") return `<input type="checkbox" ${attr} ${oui(valeur) ? "checked" : ""}>`;
+  if (col.genre === "liste") {
+    const options = (donnees.listes[col.nom] || []).map(o => typeof o === "string" ? {valeur: o, libelle: o || "—"} : o);
+    if (valeur && !options.some(o => o.valeur === valeur)) options.unshift({valeur, libelle: valeur});
+    return `<select ${attr}>${options.map(o => `<option value="${echap(o.valeur)}" ${o.valeur === valeur ? "selected" : ""}>${echap(o.libelle)}</option>`).join("")}</select>`;
+  }
+  return `<input type="text" class="${col.genre}" ${attr} value="${echap(valeur)}">`;
+}
+
+function afficherTableau() {
+  const t = donnees.onglets[onglet];
+  if (!t) { $("entete").innerHTML = ""; $("corps").innerHTML = ""; return; }
+  $("entete").innerHTML = "<tr>" + t.colonnes.map(c => `<th>${LIBELLES[c.nom] || c.nom}</th>`).join("") + "</tr>";
+  const filtre = $("recherche").value.trim().toLowerCase();
+  const lignes = t.lignes.filter(l => !filtre || l.cle?.startsWith("n") ||
+    Object.values(l.valeurs).some(v => String(v).toLowerCase().includes(filtre)));
+  $("corps").innerHTML = lignes.map(l => {
+    const cle = l.cle || String(l.ligne);
+    const vals = {...l.valeurs, ...((modifs[onglet] || {})[cle] || {}).valeurs};
+    return `<tr class="${l.ligne ? "" : "nouvelle"}">` + t.colonnes.map(c => {
+      const modifie = ((modifs[onglet] || {})[cle] || {valeurs: {}}).valeurs[c.nom] !== undefined;
+      const invalide = c.genre === "courriel" && courrielsInvalides(vals[c.nom]).length;
+      return `<td class="${c.genre === "case" ? "case" : ""} ${modifie ? "modifie" : ""} ${invalide ? "invalide" : ""}">${controle(c, vals[c.nom] ?? "", cle)}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+}
+
+$("corps").addEventListener("change", (ev) => {
+  const champ = ev.target; const cle = champ.dataset.cle, col = champ.dataset.col;
+  if (!cle) return;
+  const ligne = donnees.onglets[onglet].lignes.find(l => (l.cle || String(l.ligne)) === cle);
+  const valeur = champ.type === "checkbox" ? (champ.checked ? "Oui" : "Non") : champ.value;
+  modifs[onglet] = modifs[onglet] || {};
+  const m = modifs[onglet][cle] = modifs[onglet][cle] || {ligne: ligne.ligne, valeurs: {}};
+  if (ligne.ligne && (ligne.valeurs[col] ?? "") === valeur) delete m.valeurs[col]; else m.valeurs[col] = valeur;
+  if (!Object.keys(m.valeurs).length && ligne.ligne) delete modifs[onglet][cle];
+  const td = champ.closest("td");
+  td.classList.toggle("modifie", m.valeurs[col] !== undefined);
+  if (champ.classList.contains("courriel")) {
+    const mauvaises = courrielsInvalides(valeur);
+    td.classList.toggle("invalide", mauvaises.length > 0);
+    if (mauvaises.length) message(`Adresse courriel invalide : ${mauvaises.join(", ")}`, "erreur"); else message("");
+  }
+  majBoutons();
+});
+
+document.querySelectorAll(".sous-onglets button").forEach(b => b.addEventListener("click", () => {
+  onglet = b.dataset.onglet;
+  document.querySelectorAll(".sous-onglets button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  afficherTableau();
+}));
+$("recherche").addEventListener("input", afficherTableau);
+$("ajouter").addEventListener("click", () => {
+  const t = donnees.onglets[onglet]; const cle = "n" + (++nouveau);
+  const valeurs = Object.fromEntries(t.colonnes.map(c => [c.nom, c.nom === "actif" ? "Oui" : ""]));
+  t.lignes.unshift({ligne: null, cle, valeurs: {}});
+  modifs[onglet] = modifs[onglet] || {}; modifs[onglet][cle] = {ligne: null, valeurs};
+  $("recherche").value = ""; afficherTableau(); majBoutons();
+  $("corps").querySelector("input, select")?.focus();
+});
+$("annuler").addEventListener("click", () => { message(""); chargerDonnees(); });
+$("enregistrer").addEventListener("click", async () => {
+  const invalides = [...$("corps").querySelectorAll("td.invalide")];
+  if (invalides.length) { message("Corrigez les adresses courriel en rouge avant d'enregistrer.", "erreur"); return; }
+  $("enregistrer").disabled = true;
+  const messages = [];
+  for (const [nom, lignes] of Object.entries(modifs)) {
+    const liste = Object.values(lignes);
+    if (!liste.length) continue;
+    const r = await appeler("/enregistrer", {excel: $("excel").dataset.plein, onglet: nom, modifications: liste});
+    if (r.erreur) { message(r.erreur, "erreur"); majBoutons(); return; }
+    messages.push(r.message);
+  }
+  await chargerDonnees();
+  message(messages.join(" ") + " Les prochaines vérifications utiliseront ces changements.", "ok");
+});
+
+document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".onglets button").forEach(x => x.setAttribute("aria-selected", x === b));
+  $("vue-envoi").hidden = b.dataset.vue !== "envoi";
+  $("vue-clients").hidden = b.dataset.vue !== "clients";
+  if (b.dataset.vue === "clients" && !donnees) chargerDonnees();
+}));
+window.addEventListener("beforeunload", (ev) => { if (nbModifs()) { ev.preventDefault(); ev.returnValue = ""; } });
 
 // Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
 setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);

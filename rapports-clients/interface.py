@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 # Le Python portable n'ajoute pas le dossier du script au chemin des modules.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import edition_excel  # noqa: E402
 from envoi_rapports import ICI, MOIS_FR, outlook_configure, preparer  # noqa: E402
 
 # Réglages propres à chaque personne (pas dans le dossier partagé) : les chemins OneDrive
@@ -151,6 +152,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.json({"mois": mois, "excel": chemin(excel_clients(parametres)),
                        "dossiers": {m["code"]: chemin(trouver_dossier_du_mois(racine, m["code"])) for m in mois},
                        "outlook": outlook_configure()})
+        elif url.path == "/donnees":
+            excel = Path(params.get("excel") or excel_clients(lire_parametres()))
+            try:
+                self.json(edition_excel.lire(excel))
+            except Exception as erreur:  # affiché dans la page
+                self.json({"erreur": f"Impossible de lire l'Excel des clients ({erreur})."})
         elif url.path == "/signe-de-vie":
             self.json({"ok": True})
         elif url.path == "/rapport":
@@ -187,6 +194,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.json({"ok": bool(cible) and ouvrir(cible)})
         elif url.path == "/lancer":
             self.json(lancer(donnees))
+        elif url.path == "/enregistrer":
+            excel = Path(donnees.get("excel") or excel_clients(lire_parametres()))
+            try:
+                self.json(edition_excel.enregistrer(excel, donnees.get("onglet", ""), donnees.get("modifications", [])))
+            except PermissionError:
+                self.json({"erreur": "L'Excel des clients est ouvert ailleurs. Fermez-le et enregistrez de nouveau."})
+            except Exception as erreur:  # affiché dans la page
+                self.json({"erreur": f"Enregistrement impossible ({erreur})."})
         else:
             self.envoyer(404, b"", "text/plain")
 
