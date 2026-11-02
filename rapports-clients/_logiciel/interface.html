@@ -149,9 +149,8 @@ main.large { max-width: none; }
     <input id="dossier" type="text" readonly placeholder="Choisir le dossier du mois">
     <button id="choisir-dossier" type="button">Choisir…</button>
 
-    <label for="excel">Excel des clients</label>
-    <input id="excel" type="text" readonly>
-    <button id="ouvrir-excel" type="button">Ouvrir</button>
+    <!-- Chemin de l'Excel des clients : gardé pour l'outil, pas affiché (il se modifie dans l'onglet Clients). -->
+    <input id="excel" type="hidden">
   </div>
 
   <div class="etapes">
@@ -311,7 +310,6 @@ $("choisir-dossier").addEventListener("click", async () => {
   const r = await appeler("/choisir-dossier", {depart: $("dossier").dataset.plein});
   if (r.dossier.plein) remplir("dossier", r.dossier);
 });
-$("ouvrir-excel").addEventListener("click", () => appeler("/ouvrir", {quoi: "excel", excel: $("excel").dataset.plein}));
 $("ouvrir-apercus").addEventListener("click", async () => {
   const r = await appeler("/ouvrir", {quoi: "apercus", mois: moisChoisi()});
   if (!r.ok) $("journal").textContent = "Aucun aperçu de courriel pour ce mois : relancez l'étape 2.";

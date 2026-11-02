@@ -113,7 +113,7 @@ class Entite:
 
     @property
     def nom_affiche(self) -> str:
-        return self.nom or self.nom_pdf or self.immeubles
+        return self.nom_pdf or self.nom or self.immeubles
 
     def nom_piece(self, mois: str, langue: str) -> str:
         nom = re.sub(r'[\\/:*?"<>|]+', "-", self.nom_affiche).strip()
@@ -273,16 +273,21 @@ def associer_fichiers(dossier: Path, clients: dict[str, Client], mois: str, conf
     return non_classes
 
 
-def lire_pdf(entite: Entite) -> str:
+def lire_pdf(entite: Entite, config: dict) -> str:
     """Relève le nom imprimé et les titres des rapports de chaque page. Retourne tout le texte."""
+    connus = [m for item in config["contenu"] for m in item.get("titre", [])]
     tout = []
     for page in PdfReader(entite.fichier).pages:
         lignes = [l.strip() for l in (page.extract_text() or "").splitlines() if l.strip()]
         tout.extend(lignes)
         if lignes and re.match(r"^Page\s+\d+", lignes[0]):
             entite.nom_pdf = entite.nom_pdf or re.sub(r"^Page\s+\d+\s*", "", lignes[0])
-            if len(lignes) > 2 and lignes[2] not in entite.titres:
-                entite.titres.append(lignes[2])
+            # Le titre suit le nom, qui est parfois imprimé deux fois : on le cherche dans l'en-tête.
+            # « Grand-Livre - États financiers » est un sous-titre commun, pas le nom du rapport.
+            entete = [l for l in lignes[1:7] if not re.search(r"grand.livre\s*-\s*[ée]tats\s+financiers", l, re.I)]
+            titre = next((l for l in entete if contient(l, connus)), lignes[2] if len(lignes) > 2 else "")
+            if titre and titre not in entite.titres:
+                entite.titres.append(titre)
     return "\n".join(tout)
 
 
@@ -312,6 +317,14 @@ def verifier_elements(entite: Entite, config: dict) -> None:
         entite.avertissements.append(f"{annexe.name} : pièce non cochée dans l'Excel, pas jointe.")
 
 
+def noms_proches(a: str, b: str) -> bool:
+    """Même nom à la ponctuation, aux accents, à la casse et aux « inc » / « & » / « et » près."""
+    def mots(texte: str) -> str:
+        texte = normaliser(texte.replace("&", " et ")).replace("quebec", "qc")
+        return " ".join(m for m in re.split(r"[^a-z0-9]+", texte) if m and m not in {"inc", "ltee", "et"})
+    return mots(a) == mots(b)
+
+
 def code_fichier(code: str) -> str:
     principal, sous = code.split(".")
     return f"{int(principal):03d}{int(sous):02d}"
@@ -320,7 +333,7 @@ def code_fichier(code: str) -> str:
 def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
     controles = config["controles"]
     try:
-        contenu = lire_pdf(entite)
+        contenu = lire_pdf(entite, config)
     except Exception as erreur:
         entite.problemes.append(f"PDF illisible ({erreur}).")
         return
@@ -333,18 +346,20 @@ def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
     if controles.get("verifier_date") and date and date.group(1) != fin_mois:
         entite.problemes.append(f"Le bilan est au {date.group(1)}, attendu au {fin_mois}.")
 
-    periode = re.search(r"p[ée]riode\s+(\d+)", contenu, re.I)
+    # « Pour la période 9 (Du : ...) » de l'état des résultats; pas « Profit (Perte) de la période 301 947.09 » du bilan.
+    periode = re.search(r"Pour\s+la\s+p[ée]riode\s+(\d+)", contenu, re.I)
     if controles.get("verifier_periode") and periode and int(periode.group(1)) != entite.periode(mois):
         entite.problemes.append(
             f"L'état des résultats est pour la période {periode.group(1)}; avec une fin d'exercice "
             f"en {MOIS_FR[entite.fin_exercice - 1]}, on attend la période {entite.periode(mois)}. "
             "Vérifier la fin d'exercice dans l'Excel ou la période extraite.")
 
-    # Protège contre un fichier mal numéroté : le nom imprimé par Hopem doit être celui attendu.
-    if entite.nom and normaliser(entite.nom) != normaliser(entite.nom_pdf):
-        entite.problemes.append(f"Le PDF est au nom de « {entite.nom_pdf} », attendu « {entite.nom} ». Mauvais fichier?")
+    # Le numéro du fichier identifie l'entité; le nom Hopem sert de vérification visuelle, sans bloquer.
+    if entite.nom and not noms_proches(entite.nom, entite.nom_pdf):
+        entite.avertissements.append(f"Nom dans Hopem : « {entite.nom_pdf} »; dans l'Excel : « {entite.nom} ». "
+                                     "Vérifier que c'est le bon fichier, puis corriger le nom dans la fiche.")
     elif not entite.nom:
-        entite.avertissements.append(f"Nom dans le PDF : « {entite.nom_pdf} ». À confirmer dans la colonne nom_entite.")
+        entite.avertissements.append(f"Nom dans le PDF : « {entite.nom_pdf} ». À inscrire dans la fiche du client.")
 
 
 def valider(clients: dict[str, Client], mois: str, config: dict) -> None:
