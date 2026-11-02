@@ -14,7 +14,9 @@ from tkinter import filedialog, messagebox, ttk
 
 from envoi_rapports import ICI, MOIS_FR, outlook_configure, preparer
 
-PARAMETRES = ICI / "parametres.json"
+# Réglages propres à chaque personne (pas dans le dossier partagé) : les chemins OneDrive
+# diffèrent d'un poste à l'autre, par exemple C:\Users\<nom>\OneDrive - Progim\...
+PARAMETRES = Path(os.environ.get("APPDATA") or Path.home()) / "Progim Rapports clients" / "parametres.json"
 # Charte Progim (même look que l'outil de facturation de services).
 MARINE, ORANGE, FOND, BLANC, LIGNE = "#131A2F", "#EE7203", "#F3F4F6", "#FFFFFF", "#DDE2E6"
 VERT, ROUGE, GRIS, PALE = "#2D7A3E", "#B4471A", "#5B6770", "#AEB6C8"
@@ -29,6 +31,7 @@ def lire_parametres() -> dict:
 
 
 def ecrire_parametres(valeurs: dict) -> None:
+    PARAMETRES.parent.mkdir(parents=True, exist_ok=True)
     PARAMETRES.write_text(json.dumps(valeurs, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -79,10 +82,14 @@ class Application(tk.Tk):
         self.mois_choix = mois_recents()
 
         self.var_mois = tk.StringVar(value=self.mois_choix[0][1])
-        self.var_excel = tk.StringVar(value=self.parametres.get("excel", str(ICI / "clients_rapports.xlsx")))
+        # Un chemin enregistré qui n'existe plus sur ce poste est ignoré au profit de l'Excel du dossier partagé.
+        excel = self.parametres.get("excel", "")
+        self.var_excel = tk.StringVar(value=excel if excel and Path(excel).is_file() else str(ICI / "clients_rapports.xlsx"))
         # Installé dans ÉTATS FINANCIERS, l'outil trouve 1_CLIENTS juste à côté sans qu'on le choisisse.
         racine_voisine = ICI.parent / "1_CLIENTS"
-        self.var_racine = tk.StringVar(value=self.parametres.get("racine") or (str(racine_voisine) if racine_voisine.is_dir() else ""))
+        racine = self.parametres.get("racine", "")
+        racine = racine if racine and Path(racine).is_dir() else (str(racine_voisine) if racine_voisine.is_dir() else "")
+        self.var_racine = tk.StringVar(value=racine)
         self.var_dossier = tk.StringVar()
         self.construire()
         self.var_mois.trace_add("write", lambda *_: self.deviner_dossier())
