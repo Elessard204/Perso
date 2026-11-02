@@ -104,6 +104,22 @@ textarea { font: inherit; color: inherit; border: 1px solid var(--ligne); border
 .cases label, .case-seule { display: flex; gap: 8px; align-items: center; font-weight: 400; }
 .cases input, .case-seule input { width: 18px; height: 18px; accent-color: var(--ok); }
 .danger { color: var(--bloque); border-color: #F0C9B6; }
+/* Tableau large : toutes les options de la fiche en colonnes, défilement horizontal, code et nom figés à gauche. */
+main.large { max-width: none; }
+.grille table.large { width: max-content; min-width: 100%; }
+.grille table.large td { max-width: 260px; }
+.grille table.large th.etroit { white-space: normal; max-width: 96px; min-width: 70px; line-height: 1.25; vertical-align: bottom; }
+.grille table.large td.centre { text-align: center; }
+.grille .fige1, .grille .fige2 { position: sticky; z-index: 2; background: var(--surface); }
+.grille th.fige1, .grille th.fige2 { z-index: 3; background: var(--fond); }
+.grille .fige1 { left: 0; min-width: 70px; }
+.grille .fige2 { left: 70px; min-width: 220px; box-shadow: 2px 0 0 var(--ligne); }
+.grille .groupe-col { border-left: 2px solid var(--ligne); }
+.grille td.special { background: #FFF1E0; font-weight: 700; }
+.grille tbody tr:hover td.special { background: #FFE2C2; }
+.coche { color: var(--ok); font-weight: 700; } .sans { color: var(--pale); }
+.legende { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12.5px; color: var(--discret); margin: 0; }
+.legende i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: #FFF1E0; border: 1px solid #F3C99A; vertical-align: -2px; margin-right: 4px; }
 @media (max-width: 700px) {
   .champs { grid-template-columns: 1fr; }
   .etapes { grid-template-columns: 1fr; }
@@ -170,7 +186,8 @@ textarea { font: inherit; color: inherit; border: 1px solid var(--ligne); border
       <button id="ajouter" type="button" class="principal">+ Nouvelle entité</button>
     </div>
     <p id="message" class="message" aria-live="polite"></p>
-    <div class="grille"><table><thead id="entete"></thead><tbody id="corps"></tbody></table></div>
+    <p class="legende" id="legende"><span><i></i>Diffère du réglage habituel (à vérifier)</span><span>Faites défiler vers la droite pour voir toutes les options.</span></p>
+    <div class="grille"><table id="tableau"><thead id="entete"></thead><tbody id="corps"></tbody></table></div>
     <p class="note">Cliquez sur une ligne pour voir et modifier la fiche. Les entités qui ont exactement les mêmes destinataires partent dans un seul courriel.</p>
   </div>
 </main>
@@ -359,19 +376,39 @@ function afficher() {
   const filtre = $("recherche").value.trim().toLowerCase();
   const garde = (valeurs) => !filtre || Object.values(valeurs).some(v => String(v).toLowerCase().includes(filtre));
   $("ajouter").textContent = vue === "clients" ? "+ Nouvelle entité" : "+ Nouveau gestionnaire";
+  $("tableau").classList.toggle("large", vue === "clients");
+  $("legende").hidden = vue !== "clients";
   if (vue === "clients") {
-    $("entete").innerHTML = "<tr><th>Code</th><th>Nom légal (Hopem)</th><th>Immeubles</th><th>Destinataires</th><th>Gestionnaire</th><th>Envoi</th><th>Actif</th></tr>";
+    const pas = '<span class="sans">—</span>';
+    const lignes = (v) => liste(v).map(x => `<span>${echap(x)}</span>`).join("");
+    $("entete").innerHTML = "<tr><th class='fige1'>Code</th><th class='fige2'>Nom légal (Hopem)</th><th>Actif</th><th>Immeubles</th>"
+      + "<th class='groupe-col'>Courriels du client</th><th>Direction en copie</th><th>Langue</th>"
+      + "<th class='groupe-col'>Gestionnaire</th><th>Courriel gest. (si différent)</th><th>Fin d'exercice</th><th>Fréquence</th>"
+      + donnees.contenu.map((c, i) => `<th class="etroit centre${i ? "" : " groupe-col"}" title="${echap(c.libelle)}">${echap(c.libelle)}</th>`).join("")
+      + "<th class='groupe-col'>Notes / consignes</th></tr>";
     $("corps").innerHTML = donnees.entites.filter(e => garde(e.valeurs)).map(e => {
-      const v = e.valeurs, groupe = memeCourriel(v);
-      const courriels = liste(v.courriel_clients).map(a => `<span>${echap(a)}</span>`).join("") || '<span class="discret">Aucun destinataire</span>';
-      return `<tr tabindex="0" data-ligne="${e.ligne}" class="${oui(v.actif || "oui") ? "" : "inactif"}">
-        <td class="code">${echap(v.code_entite)}</td>
-        <td>${echap(v.nom_entite) || '<span class="discret">À compléter</span>'}</td>
-        <td><div class="liste-cellule">${liste(v.immeubles).map(i => `<span>${echap(i)}</span>`).join("")}</div></td>
-        <td><div class="liste-cellule">${courriels}${groupe.length ? `<span class="pastille groupe">Même courriel que ${echap(groupe.join(", "))}</span>` : ""}</div></td>
-        <td>${echap(v.gestionnaire) || '<span class="discret">—</span>'}</td>
-        <td>${echap(v.frequence || "mensuel")}<div class="discret">fin d'exercice : ${echap(donnees.mois[(parseInt(v.fin_exercice) || 12) - 1])}</div></td>
-        <td><span class="pastille ${oui(v.actif || "oui") ? "oui" : "non"}">${oui(v.actif || "oui") ? "Oui" : "Non"}</span></td></tr>`;
+      const v = e.valeurs, groupe = memeCourriel(v), actif = oui(v.actif || "oui");
+      const sp = (cond) => cond ? " special" : "";
+      const direction = liste(v.courriel_direction);
+      const langue = (v.langue || "FR").toUpperCase(), frequence = v.frequence || "mensuel", fin = parseInt(v.fin_exercice) || 12;
+      const cases = donnees.contenu.map((c, i) => {
+        const coche = v[c.cle] ? oui(v[c.cle]) : c.defaut;
+        return `<td class="centre${i ? "" : " groupe-col"}${sp(coche !== c.defaut)}">${coche ? '<span class="coche">✓</span>' : pas}</td>`;
+      }).join("");
+      return `<tr tabindex="0" data-ligne="${e.ligne}" class="${actif ? "" : "inactif"}">
+        <td class="code fige1">${echap(v.code_entite)}</td>
+        <td class="fige2">${echap(v.nom_entite) || '<span class="discret">À compléter</span>'}</td>
+        <td><span class="pastille ${actif ? "oui" : "non"}">${actif ? "Oui" : "Non"}</span></td>
+        <td><div class="liste-cellule">${lignes(v.immeubles)}</div></td>
+        <td class="groupe-col${sp(!liste(v.courriel_clients).length)}"><div class="liste-cellule">${lignes(v.courriel_clients) || '<span class="discret">Aucun destinataire</span>'}${groupe.length ? `<span class="pastille groupe">Même courriel que ${echap(groupe.join(", "))}</span>` : ""}</div></td>
+        <td class="${sp(direction.length)}"><div class="liste-cellule">${direction.length ? lignes(v.courriel_direction) : '<span class="discret">Par défaut</span>'}</div></td>
+        <td class="${sp(langue !== "FR")}">${echap(langue)}</td>
+        <td class="groupe-col${sp(!v.gestionnaire)}">${echap(v.gestionnaire) || pas}</td>
+        <td class="${sp(v.courriel_gestionnaire)}">${echap(v.courriel_gestionnaire) || pas}</td>
+        <td class="${sp(fin !== 12)}">${echap(donnees.mois[fin - 1])}</td>
+        <td class="${sp(frequence !== "mensuel")}">${echap(frequence)}</td>
+        ${cases}
+        <td class="groupe-col${sp(v.notes)}" style="min-width:200px">${echap(v.notes) || pas}</td></tr>`;
     }).join("");
   } else {
     $("entete").innerHTML = "<tr><th>Prénom</th><th>Courriel</th><th>Entités</th><th></th></tr>";
@@ -523,6 +560,7 @@ document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("cl
   document.querySelectorAll(".onglets button").forEach(x => x.setAttribute("aria-selected", x === b));
   $("vue-envoi").hidden = b.dataset.vue !== "envoi";
   $("vue-clients").hidden = b.dataset.vue !== "clients";
+  document.querySelector("main").classList.toggle("large", b.dataset.vue === "clients");
   if (b.dataset.vue === "clients" && !donnees) chargerDonnees();
 }));
 
