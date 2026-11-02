@@ -347,12 +347,19 @@ def verifier_contenu(entite: Entite, mois: str, config: dict) -> None:
         entite.problemes.append(f"Le bilan est au {date.group(1)}, attendu au {fin_mois}.")
 
     # « Pour la période 9 (Du : ...) » de l'état des résultats; pas « Profit (Perte) de la période 301 947.09 » du bilan.
+    # Tant que l'exercice précédent n'est pas fermé dans Hopem, le mois N porte le numéro N + 13
+    # (périodes 14 à 26); la période 13 sert seulement aux ajustements de fin d'année.
     periode = re.search(r"Pour\s+la\s+p[ée]riode\s+(\d+)", contenu, re.I)
-    if controles.get("verifier_periode") and periode and int(periode.group(1)) != entite.periode(mois):
+    attendue = entite.periode(mois)
+    if controles.get("verifier_periode") and periode and int(periode.group(1)) not in (attendue, attendue + 13):
         entite.problemes.append(
             f"L'état des résultats est pour la période {periode.group(1)}; avec une fin d'exercice "
-            f"en {MOIS_FR[entite.fin_exercice - 1]}, on attend la période {entite.periode(mois)}. "
-            "Vérifier la fin d'exercice dans l'Excel ou la période extraite.")
+            f"en {MOIS_FR[entite.fin_exercice - 1]}, on attend la période {attendue} "
+            f"(ou {attendue + 13} si l'exercice précédent n'est pas encore fermé). "
+            "Vérifier la fin d'exercice dans la fiche ou la période extraite.")
+    elif periode and int(periode.group(1)) == attendue + 13:
+        entite.avertissements.append(f"Période {attendue + 13} : l'exercice précédent n'est pas encore fermé dans Hopem "
+                                     f"(correspond à la période {attendue}).")
 
     # Le numéro du fichier identifie l'entité; le nom Hopem sert de vérification visuelle, sans bloquer.
     if entite.nom and not noms_proches(entite.nom, entite.nom_pdf):
@@ -578,6 +585,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
             par_periode.setdefault(x.periode(mois), []).append(x)
     extraction = "".join(
         f'<div class="groupe"><div class="groupe-tete"><span class="periode grande">Période {p}</span>'
+        f'<span class="discret">ou {p + 13} si l\'exercice précédent n\'est pas fermé</span>'
         f'<span class="discret">{len(xs)} entité{"s" if len(xs) > 1 else ""} · fin d\'exercice en '
         f'{", ".join(sorted({MOIS_FR[x.fin_exercice - 1] for x in xs}))}</span></div>'
         f'<div class="discret">{" · ".join(f"<span class=code>{e(x.code)}</span> {e(x.nom_affiche)}" for x in xs)}</div></div>'
