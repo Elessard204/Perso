@@ -762,7 +762,7 @@ class Resultat:
 
 def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode: str = "simulation",
              completer: bool = False, sortie: Path | None = None, chemin_config: Path = ICI / "config.toml",
-             codes: set[str] | None = None, verifies: set[str] | None = None) -> Resultat:
+             codes: set[str] | None = None, suivi: dict[str, dict] | None = None) -> Resultat:
     """Fait tout le travail d'un mois. Sans dossier d'exports, produit seulement la liste des périodes."""
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mois):
         raise ValueError("Le mois doit être au format AAAA-MM, par exemple 2026-09.")
@@ -775,12 +775,15 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
         return Resultat(ecrire_rapport(clients, alertes, mois, "liste", sortie, config), alertes=len(alertes))
     alertes += associer_fichiers(exports, clients, mois, config)
     valider(clients, mois, config)
-    if verifies is not None:
-        # Rappel venu de l'onglet Suivi; ne bloque pas l'envoi.
+    if suivi is not None:
+        # Onglet Suivi : pas d'envoi sans conciliation bancaire faite et états financiers vérifiés.
         for client in clients.values():
             for entite in client.a_envoyer(mois):
-                if entite.code not in verifies:
-                    entite.avertissements.append("États financiers pas encore cochés « vérifiés » dans l'onglet Suivi.")
+                etat = suivi.get(entite.code, {})
+                if not etat.get("conciliation"):
+                    entite.problemes.append("Conciliation bancaire pas cochée dans l'onglet Suivi.")
+                if not etat.get("ef_verifies"):
+                    entite.problemes.append("États financiers pas cochés « vérifiés » dans l'onglet Suivi.")
     complete = completer_excel(chemin_clients, clients, mois) if completer else None
 
     prets = []

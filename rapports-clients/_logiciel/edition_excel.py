@@ -357,10 +357,11 @@ def ecrire_suivi(classeur, mois: str, code: str, valeurs: dict) -> None:
             feuille.cell(ligne, COLONNES_SUIVI.index(colonne) + 1).value = str(valeur).strip() or None
 
 
-def enregistrer_suivi(chemin: Path, mois: str, code: str, valeurs: dict) -> dict:
-    """Une case ou un commentaire du suivi, enregistré tout de suite (sans copie de sauvegarde)."""
+def enregistrer_suivi(chemin: Path, mois: str, codes: list[str], valeurs: dict) -> dict:
+    """Une case ou un commentaire du suivi (une entité, ou plusieurs avec « tout cocher »), enregistré tout de suite."""
     classeur = load_workbook(chemin)
-    ecrire_suivi(classeur, mois, cle_code(code), valeurs)
+    for code in codes:
+        ecrire_suivi(classeur, mois, cle_code(code), valeurs)
     classeur.save(chemin)
     return {"ok": True}
 
@@ -373,5 +374,6 @@ def marquer_envoi(chemin: Path, mois: str, codes: list[str], date: str) -> None:
     classeur.save(chemin)
 
 
-def entites_verifiees(chemin: Path, mois: str) -> set[str]:
-    return {l["code"] for l in lire_suivi(chemin, mois)["lignes"] if l["ef_verifies"]}
+def etat_suivi(chemin: Path, mois: str) -> dict[str, dict]:
+    """Conciliation et états financiers vérifiés de chaque entité pour le mois : {code: {...}}."""
+    return {l["code"]: l for l in lire_suivi(chemin, mois)["lignes"]}

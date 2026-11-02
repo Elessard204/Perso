@@ -219,8 +219,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             excel = Path(donnees.get("excel") or excel_clients(lire_parametres()))
             try:
                 if url.path == "/suivi":
-                    self.json(edition_excel.enregistrer_suivi(excel, donnees.get("mois", ""), donnees.get("code", ""),
-                                                              donnees.get("valeurs", {})))
+                    codes = donnees.get("codes") or [donnees.get("code", "")]
+                    self.json(edition_excel.enregistrer_suivi(excel, donnees.get("mois", ""), codes, donnees.get("valeurs", {})))
                 elif url.path == "/fiche":
                     self.json(edition_excel.enregistrer_fiche(excel, donnees.get("ligne"), donnees.get("valeurs", {})))
                 elif url.path == "/fiche/retirer":
@@ -259,15 +259,17 @@ def lancer(donnees: dict) -> dict:
                                  f"(le {deja[doublons[0]]}). Recliquez pour les recréer quand même; "
                                  "supprimez les anciens dans Outlook au besoin."}
     try:
-        verifies = edition_excel.entites_verifiees(excel, mois) if mode != "liste" else None
-    except Exception:  # le suivi est un rappel : il ne doit jamais empêcher la vérification
-        verifies = None
+        suivi = edition_excel.etat_suivi(excel, mois) if mode != "liste" else None
+    except PermissionError:
+        return {"erreur": "L'Excel des clients est ouvert ailleurs. Fermez-le et recommencez."}
+    except Exception as erreur:
+        return {"erreur": f"Impossible de lire l'onglet Suivi ({erreur})."}
     parametres = lire_parametres()
     parametres["excel"] = str(excel)
     ecrire_parametres(parametres)
     try:
         resultat = preparer(mois, excel, exports, "simulation" if mode == "liste" else mode,
-                            completer=exports is not None, codes=codes, verifies=verifies)
+                            completer=exports is not None, codes=codes, suivi=suivi)
     except PermissionError:
         return {"erreur": "Un fichier est ouvert ailleurs (probablement l'Excel des clients). Fermez-le et recommencez."}
     except Exception as erreur:  # affiché à l'employé plutôt que d'arrêter l'outil

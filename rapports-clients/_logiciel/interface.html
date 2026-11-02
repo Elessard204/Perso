@@ -129,6 +129,8 @@ main.large { max-width: none; }
 .suivi-cellule input[type=text] { min-width: 220px; padding: 4px 8px; font-size: 13px; }
 .suivi-cellule input[type=date] { width: auto; padding: 4px 8px; font-size: 13px; }
 .grille tr.fait td { background: #F3FAF4; }
+.grille th .tout { font-size: 12px; font-weight: 700; color: var(--discret); white-space: nowrap; }
+.grille th .tout input { width: 16px; height: 16px; accent-color: var(--ok); }
 .legende { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12.5px; color: var(--discret); margin: 0; }
 .legende i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; background: #FFF1E0; border: 1px solid #F3C99A; vertical-align: -2px; margin-right: 4px; }
 @media (max-width: 700px) {
@@ -197,10 +199,13 @@ main.large { max-width: none; }
     <div class="compteurs-suivi" id="suivi-compteurs"></div>
     <p id="suivi-message" class="message" aria-live="polite"></p>
     <div class="grille"><table>
-      <thead><tr><th>Code</th><th>Nom légal (Hopem)</th><th>Actif</th><th>Conciliation bancaire</th><th>États financiers vérifiés</th><th>Date d'envoi</th></tr></thead>
+      <thead><tr><th>Code</th><th>Nom légal (Hopem)</th><th>Actif</th>
+        <th><label class="case-seule tout"><input type="checkbox" id="tout-conciliation"> Conciliation bancaire</label></th>
+        <th><label class="case-seule tout"><input type="checkbox" id="tout-ef_verifies"> États financiers vérifiés</label></th>
+        <th>Date d'envoi</th></tr></thead>
       <tbody id="suivi-corps"></tbody>
     </table></div>
-    <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). La date d'envoi se remplit toute seule quand le brouillon est créé à l'étape 3; elle peut être corrigée à la main.</p>
+    <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). Les cases d'en-tête cochent ou décochent toutes les entités affichées. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé à l'étape 3; elle peut être corrigée à la main.</p>
   </div>
 
   <div id="vue-clients" class="resultat" hidden>
@@ -679,16 +684,37 @@ async function chargerSuivi() {
   if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
   suivi = r; afficherSuivi();
 }
+function lignesSuiviVisibles() {
+  const filtre = $("suivi-recherche").value.trim().toLowerCase();
+  return suivi.lignes.filter(l => (l.actif || $("suivi-inactifs").checked) && (!filtre || `${l.code} ${l.nom}`.toLowerCase().includes(filtre)));
+}
+// « Tout cocher » : applique la case à toutes les entités affichées (filtre de recherche compris).
+for (const champ of ["conciliation", "ef_verifies"]) {
+  $("tout-" + champ).addEventListener("change", async (ev) => {
+    const valeur = ev.target.checked, visibles = lignesSuiviVisibles();
+    const libelle = champ === "conciliation" ? "la conciliation bancaire" : "les états financiers vérifiés";
+    if (!confirm(`${valeur ? "Cocher" : "Décocher"} ${libelle} pour les ${visibles.length} entités affichées?`)) { afficherSuivi(); return; }
+    const r = await appeler("/suivi", {excel: $("excel").dataset.plein, mois: suivi.mois, codes: visibles.map(l => l.code), valeurs: {[champ]: valeur}});
+    if (r.erreur) { message("suivi-message", r.erreur, "erreur"); afficherSuivi(); return; }
+    visibles.forEach(l => l[champ] = valeur);
+    message("suivi-message", `${visibles.length} entités : enregistré.`, "ok");
+    afficherSuivi();
+  });
+}
 function afficherSuivi() {
   if (!suivi) return;
-  const filtre = $("suivi-recherche").value.trim().toLowerCase();
   const actives = suivi.lignes.filter(l => l.actif);
   const compte = (f) => actives.filter(f).length;
   $("suivi-compteurs").innerHTML = `<div><b>${compte(l => l.conciliation)} / ${actives.length}</b>conciliations bancaires faites</div>`
     + `<div><b>${compte(l => l.ef_verifies)} / ${actives.length}</b>états financiers vérifiés</div>`
     + `<div><b>${compte(l => l.date_envoi)} / ${actives.length}</b>rapports envoyés</div>`;
-  $("suivi-corps").innerHTML = suivi.lignes
-    .filter(l => (l.actif || $("suivi-inactifs").checked) && (!filtre || `${l.code} ${l.nom}`.toLowerCase().includes(filtre)))
+  const visibles = lignesSuiviVisibles();
+  for (const champ of ["conciliation", "ef_verifies"]) {
+    const coches = visibles.filter(l => l[champ]).length;
+    $("tout-" + champ).checked = visibles.length > 0 && coches === visibles.length;
+    $("tout-" + champ).indeterminate = coches > 0 && coches < visibles.length;
+  }
+  $("suivi-corps").innerHTML = visibles
     .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.conciliation && l.ef_verifies && l.date_envoi ? "fait" : ""}">
       <td class="code">${echap(l.code)}</td><td>${echap(l.nom) || '<span class="discret">À compléter</span>'}</td>
       <td><span class="pastille ${l.actif ? "oui" : "non"}">${l.actif ? "Oui" : "Non"}</span></td>
