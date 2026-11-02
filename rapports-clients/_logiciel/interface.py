@@ -28,6 +28,8 @@ from envoi_rapports import ICI, MOIS_FR, outlook_configure, preparer  # noqa: E4
 # diffèrent d'un poste à l'autre, par exemple C:\Users\<nom>\OneDrive - Progim\...
 PARAMETRES = Path(os.environ.get("APPDATA") or Path.home()) / "Progim Rapports clients" / "parametres.json"
 SORTIE = ICI / "sortie"
+# Le code est rangé dans « _logiciel »; l'équipe ne voit que le dossier de l'outil, juste au-dessus.
+DOSSIER_OUTIL = ICI.parent if ICI.name == "_logiciel" else ICI
 dernier_signe_de_vie = time.monotonic()
 
 
@@ -63,7 +65,7 @@ def racine_clients(parametres: dict) -> str:
     racine = parametres.get("racine", "")
     if racine and Path(racine).is_dir():
         return racine
-    voisine = ICI.parent / "1_CLIENTS"
+    voisine = DOSSIER_OUTIL.parent / "1_CLIENTS"
     return str(voisine) if voisine.is_dir() else ""
 
 
@@ -80,12 +82,12 @@ def trouver_dossier_du_mois(racine: str, mois: str) -> str:
 
 def excel_clients(parametres: dict) -> str:
     excel = parametres.get("excel", "")
-    return excel if excel and Path(excel).is_file() else str(ICI / "clients_rapports.xlsx")
+    return excel if excel and Path(excel).is_file() else str(DOSSIER_OUTIL / "clients_rapports.xlsx")
 
 
 def chemin(plein: str) -> dict:
     """Chemin complet (utilisé par l'outil) et version courte à afficher, sans « C:\\Users\\<nom>\\OneDrive - ... »."""
-    bibliotheque = ICI.parent.parent  # p. ex. « COMPTABILITÉ - Documents »
+    bibliotheque = DOSSIER_OUTIL.parent.parent  # p. ex. « COMPTABILITÉ - Documents »
     try:
         court = str(Path(plein).relative_to(bibliotheque)) if plein else ""
     except ValueError:

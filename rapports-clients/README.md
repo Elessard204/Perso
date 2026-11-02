@@ -1,5 +1,7 @@
 # Rapports clients mensuels
 
+Organisation du dossier : à la racine, seulement ce que l'équipe utilise (`Rapports clients.bat`, `clients_rapports.xlsx`, `LISEZ-MOI.txt`); tout le reste (code, Python portable, logo, modèles, configuration, démo) est dans `_logiciel`. Les commandes ci-dessous se lancent depuis `_logiciel`.
+
 Cet outil prépare l'envoi mensuel des rapports financiers aux clients. Sabrina télécharge déjà de Hopem un PDF combiné par entité (« Rapports mensuels Sept 2026_05401.pdf ») dans `ÉTATS FINANCIERS/1_CLIENTS/<mois>`. L'outil prend le relais à partir de là.
 
 Il associe chaque PDF à son entité grâce aux 5 derniers chiffres (05401 = 54.1). Il vérifie ensuite le contenu du PDF et regroupe les entités qui ont les mêmes destinataires. Il prépare enfin un courriel par client, qui part de finance@progim.com avec le gestionnaire et la direction en cc.

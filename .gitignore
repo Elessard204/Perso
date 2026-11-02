@@ -1,7 +1,7 @@
 # Jamais de vraies données clients dans le repo
-rapports-clients/sortie/
-rapports-clients/demo/exports/
-rapports-clients/demo/*.xlsx
+rapports-clients/_logiciel/sortie/
+rapports-clients/_logiciel/demo/exports/
+rapports-clients/_logiciel/demo/*.xlsx
 *.xlsx
 *.pdf
 *.eml
@@ -9,4 +9,4 @@ __pycache__/
 .venv/
 .env
 rapports-clients/parametres.json
-rapports-clients/python_portable.zip
+rapports-clients/_logiciel/python_portable.zip
