@@ -8,7 +8,7 @@ Il associe chaque PDF à son entité grâce aux 5 derniers chiffres (05401 = 54.
 
 ## Utilisation par l'équipe
 
-Double-cliquer sur **Rapports clients.bat**. La première fois, il installe les modules nécessaires (environ une minute), puis ouvre la fenêtre de l'outil. Le mois proposé est le dernier mois terminé.
+Double-cliquer sur **Rapports clients.bat**. Rien à installer : comme l'outil de facturation, il utilise le Python portable de Progim (`python_portable.zip`, décompressé une seule fois par poste dans `%LOCALAPPDATA%\ProgimFacturation`). L'outil s'ouvre dans le navigateur (`interface.py` et `interface.html`, serveur local qui s'arrête une minute après la fermeture de la page). Le mois proposé est le dernier mois terminé. Les réglages de chaque personne sont gardés dans son profil Windows, pas dans le dossier partagé.
 
 1. **Étape 1 – Voir les périodes à extraire.** Avant de télécharger les rapports de Hopem : chaque entité a sa propre fin d'exercice, donc septembre est la période 9 pour une fin en décembre, la période 5 pour une fin en avril, etc.
 2. Télécharger les rapports de Hopem comme d'habitude dans `ÉTATS FINANCIERS/1_CLIENTS/<mois>`, sans changer les noms. La première fois, choisir ce dossier avec « Choisir… » : les mois suivants, l'outil le retrouve seul.

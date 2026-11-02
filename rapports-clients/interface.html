@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapports clients – Progim</title>
+<style>
+/* Charte Progim (même look que l'outil de facturation et le rapport de contrôle). */
+:root {
+  --marine: #131A2F; --orange: #EE7203; --orange-survol: #D96500; --fond: #F3F4F6; --surface: #FFFFFF;
+  --discret: #5B6770; --pale: #AEB6C8; --ligne: #DDE2E6; --ok: #2D7A3E; --bloque: #B4471A;
+  --police: "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fond); color: var(--marine); font: 15px/1.5 var(--police); }
+.bandeau { background: var(--surface); border-bottom: 3px solid var(--orange); padding: 12px 24px; }
+.bandeau-contenu { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+.bandeau img { height: 40px; width: auto; }
+.bandeau-titre { border-left: 1px solid var(--ligne); padding-left: 14px; display: flex; flex-direction: column; }
+.bandeau-titre b { font-size: 17px; }
+.bandeau-titre span { font-size: 12px; color: var(--discret); }
+main { max-width: 980px; margin: 0 auto; padding: 20px 24px 48px; display: grid; gap: 20px; }
+.note { color: var(--discret); margin: 0; }
+.champs { background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; padding: 16px 18px;
+  display: grid; grid-template-columns: max-content 1fr max-content; gap: 10px 12px; align-items: center; }
+label { font-weight: 600; font-size: 14px; }
+select, input { font: inherit; color: inherit; border: 1px solid var(--ligne); border-radius: 6px; padding: 7px 10px;
+  background: var(--surface); min-width: 0; width: 100%; }
+select { width: auto; }
+button { font: inherit; cursor: pointer; border-radius: 6px; padding: 8px 14px; border: 1px solid var(--ligne);
+  background: var(--surface); color: var(--marine); }
+button:hover { background: #E8EBEF; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+button:disabled { color: var(--pale); cursor: default; background: var(--surface); }
+.etapes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.etape { display: grid; gap: 4px; }
+.etape span { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--orange); }
+.etape button { font-weight: 700; padding: 14px; min-height: 64px; }
+.etape.principale button { background: var(--orange); color: #FFFFFF; border-color: var(--orange); }
+.etape.principale button:hover { background: var(--orange-survol); }
+.etape.marine button { background: var(--marine); color: #FFFFFF; border-color: var(--marine); }
+.etape.marine button:disabled { background: #2E3650; color: var(--pale); }
+.etape small { color: var(--discret); font-size: 12px; }
+.resultat { display: grid; gap: 8px; }
+.resume { font-size: 17px; font-weight: 700; margin: 0; min-height: 1.5em; }
+.resume.ok { color: var(--ok); } .resume.bloque { color: var(--bloque); } .resume.encours { color: var(--discret); }
+.journal { margin: 0; color: var(--discret); font-size: 13px; }
+.liens { display: flex; flex-wrap: wrap; gap: 8px; }
+iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radius: 10px; background: var(--surface); }
+@media (max-width: 700px) {
+  .champs { grid-template-columns: 1fr; }
+  .etapes { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="bandeau"><div class="bandeau-contenu">
+  <img src="/logo.png" alt="Progim">
+  <div class="bandeau-titre"><b>Rapports clients</b><span>Finance</span></div>
+</div></div>
+<main>
+  <p class="note">Rien n'est envoyé aux clients sans que vous cliquiez sur Envoyer dans Outlook.</p>
+
+  <div class="champs">
+    <label for="mois">Mois des rapports</label>
+    <select id="mois"></select>
+    <span></span>
+
+    <label for="dossier">Dossier des rapports Hopem</label>
+    <input id="dossier" type="text" spellcheck="false">
+    <button id="choisir-dossier" type="button">Choisir…</button>
+
+    <label for="excel">Excel des clients</label>
+    <input id="excel" type="text" spellcheck="false">
+    <button id="ouvrir-excel" type="button">Ouvrir</button>
+  </div>
+
+  <div class="etapes">
+    <div class="etape"><span>ÉTAPE 1</span>
+      <button id="etape-1" type="button">Voir les périodes à extraire de Hopem</button></div>
+    <div class="etape principale"><span>ÉTAPE 2</span>
+      <button id="etape-2" type="button">Vérifier les rapports et préparer les courriels</button></div>
+    <div class="etape marine"><span>ÉTAPE 3</span>
+      <button id="etape-3" type="button">Créer les brouillons dans Outlook</button>
+      <small id="outlook-note" hidden>Pas encore branché à Outlook</small></div>
+  </div>
+
+  <section class="resultat" aria-live="polite">
+    <p id="resume" class="resume"></p>
+    <p id="journal" class="journal"></p>
+    <div class="liens" id="liens" hidden>
+      <button id="nouvel-onglet" type="button">Ouvrir le rapport dans un onglet</button>
+      <button id="ouvrir-apercus" type="button">Ouvrir les aperçus de courriels</button>
+    </div>
+    <iframe id="rapport" title="Rapport de contrôle" hidden></iframe>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let etat = null;
+let rapport = "";
+
+async function appeler(chemin, donnees) {
+  const reponse = await fetch(chemin, donnees === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(donnees)
+  });
+  return reponse.json();
+}
+
+function moisChoisi() { return $("mois").value; }
+
+async function charger() {
+  etat = await appeler("/etat");
+  $("mois").innerHTML = etat.mois.map(m => `<option value="${m.code}">${m.libelle}</option>`).join("");
+  $("excel").value = etat.excel;
+  $("dossier").value = etat.dossiers[moisChoisi()] || "";
+  if (!etat.outlook) { $("etape-3").disabled = true; $("outlook-note").hidden = false; }
+}
+
+$("mois").addEventListener("change", () => { $("dossier").value = (etat && etat.dossiers[moisChoisi()]) || ""; });
+
+$("choisir-dossier").addEventListener("click", async () => {
+  const r = await appeler("/choisir-dossier", {depart: $("dossier").value});
+  if (r.dossier) $("dossier").value = r.dossier;
+});
+$("ouvrir-excel").addEventListener("click", () => appeler("/ouvrir", {quoi: "excel", excel: $("excel").value}));
+$("ouvrir-apercus").addEventListener("click", () => appeler("/ouvrir", {quoi: "apercus", mois: moisChoisi()}));
+$("nouvel-onglet").addEventListener("click", () => { if (rapport) window.open(rapport, "_blank"); });
+
+async function lancer(nom, mode) {
+  const boutons = ["etape-1", "etape-2", "etape-3"].map($);
+  const etatsAvant = boutons.map(b => b.disabled);
+  boutons.forEach(b => b.disabled = true);
+  $("resume").className = "resume encours";
+  $("resume").textContent = `${nom} en cours…`;
+  $("journal").textContent = "";
+  try {
+    const r = await appeler("/lancer", {mois: moisChoisi(), mode, dossier: $("dossier").value, excel: $("excel").value});
+    if (r.erreur) {
+      $("resume").className = "resume bloque";
+      $("resume").textContent = `${nom} : ${r.erreur}`;
+      return;
+    }
+    $("resume").className = "resume " + (r.ok ? "ok" : "bloque");
+    $("resume").textContent = r.resume;
+    $("journal").textContent = r.complete || "";
+    rapport = r.rapport;
+    $("rapport").src = rapport;
+    $("rapport").hidden = false;
+    $("liens").hidden = false;
+  } catch (e) {
+    $("resume").className = "resume bloque";
+    $("resume").textContent = "L'outil ne répond plus. Fermez cette page et relancez « Rapports clients ».";
+  } finally {
+    boutons.forEach((b, i) => b.disabled = etatsAvant[i]);
+  }
+}
+
+$("etape-1").addEventListener("click", () => lancer("Liste des périodes", "liste"));
+$("etape-2").addEventListener("click", () => lancer("Vérification", "simulation"));
+$("etape-3").addEventListener("click", () => {
+  $("resume").className = "resume";
+  $("resume").textContent = "";
+  if ($("etape-3").dataset.confirmer === "1") {
+    $("etape-3").dataset.confirmer = "";
+    $("etape-3").textContent = "Créer les brouillons dans Outlook";
+    lancer("Création des brouillons", "brouillons");
+  } else {
+    // Confirmation dans la page : un deuxième clic crée les brouillons.
+    $("etape-3").dataset.confirmer = "1";
+    $("etape-3").textContent = "Cliquer encore pour confirmer (rien ne sera envoyé)";
+  }
+});
+
+// Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
+setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);
+charger();
+</script>
+</body>
+</html>
