@@ -25,6 +25,7 @@ main { max-width: 980px; margin: 0 auto; padding: 20px 24px 48px; display: grid;
 .champs { background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; padding: 16px 18px;
   display: grid; grid-template-columns: max-content 1fr max-content; gap: 10px 12px; align-items: center; }
 label { font-weight: 600; font-size: 14px; }
+input[readonly] { background: #F8F9FA; }
 select, input { font: inherit; color: inherit; border: 1px solid var(--ligne); border-radius: 6px; padding: 7px 10px;
   background: var(--surface); min-width: 0; width: 100%; }
 select { width: auto; }
@@ -68,11 +69,11 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
     <span></span>
 
     <label for="dossier">Dossier des rapports Hopem</label>
-    <input id="dossier" type="text" spellcheck="false">
+    <input id="dossier" type="text" readonly placeholder="Choisir le dossier du mois">
     <button id="choisir-dossier" type="button">Choisir…</button>
 
     <label for="excel">Excel des clients</label>
-    <input id="excel" type="text" spellcheck="false">
+    <input id="excel" type="text" readonly>
     <button id="ouvrir-excel" type="button">Ouvrir</button>
   </div>
 
@@ -100,6 +101,8 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
 const $ = (id) => document.getElementById(id);
 let etat = null;
 let rapport = "";
+// Chaque champ affiche le chemin court; l'outil reçoit le chemin complet propre à ce poste.
+function remplir(id, chemin) { $(id).value = chemin.court || ""; $(id).dataset.plein = chemin.plein || ""; }
 
 async function appeler(chemin, donnees) {
   const reponse = await fetch(chemin, donnees === undefined ? {} : {
@@ -113,18 +116,18 @@ function moisChoisi() { return $("mois").value; }
 async function charger() {
   etat = await appeler("/etat");
   $("mois").innerHTML = etat.mois.map(m => `<option value="${m.code}">${m.libelle}</option>`).join("");
-  $("excel").value = etat.excel;
-  $("dossier").value = etat.dossiers[moisChoisi()] || "";
+  remplir("excel", etat.excel);
+  remplir("dossier", etat.dossiers[moisChoisi()] || {});
   if (!etat.outlook) { $("etape-3").disabled = true; $("outlook-note").hidden = false; }
 }
 
-$("mois").addEventListener("change", () => { $("dossier").value = (etat && etat.dossiers[moisChoisi()]) || ""; });
+$("mois").addEventListener("change", () => remplir("dossier", (etat && etat.dossiers[moisChoisi()]) || {}));
 
 $("choisir-dossier").addEventListener("click", async () => {
-  const r = await appeler("/choisir-dossier", {depart: $("dossier").value});
-  if (r.dossier) $("dossier").value = r.dossier;
+  const r = await appeler("/choisir-dossier", {depart: $("dossier").dataset.plein});
+  if (r.dossier.plein) remplir("dossier", r.dossier);
 });
-$("ouvrir-excel").addEventListener("click", () => appeler("/ouvrir", {quoi: "excel", excel: $("excel").value}));
+$("ouvrir-excel").addEventListener("click", () => appeler("/ouvrir", {quoi: "excel", excel: $("excel").dataset.plein}));
 $("ouvrir-apercus").addEventListener("click", () => appeler("/ouvrir", {quoi: "apercus", mois: moisChoisi()}));
 $("nouvel-onglet").addEventListener("click", () => { if (rapport) window.open(rapport, "_blank"); });
 
@@ -136,7 +139,7 @@ async function lancer(nom, mode) {
   $("resume").textContent = `${nom} en cours…`;
   $("journal").textContent = "";
   try {
-    const r = await appeler("/lancer", {mois: moisChoisi(), mode, dossier: $("dossier").value, excel: $("excel").value});
+    const r = await appeler("/lancer", {mois: moisChoisi(), mode, dossier: $("dossier").dataset.plein, excel: $("excel").dataset.plein});
     if (r.erreur) {
       $("resume").className = "resume bloque";
       $("resume").textContent = `${nom} : ${r.erreur}`;

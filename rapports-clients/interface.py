@@ -82,6 +82,16 @@ def excel_clients(parametres: dict) -> str:
     return excel if excel and Path(excel).is_file() else str(ICI / "clients_rapports.xlsx")
 
 
+def chemin(plein: str) -> dict:
+    """Chemin complet (utilisé par l'outil) et version courte à afficher, sans « C:\\Users\\<nom>\\OneDrive - ... »."""
+    bibliotheque = ICI.parent.parent  # p. ex. « COMPTABILITÉ - Documents »
+    try:
+        court = str(Path(plein).relative_to(bibliotheque)) if plein else ""
+    except ValueError:
+        court = plein
+    return {"plein": plein, "court": court}
+
+
 def choisir_dossier(depart: str) -> str:
     """Boîte « Choisir un dossier » de Windows, par PowerShell."""
     script = (
@@ -138,16 +148,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
             parametres = lire_parametres()
             mois = mois_recents()
             racine = racine_clients(parametres)
-            self.json({"mois": mois, "excel": excel_clients(parametres), "racine": racine,
-                       "dossiers": {m["code"]: trouver_dossier_du_mois(racine, m["code"]) for m in mois},
+            self.json({"mois": mois, "excel": chemin(excel_clients(parametres)),
+                       "dossiers": {m["code"]: chemin(trouver_dossier_du_mois(racine, m["code"])) for m in mois},
                        "outlook": outlook_configure()})
         elif url.path == "/signe-de-vie":
             self.json({"ok": True})
         elif url.path == "/rapport":
             # Sert seulement les rapports du dossier « sortie » de l'outil.
-            chemin = (SORTIE / params.get("chemin", "")).resolve()
-            if SORTIE.resolve() in chemin.parents and chemin.suffix == ".html" and chemin.is_file():
-                self.envoyer(200, chemin.read_bytes(), "text/html; charset=utf-8")
+            fichier = (SORTIE / params.get("chemin", "")).resolve()
+            if SORTIE.resolve() in fichier.parents and fichier.suffix == ".html" and fichier.is_file():
+                self.envoyer(200, fichier.read_bytes(), "text/html; charset=utf-8")
             else:
                 self.envoyer(404, "Rapport introuvable.".encode("utf-8"), "text/plain; charset=utf-8")
         else:
@@ -167,7 +177,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 # Le dossier parent (1_CLIENTS) sert à retrouver tout seul le dossier des mois suivants.
                 parametres["racine"] = str(Path(dossier).parent)
                 ecrire_parametres(parametres)
-            self.json({"dossier": dossier})
+            self.json({"dossier": chemin(dossier)})
         elif url.path == "/ouvrir":
             mois = donnees.get("mois", "")
             cibles = {"excel": Path(donnees.get("excel") or excel_clients(lire_parametres())),
