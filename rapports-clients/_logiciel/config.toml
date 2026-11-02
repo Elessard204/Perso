@@ -76,9 +76,3 @@ titre = ["cheque"]
 cle = "factures"
 libelle = "Factures du mois"
 annexe = ["facture"]
-
-[graph]
-# Application inscrite dans Entra ID (voir README). Le secret n'est jamais
-# écrit ici : il est lu dans la variable d'environnement GRAPH_CLIENT_SECRET.
-tenant_id = ""
-client_id = ""

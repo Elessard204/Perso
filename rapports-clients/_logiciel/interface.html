@@ -44,6 +44,9 @@ button:disabled { color: var(--pale); cursor: default; background: var(--surface
 .etape.marine button { background: var(--marine); color: #FFFFFF; border-color: var(--marine); }
 .etape.marine button:disabled { background: #2E3650; color: var(--pale); }
 .etape small { color: var(--discret); font-size: 12px; }
+.etape select { width: 100%; }
+.messages { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 2px; }
+.messages .ok { color: var(--ok); } .messages .avert { color: #6E5000; } .messages .erreur { color: var(--bloque); font-weight: 600; }
 .resultat { display: grid; gap: 8px; }
 .resume { font-size: 17px; font-weight: 700; margin: 0; min-height: 1.5em; }
 .resume.ok { color: var(--ok); } .resume.bloque { color: var(--bloque); } .resume.encours { color: var(--discret); }
@@ -159,13 +162,15 @@ main.large { max-width: none; }
     <div class="etape principale"><span>ÉTAPE 2</span>
       <button id="etape-2" type="button">Vérifier les rapports et préparer les courriels</button></div>
     <div class="etape marine"><span>ÉTAPE 3</span>
-      <button id="etape-3" type="button">Créer les brouillons dans Outlook</button>
-      <small id="outlook-note" hidden>Pas encore branché à Outlook</small></div>
+      <button id="etape-3" type="button" disabled>Créer les brouillons dans Outlook</button>
+      <select id="choix-brouillons" aria-label="Courriels à créer" hidden></select>
+      <small id="outlook-note">Faire d'abord l'étape 2. Outlook classique doit être ouvert, avec la boîte Finance.</small></div>
   </div>
 
   <section class="resultat" aria-live="polite">
     <p id="resume" class="resume"></p>
     <p id="journal" class="journal"></p>
+    <ul id="messages" class="messages" hidden></ul>
     <div class="liens" id="liens" hidden>
       <button id="nouvel-onglet" type="button">Ouvrir le rapport dans un onglet</button>
       <button id="ouvrir-apercus" type="button">Ouvrir les aperçus de courriels</button>
@@ -301,10 +306,24 @@ async function charger() {
   $("mois").innerHTML = etat.mois.map(m => `<option value="${m.code}">${m.libelle}</option>`).join("");
   remplir("excel", etat.excel);
   remplir("dossier", etat.dossiers[moisChoisi()] || {});
-  if (!etat.outlook) { $("etape-3").disabled = true; $("outlook-note").hidden = false; }
+  if (!etat.outlook) $("outlook-note").textContent = "Demande Outlook classique sur un poste Windows.";
 }
 
-$("mois").addEventListener("change", () => remplir("dossier", (etat && etat.dossiers[moisChoisi()]) || {}));
+// Étape 3 : possible seulement après l'étape 2 du même mois, sur un poste avec Outlook classique.
+function preparerEtape3(courriels) {
+  const choix = $("choix-brouillons");
+  choix.innerHTML = `<option value="">Tous les courriels prêts (${courriels.length})</option>`
+    + courriels.map(c => `<option value="${echap(c.code)}">Un seul, pour essai : ${echap(c.nom)}</option>`).join("");
+  choix.hidden = !courriels.length;
+  $("etape-3").disabled = !(etat && etat.outlook && courriels.length);
+  $("etape-3").dataset.confirmer = ""; $("etape-3").dataset.forcer = "";
+  $("etape-3").textContent = "Créer les brouillons dans Outlook";
+}
+
+$("mois").addEventListener("change", () => {
+  remplir("dossier", (etat && etat.dossiers[moisChoisi()]) || {});
+  preparerEtape3([]);
+});
 
 $("choisir-dossier").addEventListener("click", async () => {
   const r = await appeler("/choisir-dossier", {depart: $("dossier").dataset.plein});
@@ -316,15 +335,24 @@ $("ouvrir-apercus").addEventListener("click", async () => {
 });
 $("nouvel-onglet").addEventListener("click", () => { if (rapport) window.open(rapport, "_blank"); });
 
-async function lancer(nom, mode) {
+async function lancer(nom, mode, extra) {
   const boutons = ["etape-1", "etape-2", "etape-3"].map($);
   const etatsAvant = boutons.map(b => b.disabled);
   boutons.forEach(b => b.disabled = true);
   $("resume").className = "resume encours";
   $("resume").textContent = `${nom} en cours…`;
   $("journal").textContent = "";
+  $("messages").hidden = true;
   try {
-    const r = await appeler("/lancer", {mois: moisChoisi(), mode, dossier: $("dossier").dataset.plein, excel: $("excel").dataset.plein});
+    const r = await appeler("/lancer", {mois: moisChoisi(), mode, dossier: $("dossier").dataset.plein, excel: $("excel").dataset.plein, ...(extra || {})});
+    if (r.confirmer) {
+      $("resume").className = "resume bloque";
+      $("resume").textContent = r.confirmer;
+      $("etape-3").dataset.forcer = "1";
+      $("etape-3").dataset.confirmer = "1";
+      $("etape-3").textContent = "Créer quand même";
+      return;
+    }
     if (r.erreur) {
       $("resume").className = "resume bloque";
       $("resume").textContent = `${nom} : ${r.erreur}`;
@@ -338,6 +366,12 @@ async function lancer(nom, mode) {
     $("rapport").hidden = false;
     $("liens").hidden = false;
     $("ouvrir-apercus").hidden = !r.apercus;
+    if (mode === "simulation") { preparerEtape3(r.courriels || []); etatsAvant[2] = $("etape-3").disabled; }
+    if (r.messages && r.messages.length) {
+      const classes = {"OK": "ok", "AVERT": "avert", "ERREUR": "erreur"};
+      $("messages").innerHTML = r.messages.map(l => { const [t, ...m] = l.split("|"); return `<li class="${classes[t] || ""}">${echap(m.join("|") || l)}</li>`; }).join("");
+      $("messages").hidden = false;
+    }
   } catch (e) {
     $("resume").className = "resume bloque";
     $("resume").textContent = "L'outil ne répond plus. Fermez cette page et relancez « Rapports clients ».";
@@ -352,9 +386,11 @@ $("etape-3").addEventListener("click", () => {
   $("resume").className = "resume";
   $("resume").textContent = "";
   if ($("etape-3").dataset.confirmer === "1") {
-    $("etape-3").dataset.confirmer = "";
+    const code = $("choix-brouillons").value;
+    const forcer = $("etape-3").dataset.forcer === "1";
+    $("etape-3").dataset.confirmer = ""; $("etape-3").dataset.forcer = "";
     $("etape-3").textContent = "Créer les brouillons dans Outlook";
-    lancer("Création des brouillons", "brouillons");
+    lancer("Création des brouillons (laissez Outlook ouvert)", "brouillons", {codes: code ? [code] : null, forcer});
   } else {
     // Confirmation dans la page : un deuxième clic crée les brouillons.
     $("etape-3").dataset.confirmer = "1";

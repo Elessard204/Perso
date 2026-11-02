@@ -227,11 +227,19 @@ def lancer(donnees: dict) -> dict:
         if not dossier or not Path(dossier).is_dir():
             return {"erreur": "Choisissez le dossier où les rapports Hopem du mois ont été téléchargés."}
         exports = Path(dossier)
+    codes = set(donnees["codes"]) if donnees.get("codes") else None
+    journal = SORTIE / mois / "brouillons.txt"
+    if mode == "brouillons" and journal.exists() and not donnees.get("forcer"):
+        # Garde-fou : une deuxième série créerait des doublons dans la boîte Finance.
+        derniere = next((l for l in reversed(journal.read_text(encoding="utf-8").splitlines()) if " par " in l), "")
+        return {"confirmer": f"Des brouillons ont déjà été créés pour ce mois ({derniere.split(' : ')[0]}). "
+                             "Recliquez pour en créer quand même; supprimez les doublons dans Outlook au besoin."}
     parametres = lire_parametres()
     parametres["excel"] = str(excel)
     ecrire_parametres(parametres)
     try:
-        resultat = preparer(mois, excel, exports, "simulation" if mode == "liste" else mode, completer=exports is not None)
+        resultat = preparer(mois, excel, exports, "simulation" if mode == "liste" else mode,
+                            completer=exports is not None, codes=codes)
     except PermissionError:
         return {"erreur": "Un fichier est ouvert ailleurs (probablement l'Excel des clients). Fermez-le et recommencez."}
     except Exception as erreur:  # affiché à l'employé plutôt que d'arrêter l'outil
@@ -240,6 +248,12 @@ def lancer(donnees: dict) -> dict:
     if exports is None:
         reponse["resume"] = "Liste des périodes prête."
         reponse["ok"] = True
+    elif mode == "brouillons":
+        crees = sum(1 for l in resultat.messages if l.startswith("OK|") and "brouillon créé" in l)
+        reponse["resume"] = (f"{pluriel(crees, 'brouillon créé', 'brouillons créés')} dans Outlook > Finance > Brouillons"
+                             if resultat.reussi else "La création des brouillons a échoué ou est incomplète.")
+        reponse["ok"] = resultat.reussi
+        reponse["messages"] = resultat.messages
     else:
         reponse["resume"] = (f"{pluriel(resultat.prets, 'courriel prêt', 'courriels prêts')} · "
                              f"{pluriel(resultat.bloques, 'bloqué', 'bloqués')} · "
@@ -247,6 +261,7 @@ def lancer(donnees: dict) -> dict:
         reponse["ok"] = resultat.bloques == 0
     # Les aperçus n'existent qu'à l'étape 2 et 3, pour les courriels prêts.
     reponse["apercus"] = exports is not None and resultat.prets > 0
+    reponse["courriels"] = resultat.courriels
     if resultat.complete:
         reponse["complete"] = f"Noms lus dans les PDF ajoutés dans une copie de l'Excel, à réviser : {resultat.complete.name}"
     return reponse

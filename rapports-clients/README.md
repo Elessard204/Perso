@@ -70,9 +70,9 @@ python demo/generer_demo.py
 python envoi_rapports.py --mois 2026-10 --exports demo/exports/2026-10 --clients demo/clients_demo.xlsx
 ```
 
-## Brancher Outlook (mode brouillons)
+## Création des brouillons (étape 3)
 
-Il faut une application inscrite dans Entra ID, avec la permission d'application Microsoft Graph `Mail.ReadWrite` et le consentement administrateur. Limite ensuite cette application à la seule boîte finance@progim.com avec une stratégie d'accès d'application Exchange (`New-ApplicationAccessPolicy`), sinon elle pourrait écrire dans toutes les boîtes de l'organisation. Remplis `tenant_id` et `client_id` dans `config.toml`, et définis le secret dans la variable d'environnement `GRAPH_CLIENT_SECRET`. Ne l'écris jamais dans un fichier du repo.
+Comme l'outil de facturation, l'étape 3 passe par l'Outlook classique du poste (`creer_brouillons.ps1`, appelé par PowerShell) : aucun enregistrement Microsoft 365 ni mot de passe. La boîte finance@progim.com doit être ajoutée dans l'Outlook de la personne, et Outlook doit rester ouvert jusqu'à la synchronisation. Les brouillons sont créés dans Finance > Brouillons, rien n'est envoyé. Le nouvel Outlook n'est pas pris en charge (pas d'automatisation possible). Un journal `sortie/AAAA-MM/brouillons.txt` empêche de créer par erreur une deuxième série.
 
 ## Confidentialité
 

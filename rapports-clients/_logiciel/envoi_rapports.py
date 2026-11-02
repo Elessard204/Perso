@@ -16,9 +16,13 @@ import argparse
 import base64
 import calendar
 import html
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import tomllib
 import unicodedata
 from dataclasses import dataclass, field
@@ -473,75 +477,56 @@ def ecrire_apercu(client: Client, mois: str, sortie: Path, config: dict) -> None
     client.brouillon = str(chemin.relative_to(sortie))
 
 
+SCRIPT_OUTLOOK = ICI / "creer_brouillons.ps1"
+
+
 def outlook_configure(chemin_config: Path = ICI / "config.toml") -> bool:
-    config = tomllib.loads(chemin_config.read_text(encoding="utf-8"))
-    return bool(config["graph"]["tenant_id"] and config["graph"]["client_id"] and os.environ.get("GRAPH_CLIENT_SECRET"))
+    """Les brouillons passent par l'Outlook classique du poste (Windows), comme l'outil de facturation."""
+    return sys.platform == "win32" and SCRIPT_OUTLOOK.exists()
 
 
-class Graph:
-    """Création de brouillons dans la boîte de l'expéditeur via Microsoft Graph."""
+def creer_brouillons(clients: list[Client], mois: str, sortie: Path, config: dict) -> tuple[list[str], bool]:
+    """Crée les brouillons dans la boîte finance@ par Outlook classique. Retourne les messages et le succès.
 
-    URL = "https://graph.microsoft.com/v1.0"
-    LIMITE_PIECE_SIMPLE = 3 * 1024 * 1024
-
-    def __init__(self, config: dict):
-        import msal
-        import requests
-
-        self.requests = requests
-        secret = os.environ.get("GRAPH_CLIENT_SECRET")
-        if not (config["graph"]["tenant_id"] and config["graph"]["client_id"] and secret):
-            raise RuntimeError("La connexion à Outlook n'est pas encore configurée : tenant_id et client_id "
-                               "doivent être remplis dans config.toml et la variable GRAPH_CLIENT_SECRET définie.")
-        app = msal.ConfidentialClientApplication(
-            config["graph"]["client_id"], client_credential=secret,
-            authority=f"https://login.microsoftonline.com/{config['graph']['tenant_id']}")
-        jeton = app.acquire_token_for_client(scopes=["https://graph.microsoft.com/.default"])
-        if "access_token" not in jeton:
-            raise RuntimeError(f"Connexion à Microsoft 365 refusée : {jeton.get('error_description')}")
-        self.entetes = {"Authorization": f"Bearer {jeton['access_token']}"}
-        self.boite = f"{self.URL}/users/{config['envoi']['expediteur']}"
-
-    def appel(self, methode: str, url: str, **kwargs) -> dict:
-        reponse = self.requests.request(methode, url, headers=self.entetes, timeout=60, **kwargs)
-        reponse.raise_for_status()
-        return reponse.json() if reponse.content else {}
-
-    def creer_brouillon(self, client: Client, mois: str, config: dict) -> str:
-        message = self.appel("POST", f"{self.boite}/messages", json={
-            "subject": client.objet,
-            "body": {"contentType": "HTML", "content": client.corps},
-            "toRecipients": [{"emailAddress": {"address": a}} for a in client.a],
-            "ccRecipients": [{"emailAddress": {"address": a}} for a in destinataires_cc(client, mois)],
-        })
-        if LOGO.exists():
-            self.appel("POST", f"{self.boite}/messages/{message['id']}/attachments", json={
-                "@odata.type": "#microsoft.graph.fileAttachment", "name": LOGO.name, "contentType": "image/png",
-                "isInline": True, "contentId": LOGO_CID, "contentBytes": base64.b64encode(LOGO.read_bytes()).decode()})
-        for entite in client.a_envoyer(mois):
-            self.joindre(message["id"], entite.fichier, entite.nom_piece(mois, client.langue))
-            for annexe in annexes_attendues(entite, config):
-                self.joindre(message["id"], annexe, annexe.name)
-        return message["webLink"]
-
-    def joindre(self, id_message: str, fichier: Path, nom: str) -> None:
-        contenu = fichier.read_bytes()
-        url = f"{self.boite}/messages/{id_message}/attachments"
-        if len(contenu) < self.LIMITE_PIECE_SIMPLE:
-            self.appel("POST", url, json={
-                "@odata.type": "#microsoft.graph.fileAttachment",
-                "name": nom, "contentType": "application/pdf",
-                "contentBytes": base64.b64encode(contenu).decode()})
-            return
-        # Les pièces de 3 Mo et plus passent par une session de téléversement.
-        session = self.appel("POST", f"{url}/createUploadSession", json={"AttachmentItem": {
-            "attachmentType": "file", "name": nom, "size": len(contenu)}})
-        morceau = 4 * 1024 * 1024
-        for debut in range(0, len(contenu), morceau):
-            fin = min(debut + morceau, len(contenu))
-            self.requests.put(session["uploadUrl"], data=contenu[debut:fin], timeout=120, headers={
-                "Content-Length": str(fin - debut),
-                "Content-Range": f"bytes {debut}-{fin - 1}/{len(contenu)}"}).raise_for_status()
+    Les pièces sont copiées sous leur nom final (« … - Rapports septembre 2026.pdf ») dans un dossier
+    temporaire, car Outlook nomme une pièce jointe d'après le fichier.
+    """
+    if not outlook_configure():
+        return ["ERREUR|La création des brouillons demande Outlook classique sur un poste Windows."], False
+    temporaire = Path(tempfile.mkdtemp(prefix="progim_rapports_"))
+    try:
+        courriels = []
+        for numero, client in enumerate(clients):
+            dossier = temporaire / str(numero)
+            dossier.mkdir()
+            pieces = []
+            for entite in client.a_envoyer(mois):
+                copie = dossier / entite.nom_piece(mois, client.langue)
+                shutil.copyfile(entite.fichier, copie)
+                pieces.append(str(copie))
+                for annexe in annexes_attendues(entite, config):
+                    pieces.append(str(annexe.resolve()))
+            courriels.append({"code": client.code, "nom": client.nom_affiche(mois), "a": "; ".join(client.a),
+                              "cc": "; ".join(destinataires_cc(client, mois)), "objet": client.objet,
+                              "html": f"<html><body>{client.corps}</body></html>", "pieces": pieces})
+        manifeste = temporaire / "manifeste.json"
+        manifeste.write_text(json.dumps({"expediteur": config["envoi"]["expediteur"], "courriels": courriels,
+                                         "logo": str(LOGO) if LOGO.exists() else "", "logo_cid": LOGO_CID},
+                                        ensure_ascii=False), encoding="utf-8")
+        resultat = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                                   str(SCRIPT_OUTLOOK), "-Manifeste", str(manifeste)],
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace")
+        lignes = [l for l in (resultat.stdout or "").splitlines() if l.strip()]
+        if resultat.returncode != 0 and resultat.stderr:
+            lignes.append("ERREUR|" + resultat.stderr.strip()[:800])
+    finally:
+        shutil.rmtree(temporaire, ignore_errors=True)
+    # Journal du mois : sert aussi de garde-fou contre une deuxième série de brouillons.
+    with open(sortie / "brouillons.txt", "a", encoding="utf-8") as journal:
+        journal.write(f"{datetime.now():%Y-%m-%d %H:%M} par {os.environ.get('USERNAME', '?')} : "
+                      f"{', '.join(c.code for c in clients)}\n")
+        journal.writelines(l + "\n" for l in lignes)
+    return lignes, resultat.returncode == 0
 
 
 def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mode: str,
@@ -615,7 +600,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
     # Dans l'aperçu du rapport, le logo de la signature (cid) est remplacé par le fichier lui-même.
     apercu = apercu.replace(f"cid:{LOGO_CID}", f"data:image/png;base64,{base64.b64encode(LOGO.read_bytes()).decode()}") if LOGO.exists() else apercu
     pas_ce_mois_html = " · ".join(f'<span class="code">{e(x.code)}</span> {e(x.nom_affiche)} ({e(x.frequence)})' for x in pas_ce_mois)
-    libelle_mode = {"brouillons": "Brouillons créés dans Outlook",
+    libelle_mode = {"brouillons": "Brouillons créés dans Outlook (boîte Finance)",
                     "simulation": "Simulation : aucun brouillon créé",
                     "liste": "Liste d'extraction : à faire avant de télécharger les rapports de Hopem"}[mode]
     page = f"""<!doctype html>
@@ -757,10 +742,14 @@ class Resultat:
     bloques: int = 0
     alertes: int = 0
     complete: Path | None = None
+    messages: list[str] = field(default_factory=list)   # retour d'Outlook (OK| / AVERT| / ERREUR|)
+    reussi: bool = True
+    courriels: list[dict] = field(default_factory=list)  # courriels prêts : code et nom
 
 
 def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode: str = "simulation",
-             completer: bool = False, sortie: Path | None = None, chemin_config: Path = ICI / "config.toml") -> Resultat:
+             completer: bool = False, sortie: Path | None = None, chemin_config: Path = ICI / "config.toml",
+             codes: set[str] | None = None) -> Resultat:
     """Fait tout le travail d'un mois. Sans dossier d'exports, produit seulement la liste des périodes."""
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", mois):
         raise ValueError("Le mois doit être au format AAAA-MM, par exemple 2026-09.")
@@ -775,20 +764,26 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
     valider(clients, mois, config)
     complete = completer_excel(chemin_clients, clients, mois) if completer else None
 
-    graph = Graph(config) if mode == "brouillons" else None
+    prets = []
     for client in clients.values():
         if not client.pret(mois):
             continue
         rediger(client, mois, config)
         ecrire_apercu(client, mois, sortie, config)
-        if graph:
-            client.brouillon = graph.creer_brouillon(client, mois, config)
+        prets.append(client)
+    messages, reussi = [], True
+    if mode == "brouillons":
+        choisis = [c for c in prets if codes is None or c.code in codes]
+        if not choisis:
+            raise ValueError("Aucun courriel prêt à créer pour ce choix.")
+        messages, reussi = creer_brouillons(choisis, mois, sortie, config)
 
     concernes = [c for c in clients.values() if c.a_envoyer(mois)]
     return Resultat(ecrire_rapport(clients, alertes, mois, mode, sortie, config),
                     prets=sum(c.pret(mois) for c in concernes),
                     bloques=sum(not c.pret(mois) for c in concernes),
-                    alertes=len(alertes), complete=complete)
+                    alertes=len(alertes), complete=complete, messages=messages, reussi=reussi,
+                    courriels=[{"code": c.code, "nom": c.nom_affiche(mois)} for c in prets])
 
 
 def main() -> None:
