@@ -245,6 +245,8 @@ def lancer(donnees: dict) -> dict:
                              f"{pluriel(resultat.bloques, 'bloqué', 'bloqués')} · "
                              f"{pluriel(resultat.alertes, 'fichier à regarder', 'fichiers à regarder')}")
         reponse["ok"] = resultat.bloques == 0
+    # Les aperçus n'existent qu'à l'étape 2 et 3, pour les courriels prêts.
+    reponse["apercus"] = exports is not None and resultat.prets > 0
     if resultat.complete:
         reponse["complete"] = f"Noms lus dans les PDF ajoutés dans une copie de l'Excel, à réviser : {resultat.complete.name}"
     return reponse

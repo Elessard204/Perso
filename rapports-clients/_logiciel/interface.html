@@ -312,7 +312,10 @@ $("choisir-dossier").addEventListener("click", async () => {
   if (r.dossier.plein) remplir("dossier", r.dossier);
 });
 $("ouvrir-excel").addEventListener("click", () => appeler("/ouvrir", {quoi: "excel", excel: $("excel").dataset.plein}));
-$("ouvrir-apercus").addEventListener("click", () => appeler("/ouvrir", {quoi: "apercus", mois: moisChoisi()}));
+$("ouvrir-apercus").addEventListener("click", async () => {
+  const r = await appeler("/ouvrir", {quoi: "apercus", mois: moisChoisi()});
+  if (!r.ok) $("journal").textContent = "Aucun aperçu de courriel pour ce mois : relancez l'étape 2.";
+});
 $("nouvel-onglet").addEventListener("click", () => { if (rapport) window.open(rapport, "_blank"); });
 
 async function lancer(nom, mode) {
@@ -336,6 +339,7 @@ async function lancer(nom, mode) {
     $("rapport").src = rapport;
     $("rapport").hidden = false;
     $("liens").hidden = false;
+    $("ouvrir-apercus").hidden = !r.apercus;
   } catch (e) {
     $("resume").className = "resume bloque";
     $("resume").textContent = "L'outil ne répond plus. Fermez cette page et relancez « Rapports clients ».";
