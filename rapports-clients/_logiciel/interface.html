@@ -67,21 +67,43 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
 .message { margin: 0; font-weight: 600; min-height: 1.5em; }
 .message.ok { color: var(--ok); } .message.erreur { color: var(--bloque); }
 .grille { overflow: auto; max-height: 68vh; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; }
-.grille table { border-collapse: separate; border-spacing: 0; font-size: 13.5px; min-width: 100%; }
-.grille th { position: sticky; top: 0; z-index: 2; background: var(--fond); text-align: left; font-size: 12px; font-weight: 700;
-  color: var(--discret); padding: 8px; border-bottom: 1px solid var(--ligne); white-space: nowrap; }
-.grille td { padding: 3px 4px; border-bottom: 1px solid var(--ligne); vertical-align: middle; }
-.grille th:first-child, .grille td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1;
-  border-right: 1px solid var(--ligne); }
-.grille th:first-child { z-index: 3; background: var(--fond); }
-.grille td input, .grille td select { border-color: transparent; background: transparent; padding: 5px 6px; width: 100%; }
-.grille td input:hover, .grille td select:hover { border-color: var(--ligne); }
-.grille td select { min-width: 130px; }
-.grille td input.texte { min-width: 120px; } .grille td input.courriel { min-width: 260px; }
-.grille td input.long { min-width: 320px; }
-.grille td.case { text-align: center; } .grille td.case input { width: 18px; height: 18px; accent-color: var(--ok); }
-.grille td.modifie { background: #FFF4E8; } .grille td.invalide input { border-color: var(--bloque); color: var(--bloque); }
-.grille tr.nouvelle td { background: #FFF4E8; }
+.grille table { border-collapse: separate; border-spacing: 0; font-size: 13.5px; width: 100%; }
+.grille th { position: sticky; top: 0; z-index: 1; background: var(--fond); text-align: left; font-size: 12px; font-weight: 700;
+  color: var(--discret); padding: 8px 10px; border-bottom: 1px solid var(--ligne); white-space: nowrap; }
+.grille td { padding: 8px 10px; border-bottom: 1px solid var(--ligne); vertical-align: top; }
+.grille tbody tr { cursor: pointer; }
+.grille tbody tr:hover td, .grille tbody tr:focus-visible td { background: #FFF4E8; }
+.grille tbody tr:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.grille tr.inactif td { color: var(--pale); }
+.grille .code { font-weight: 700; white-space: nowrap; }
+.grille .liste-cellule { display: grid; gap: 2px; }
+.grille .discret { color: var(--discret); font-size: 12px; }
+.pastille { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.pastille.oui { color: var(--ok); background: #E3F2E6; } .pastille.non { color: var(--bloque); background: #FBEAE2; }
+.pastille.groupe { color: #0B5D7A; background: #E3EFF4; }
+dialog { border: 0; border-radius: 12px; padding: 0; width: min(860px, 96vw); max-height: 92vh; box-shadow: 0 20px 60px rgba(19,26,47,.35); }
+dialog::backdrop { background: rgba(19,26,47,.45); }
+.fiche { display: grid; grid-template-rows: auto 1fr auto; max-height: 92vh; }
+.fiche-tete { padding: 16px 22px; border-bottom: 3px solid var(--orange); display: flex; align-items: baseline; gap: 12px; }
+.fiche-tete h2 { margin: 0; font-size: 19px; }
+.fiche-corps { padding: 18px 22px; overflow: auto; display: grid; gap: 18px; }
+.fiche-pied { padding: 12px 22px; border-top: 1px solid var(--ligne); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fiche-pied .message { flex: 1; }
+fieldset { border: 1px solid var(--ligne); border-radius: 10px; padding: 12px 14px 14px; margin: 0; display: grid; gap: 10px; }
+legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--orange); padding: 0 6px; text-transform: uppercase; }
+.deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.champ { display: grid; gap: 4px; min-width: 0; }
+.champ small { color: var(--discret); font-size: 12px; }
+textarea { font: inherit; color: inherit; border: 1px solid var(--ligne); border-radius: 6px; padding: 7px 10px; width: 100%; resize: vertical; }
+.courriels { display: grid; gap: 6px; }
+.courriel-ligne { display: flex; gap: 6px; }
+.courriel-ligne input.invalide { border-color: var(--bloque); color: var(--bloque); }
+.lien-bouton { border: 0; background: none; color: #0B5D7A; padding: 4px 0; text-align: left; font-weight: 600; }
+.lien-bouton:hover { background: none; text-decoration: underline; }
+.cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px; }
+.cases label, .case-seule { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+.cases input, .case-seule input { width: 18px; height: 18px; accent-color: var(--ok); }
+.danger { color: var(--bloque); border-color: #F0C9B6; }
 @media (max-width: 700px) {
   .champs { grid-template-columns: 1fr; }
   .etapes { grid-template-columns: 1fr; }
@@ -96,7 +118,7 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
 <main>
   <nav class="onglets" aria-label="Sections">
     <button type="button" data-vue="envoi" aria-selected="true">Envoi du mois</button>
-    <button type="button" data-vue="clients" aria-selected="false">Clients et entités</button>
+    <button type="button" data-vue="clients" aria-selected="false">Clients</button>
   </nav>
 
   <div id="vue-envoi" class="resultat">
@@ -140,20 +162,93 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
   <div id="vue-clients" class="resultat" hidden>
     <div class="barre">
       <div class="sous-onglets" role="group" aria-label="Tableau">
-        <button type="button" data-onglet="Clients" aria-pressed="true">Clients</button>
-        <button type="button" data-onglet="Entites" aria-pressed="false">Entités</button>
-        <button type="button" data-onglet="Gestionnaires" aria-pressed="false">Gestionnaires</button>
+        <button type="button" data-onglet="clients" aria-pressed="true">Clients</button>
+        <button type="button" data-onglet="gestionnaires" aria-pressed="false">Gestionnaires</button>
       </div>
-      <input id="recherche" type="search" placeholder="Rechercher (nom, code, courriel…)" aria-label="Rechercher">
+      <input id="recherche" type="search" placeholder="Rechercher (nom, code, immeuble, courriel…)" aria-label="Rechercher">
       <span class="espace"></span>
-      <button id="ajouter" type="button">Ajouter une ligne</button>
-      <button id="annuler" type="button" disabled>Annuler les modifications</button>
-      <button id="enregistrer" type="button" class="principal" disabled>Enregistrer</button>
+      <button id="ajouter" type="button" class="principal">+ Nouvelle entité</button>
     </div>
     <p id="message" class="message" aria-live="polite"></p>
     <div class="grille"><table><thead id="entete"></thead><tbody id="corps"></tbody></table></div>
+    <p class="note">Cliquez sur une ligne pour voir et modifier la fiche. Les entités qui ont exactement les mêmes destinataires partent dans un seul courriel.</p>
   </div>
 </main>
+
+<dialog id="dialogue-fiche" aria-labelledby="fiche-titre">
+  <form class="fiche" method="dialog" id="form-fiche">
+    <div class="fiche-tete"><h2 id="fiche-titre">Fiche</h2><span id="fiche-groupe" class="pastille groupe" hidden></span></div>
+    <div class="fiche-corps">
+      <fieldset><legend>Entité</legend>
+        <div class="deux">
+          <div class="champ"><label for="f-code_entite">Code Hopem</label><input id="f-code_entite" placeholder="ex. 54.1"></div>
+          <div class="champ"><label for="f-nom_entite">Nom légal (tel qu'imprimé par Hopem)</label><input id="f-nom_entite"></div>
+        </div>
+        <div class="champ"><label for="f-immeubles">Immeubles</label><textarea id="f-immeubles" rows="3"></textarea><small>Un immeuble par ligne.</small></div>
+      </fieldset>
+      <fieldset><legend>Destinataires</legend>
+        <div class="champ"><span class="etiquette"><b>Courriels du client</b></span><div class="courriels" id="f-courriel_clients"></div>
+          <button type="button" class="lien-bouton" data-ajouter="courriel_clients">+ Ajouter un destinataire</button></div>
+        <div class="champ"><span><b>Direction en copie</b></span><div class="courriels" id="f-courriel_direction"></div>
+          <button type="button" class="lien-bouton" data-ajouter="courriel_direction">+ Ajouter une adresse</button>
+          <small id="direction-defaut"></small></div>
+        <label class="case-seule" id="appliquer-groupe-boite" hidden><input type="checkbox" id="f-appliquer-groupe" checked> <span id="appliquer-groupe-texte"></span></label>
+        <div class="deux">
+          <div class="champ"><label for="f-langue">Langue du courriel</label><select id="f-langue"><option>FR</option><option>EN</option></select></div>
+        </div>
+      </fieldset>
+      <fieldset><legend>Gestion</legend>
+        <div class="deux">
+          <div class="champ"><label for="f-gestionnaire">Gestionnaire (en copie)</label><select id="f-gestionnaire"></select></div>
+          <div class="champ"><label for="f-courriel_gestionnaire">Courriel du gestionnaire, si différent</label><input id="f-courriel_gestionnaire" type="email"><small>Laisser vide dans la plupart des cas.</small></div>
+          <div class="champ"><label for="f-fin_exercice">Fin d'exercice</label><select id="f-fin_exercice"></select></div>
+          <div class="champ"><label for="f-frequence">Fréquence d'envoi</label><select id="f-frequence"></select></div>
+        </div>
+        <label class="case-seule"><input type="checkbox" id="f-actif"> Actif (reçoit des rapports)</label>
+      </fieldset>
+      <fieldset><legend>Éléments à inclure</legend><div class="cases" id="f-contenu"></div></fieldset>
+      <fieldset><legend>Notes / consignes</legend><textarea id="f-notes" rows="3"></textarea></fieldset>
+    </div>
+    <div class="fiche-pied">
+      <p class="message" id="fiche-message" aria-live="polite"></p>
+      <button type="button" id="fiche-annuler">Annuler</button>
+      <button type="button" id="fiche-enregistrer" class="principal">Enregistrer la fiche</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogue-gestionnaire" aria-labelledby="g-titre">
+  <form class="fiche" method="dialog">
+    <div class="fiche-tete"><h2 id="g-titre">Gestionnaire</h2></div>
+    <div class="fiche-corps">
+      <div class="deux">
+        <div class="champ"><label for="g-nom">Prénom</label><input id="g-nom"></div>
+        <div class="champ"><label for="g-courriel">Courriel</label><input id="g-courriel" type="email"></div>
+      </div>
+      <small class="note">Un changement de prénom est appliqué à toutes ses entités.</small>
+    </div>
+    <div class="fiche-pied">
+      <p class="message" id="g-message" aria-live="polite"></p>
+      <button type="button" id="g-annuler">Annuler</button>
+      <button type="button" id="g-enregistrer" class="principal">Enregistrer</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialogue-suppression" aria-labelledby="s-titre">
+  <form class="fiche" method="dialog">
+    <div class="fiche-tete"><h2 id="s-titre">Supprimer un gestionnaire</h2></div>
+    <div class="fiche-corps">
+      <p id="s-texte" style="margin:0"></p>
+      <div class="champ"><label for="s-remplacant">Transférer ses entités à</label><select id="s-remplacant"></select></div>
+    </div>
+    <div class="fiche-pied">
+      <p class="message" id="s-message" aria-live="polite"></p>
+      <button type="button" id="s-annuler">Annuler</button>
+      <button type="button" id="s-confirmer" class="principal">Transférer et supprimer</button>
+    </div>
+  </form>
+</dialog>
 <script>
 const $ = (id) => document.getElementById(id);
 let etat = null;
@@ -233,113 +328,196 @@ $("etape-3").addEventListener("click", () => {
   }
 });
 
-// ---- Onglet « Clients et entités » : l'Excel des clients, modifiable ----
-const LIBELLES = {code_client: "Code client", nom_client: "Nom du client", nom_contact: "Contact (Bonjour…)",
-  courriel_clients: "Courriels clients", courriel_direction: "Courriels direction (cc)", langue: "Langue", actif: "Actif",
-  code_entite: "Code", nom_entite: "Nom légal (Hopem)", immeubles: "Immeubles", fin_exercice: "Fin d'exercice",
-  frequence: "Fréquence", gestionnaire: "Gestionnaire", courriel_gestionnaire: "Courriel gestionnaire (si différent)",
-  bilan: "Bilan", etat_resultats: "État des résultats", sommaire_transactions: "Sommaire", transactions_par_compte: "Transactions par compte",
-  liste_depots: "Dépôts", comptes_a_recevoir: "Comptes à recevoir", liste_cheques: "Chèques", factures: "Factures",
-  notes: "Notes / consignes", nom: "Prénom", courriel: "Courriel"};
+// ---- Onglet « Clients » : l'Excel des clients ----
 const COURRIEL = /^[^@\s;,]+@[^@\s;,]+\.[a-z]{2,}$/i;
-let donnees = null, onglet = "Clients", modifs = {}, nouveau = 0;
+let donnees = null, vue = "clients", ficheLigne = null, gestionnaireLigne = null, gestionnaireASupprimer = "";
 
+const echap = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 const oui = (v) => ["oui", "o", "x", "yes", "y", "1", "true", "vrai"].includes(String(v || "").trim().toLowerCase());
-const nbModifs = () => Object.values(modifs).reduce((n, m) => n + Object.keys(m).length, 0);
-function courrielsInvalides(v) { return String(v || "").split(/[;,\n]/).map(a => a.trim()).filter(a => a && !COURRIEL.test(a)); }
-function message(texte, genre) { $("message").textContent = texte; $("message").className = "message " + (genre || ""); }
+const liste = (v) => String(v || "").split(/[;,\n]/).map(a => a.trim()).filter(Boolean);
+function message(id, texte, genre) { $(id).textContent = texte || ""; $(id).className = "message " + (genre || ""); }
+// Même règle que l'envoi : mêmes courriels clients, même direction et même langue = un seul courriel.
+function cleCourriel(v) {
+  const a = liste(v.courriel_clients).map(x => x.toLowerCase()).sort();
+  if (!a.length) return "";
+  const d = (liste(v.courriel_direction).length ? liste(v.courriel_direction) : donnees.direction_defaut).map(x => x.toLowerCase()).sort();
+  return a.join(",") + "|" + d.join(",") + "|" + (v.langue || "FR").toUpperCase();
+}
+function memeCourriel(v) {
+  const cle = cleCourriel(v);
+  return cle ? donnees.entites.filter(e => e.valeurs.code_entite !== v.code_entite && cleCourriel(e.valeurs) === cle).map(e => e.valeurs.code_entite) : [];
+}
 
 async function chargerDonnees() {
   const r = await appeler("/donnees?excel=" + encodeURIComponent($("excel").dataset.plein || ""));
-  if (r.erreur) { message(r.erreur, "erreur"); return; }
-  donnees = r; modifs = {}; afficherTableau(); majBoutons();
+  if (r.erreur) { message("message", r.erreur, "erreur"); return; }
+  donnees = r; afficher();
 }
 
-function majBoutons() {
-  const n = nbModifs();
-  $("enregistrer").disabled = n === 0; $("annuler").disabled = n === 0;
-  $("enregistrer").textContent = n ? `Enregistrer (${n})` : "Enregistrer";
-}
-
-function controle(col, valeur, cle) {
-  const attr = `data-cle="${cle}" data-col="${col.nom}" aria-label="${LIBELLES[col.nom] || col.nom}"`;
-  const echap = (t) => String(t).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-  if (col.genre === "case") return `<input type="checkbox" ${attr} ${oui(valeur) ? "checked" : ""}>`;
-  if (col.genre === "liste") {
-    const options = (donnees.listes[col.nom] || []).map(o => typeof o === "string" ? {valeur: o, libelle: o || "—"} : o);
-    if (valeur && !options.some(o => o.valeur === valeur)) options.unshift({valeur, libelle: valeur});
-    return `<select ${attr}>${options.map(o => `<option value="${echap(o.valeur)}" ${o.valeur === valeur ? "selected" : ""}>${echap(o.libelle)}</option>`).join("")}</select>`;
-  }
-  return `<input type="text" class="${col.genre}" ${attr} value="${echap(valeur)}">`;
-}
-
-function afficherTableau() {
-  const t = donnees.onglets[onglet];
-  if (!t) { $("entete").innerHTML = ""; $("corps").innerHTML = ""; return; }
-  $("entete").innerHTML = "<tr>" + t.colonnes.map(c => `<th>${LIBELLES[c.nom] || c.nom}</th>`).join("") + "</tr>";
+function afficher() {
+  if (!donnees) return;
   const filtre = $("recherche").value.trim().toLowerCase();
-  const lignes = t.lignes.filter(l => !filtre || l.cle?.startsWith("n") ||
-    Object.values(l.valeurs).some(v => String(v).toLowerCase().includes(filtre)));
-  $("corps").innerHTML = lignes.map(l => {
-    const cle = l.cle || String(l.ligne);
-    const vals = {...l.valeurs, ...((modifs[onglet] || {})[cle] || {}).valeurs};
-    return `<tr class="${l.ligne ? "" : "nouvelle"}">` + t.colonnes.map(c => {
-      const modifie = ((modifs[onglet] || {})[cle] || {valeurs: {}}).valeurs[c.nom] !== undefined;
-      const invalide = c.genre === "courriel" && courrielsInvalides(vals[c.nom]).length;
-      return `<td class="${c.genre === "case" ? "case" : ""} ${modifie ? "modifie" : ""} ${invalide ? "invalide" : ""}">${controle(c, vals[c.nom] ?? "", cle)}</td>`;
-    }).join("") + "</tr>";
-  }).join("");
+  const garde = (valeurs) => !filtre || Object.values(valeurs).some(v => String(v).toLowerCase().includes(filtre));
+  $("ajouter").textContent = vue === "clients" ? "+ Nouvelle entité" : "+ Nouveau gestionnaire";
+  if (vue === "clients") {
+    $("entete").innerHTML = "<tr><th>Code</th><th>Nom légal (Hopem)</th><th>Immeubles</th><th>Destinataires</th><th>Gestionnaire</th><th>Envoi</th><th>Actif</th></tr>";
+    $("corps").innerHTML = donnees.entites.filter(e => garde(e.valeurs)).map(e => {
+      const v = e.valeurs, groupe = memeCourriel(v);
+      const courriels = liste(v.courriel_clients).map(a => `<span>${echap(a)}</span>`).join("") || '<span class="discret">Aucun destinataire</span>';
+      return `<tr tabindex="0" data-ligne="${e.ligne}" class="${oui(v.actif || "oui") ? "" : "inactif"}">
+        <td class="code">${echap(v.code_entite)}</td>
+        <td>${echap(v.nom_entite) || '<span class="discret">À compléter</span>'}</td>
+        <td><div class="liste-cellule">${liste(v.immeubles).map(i => `<span>${echap(i)}</span>`).join("")}</div></td>
+        <td><div class="liste-cellule">${courriels}${groupe.length ? `<span class="pastille groupe">Même courriel que ${echap(groupe.join(", "))}</span>` : ""}</div></td>
+        <td>${echap(v.gestionnaire) || '<span class="discret">—</span>'}</td>
+        <td>${echap(v.frequence || "mensuel")}<div class="discret">fin d'exercice : ${echap(donnees.mois[(parseInt(v.fin_exercice) || 12) - 1])}</div></td>
+        <td><span class="pastille ${oui(v.actif || "oui") ? "oui" : "non"}">${oui(v.actif || "oui") ? "Oui" : "Non"}</span></td></tr>`;
+    }).join("");
+  } else {
+    $("entete").innerHTML = "<tr><th>Prénom</th><th>Courriel</th><th>Entités</th><th></th></tr>";
+    $("corps").innerHTML = donnees.gestionnaires.filter(g => garde(g)).map(g => `<tr tabindex="0" data-gestionnaire="${g.ligne}">
+      <td class="code">${echap(g.nom)}</td><td>${echap(g.courriel) || '<span class="discret">Aucun courriel</span>'}</td>
+      <td>${g.entites}</td><td style="text-align:right"><button type="button" class="danger" data-supprimer="${echap(g.nom)}">Supprimer…</button></td></tr>`).join("");
+  }
 }
 
-$("corps").addEventListener("change", (ev) => {
-  const champ = ev.target; const cle = champ.dataset.cle, col = champ.dataset.col;
-  if (!cle) return;
-  const ligne = donnees.onglets[onglet].lignes.find(l => (l.cle || String(l.ligne)) === cle);
-  const valeur = champ.type === "checkbox" ? (champ.checked ? "Oui" : "Non") : champ.value;
-  modifs[onglet] = modifs[onglet] || {};
-  const m = modifs[onglet][cle] = modifs[onglet][cle] || {ligne: ligne.ligne, valeurs: {}};
-  if (ligne.ligne && (ligne.valeurs[col] ?? "") === valeur) delete m.valeurs[col]; else m.valeurs[col] = valeur;
-  if (!Object.keys(m.valeurs).length && ligne.ligne) delete modifs[onglet][cle];
-  const td = champ.closest("td");
-  td.classList.toggle("modifie", m.valeurs[col] !== undefined);
-  if (champ.classList.contains("courriel")) {
-    const mauvaises = courrielsInvalides(valeur);
-    td.classList.toggle("invalide", mauvaises.length > 0);
-    if (mauvaises.length) message(`Adresse courriel invalide : ${mauvaises.join(", ")}`, "erreur"); else message("");
+// --- Fiche d'une entité ---
+function champsCourriels(cle, valeur) {
+  const boite = $("f-" + cle);
+  boite.innerHTML = "";
+  (liste(valeur).length ? liste(valeur) : (cle === "courriel_clients" ? [""] : [])).forEach(a => ajouterCourriel(cle, a));
+}
+function ajouterCourriel(cle, valeur) {
+  const ligne = document.createElement("div");
+  ligne.className = "courriel-ligne";
+  ligne.innerHTML = `<input type="email" value="${echap(valeur)}" aria-label="Adresse courriel" placeholder="nom@exemple.com"><button type="button">Retirer</button>`;
+  ligne.querySelector("button").addEventListener("click", () => ligne.remove());
+  ligne.querySelector("input").addEventListener("input", (ev) => ev.target.classList.toggle("invalide", ev.target.value.trim() !== "" && !COURRIEL.test(ev.target.value.trim())));
+  $("f-" + cle).appendChild(ligne);
+  return ligne.querySelector("input");
+}
+document.querySelectorAll("[data-ajouter]").forEach(b => b.addEventListener("click", () => ajouterCourriel(b.dataset.ajouter, "").focus()));
+const lireCourriels = (cle) => [...$("f-" + cle).querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean);
+
+function ouvrirFiche(entree) {
+  const v = entree ? entree.valeurs : {actif: "Oui", langue: "FR", fin_exercice: "12", frequence: "mensuel"};
+  ficheLigne = entree ? entree.ligne : null;
+  $("fiche-titre").textContent = entree ? `Fiche ${v.code_entite}` : "Nouvelle entité";
+  const groupe = entree ? memeCourriel(v) : [];
+  $("fiche-groupe").hidden = !groupe.length;
+  $("fiche-groupe").textContent = groupe.length ? `Même courriel que ${groupe.join(", ")}` : "";
+  $("appliquer-groupe-boite").hidden = !groupe.length;
+  $("f-appliquer-groupe").checked = true;
+  $("appliquer-groupe-texte").textContent = `Appliquer aussi ces destinataires et la langue à ${groupe.join(", ")} (même courriel)`;
+  for (const c of ["code_entite", "nom_entite", "courriel_gestionnaire", "notes"]) $("f-" + c).value = v[c] || "";
+  $("f-immeubles").value = liste(v.immeubles).join("\n");
+  champsCourriels("courriel_clients", v.courriel_clients);
+  champsCourriels("courriel_direction", v.courriel_direction);
+  $("direction-defaut").textContent = `Si vide : ${donnees.direction_defaut.join(", ")}.`;
+  $("f-langue").value = (v.langue || "FR").toUpperCase();
+  $("f-gestionnaire").innerHTML = '<option value="">— Aucun —</option>' + donnees.gestionnaires.map(g => `<option>${echap(g.nom)}</option>`).join("")
+    + (v.gestionnaire && !donnees.gestionnaires.some(g => g.nom === v.gestionnaire) ? `<option>${echap(v.gestionnaire)}</option>` : "");
+  $("f-gestionnaire").value = v.gestionnaire || "";
+  $("f-fin_exercice").innerHTML = donnees.mois.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("");
+  $("f-fin_exercice").value = String(parseInt(v.fin_exercice) || 12);
+  $("f-frequence").innerHTML = donnees.frequences.map(f => `<option>${f}</option>`).join("");
+  $("f-frequence").value = v.frequence || "mensuel";
+  $("f-actif").checked = oui(v.actif || "oui");
+  $("f-contenu").innerHTML = donnees.contenu.map(c => {
+    const coche = v[c.cle] ? oui(v[c.cle]) : c.defaut;
+    return `<label><input type="checkbox" data-cle="${c.cle}" ${coche ? "checked" : ""}> ${echap(c.libelle)}</label>`;
+  }).join("");
+  message("fiche-message", "");
+  $("dialogue-fiche").showModal();
+}
+
+$("fiche-annuler").addEventListener("click", () => $("dialogue-fiche").close());
+$("fiche-enregistrer").addEventListener("click", async () => {
+  const invalides = ["courriel_clients", "courriel_direction"].flatMap(lireCourriels).concat($("f-courriel_gestionnaire").value.trim() ? [$("f-courriel_gestionnaire").value.trim()] : []).filter(a => !COURRIEL.test(a));
+  if (invalides.length) { message("fiche-message", `Adresse courriel invalide : ${invalides.join(", ")}`, "erreur"); return; }
+  if (!$("f-code_entite").value.trim()) { message("fiche-message", "Le code Hopem est obligatoire.", "erreur"); return; }
+  const valeurs = {
+    code_entite: $("f-code_entite").value.trim(), nom_entite: $("f-nom_entite").value.trim(),
+    immeubles: liste($("f-immeubles").value.replace(/;/g, "\n")).join("; "),
+    courriel_clients: lireCourriels("courriel_clients").join("; "), courriel_direction: lireCourriels("courriel_direction").join("; "),
+    langue: $("f-langue").value, gestionnaire: $("f-gestionnaire").value, courriel_gestionnaire: $("f-courriel_gestionnaire").value.trim(),
+    fin_exercice: $("f-fin_exercice").value, frequence: $("f-frequence").value, actif: $("f-actif").checked ? "Oui" : "Non",
+    notes: $("f-notes").value.trim(),
+  };
+  $("f-contenu").querySelectorAll("input").forEach(i => valeurs[i.dataset.cle] = i.checked ? "Oui" : "Non");
+  $("fiche-enregistrer").disabled = true;
+  const r = await appeler("/fiche", {excel: $("excel").dataset.plein, ligne: ficheLigne, valeurs});
+  $("fiche-enregistrer").disabled = false;
+  if (r.erreur) { message("fiche-message", r.erreur, "erreur"); return; }
+  // Garde le groupe ensemble : les autres entités du même courriel reçoivent les mêmes destinataires.
+  const groupe = ficheLigne && !$("appliquer-groupe-boite").hidden && $("f-appliquer-groupe").checked
+    ? donnees.entites.filter(e => e.ligne !== ficheLigne && memeCourriel(donnees.entites.find(x => x.ligne === ficheLigne).valeurs).includes(e.valeurs.code_entite)) : [];
+  for (const e of groupe) {
+    const r2 = await appeler("/fiche", {excel: $("excel").dataset.plein, ligne: e.ligne, valeurs: {code_entite: e.valeurs.code_entite,
+      courriel_clients: valeurs.courriel_clients, courriel_direction: valeurs.courriel_direction, langue: valeurs.langue}});
+    if (r2.erreur) { message("fiche-message", r2.erreur, "erreur"); return; }
   }
-  majBoutons();
+  $("dialogue-fiche").close();
+  await chargerDonnees();
+  message("message", r.message + " Les prochaines vérifications utiliseront ces changements.", "ok");
 });
 
-document.querySelectorAll(".sous-onglets button").forEach(b => b.addEventListener("click", () => {
-  onglet = b.dataset.onglet;
-  document.querySelectorAll(".sous-onglets button").forEach(x => x.setAttribute("aria-pressed", x === b));
-  afficherTableau();
-}));
-$("recherche").addEventListener("input", afficherTableau);
-$("ajouter").addEventListener("click", () => {
-  const t = donnees.onglets[onglet]; const cle = "n" + (++nouveau);
-  const valeurs = Object.fromEntries(t.colonnes.map(c => [c.nom, c.nom === "actif" ? "Oui" : ""]));
-  t.lignes.unshift({ligne: null, cle, valeurs: {}});
-  modifs[onglet] = modifs[onglet] || {}; modifs[onglet][cle] = {ligne: null, valeurs};
-  $("recherche").value = ""; afficherTableau(); majBoutons();
-  $("corps").querySelector("input, select")?.focus();
-});
-$("annuler").addEventListener("click", () => { message(""); chargerDonnees(); });
-$("enregistrer").addEventListener("click", async () => {
-  const invalides = [...$("corps").querySelectorAll("td.invalide")];
-  if (invalides.length) { message("Corrigez les adresses courriel en rouge avant d'enregistrer.", "erreur"); return; }
-  $("enregistrer").disabled = true;
-  const messages = [];
-  for (const [nom, lignes] of Object.entries(modifs)) {
-    const liste = Object.values(lignes);
-    if (!liste.length) continue;
-    const r = await appeler("/enregistrer", {excel: $("excel").dataset.plein, onglet: nom, modifications: liste});
-    if (r.erreur) { message(r.erreur, "erreur"); majBoutons(); return; }
-    messages.push(r.message);
-  }
+// --- Gestionnaires ---
+function ouvrirGestionnaire(g) {
+  gestionnaireLigne = g ? g.ligne : null;
+  $("g-titre").textContent = g ? `Gestionnaire : ${g.nom}` : "Nouveau gestionnaire";
+  $("g-nom").value = g ? g.nom : ""; $("g-courriel").value = g ? g.courriel : "";
+  message("g-message", "");
+  $("dialogue-gestionnaire").showModal();
+}
+$("g-annuler").addEventListener("click", () => $("dialogue-gestionnaire").close());
+$("g-enregistrer").addEventListener("click", async () => {
+  const courriel = $("g-courriel").value.trim();
+  if (courriel && !COURRIEL.test(courriel)) { message("g-message", `Adresse courriel invalide : ${courriel}`, "erreur"); return; }
+  const r = await appeler("/gestionnaire", {excel: $("excel").dataset.plein, ligne: gestionnaireLigne, nom: $("g-nom").value, courriel});
+  if (r.erreur) { message("g-message", r.erreur, "erreur"); return; }
+  $("dialogue-gestionnaire").close();
   await chargerDonnees();
-  message(messages.join(" ") + " Les prochaines vérifications utiliseront ces changements.", "ok");
+  message("message", r.message, "ok");
 });
+function ouvrirSuppression(nom) {
+  const g = donnees.gestionnaires.find(x => x.nom === nom);
+  gestionnaireASupprimer = nom;
+  $("s-titre").textContent = `Supprimer ${nom}`;
+  $("s-texte").textContent = g.entites ? `${nom} est gestionnaire de ${g.entites} entité${g.entites > 1 ? "s" : ""}. Choisissez qui les reprend avant de le retirer de la liste.` : `${nom} n'a aucune entité. Il sera simplement retiré de la liste.`;
+  $("s-remplacant").innerHTML = donnees.gestionnaires.filter(x => x.nom !== nom).map(x => `<option>${echap(x.nom)}</option>`).join("") + '<option value="">— Personne (laisser vide) —</option>';
+  $("s-remplacant").closest(".champ").hidden = !g.entites;
+  $("s-confirmer").textContent = g.entites ? "Transférer et supprimer" : "Supprimer";
+  message("s-message", "");
+  $("dialogue-suppression").showModal();
+}
+$("s-annuler").addEventListener("click", () => $("dialogue-suppression").close());
+$("s-confirmer").addEventListener("click", async () => {
+  const r = await appeler("/gestionnaire/supprimer", {excel: $("excel").dataset.plein, nom: gestionnaireASupprimer, remplacant: $("s-remplacant").value});
+  if (r.erreur) { message("s-message", r.erreur, "erreur"); return; }
+  $("dialogue-suppression").close();
+  await chargerDonnees();
+  message("message", r.message, "ok");
+});
+
+// --- Tableau : clic sur une ligne ---
+function activer(ev) {
+  const sup = ev.target.closest("[data-supprimer]");
+  if (sup) { ouvrirSuppression(sup.dataset.supprimer); return; }
+  const tr = ev.target.closest("tr");
+  if (!tr) return;
+  if (tr.dataset.ligne) ouvrirFiche(donnees.entites.find(e => String(e.ligne) === tr.dataset.ligne));
+  if (tr.dataset.gestionnaire) ouvrirGestionnaire(donnees.gestionnaires.find(g => String(g.ligne) === tr.dataset.gestionnaire));
+}
+$("corps").addEventListener("click", activer);
+$("corps").addEventListener("keydown", (ev) => { if (ev.key === "Enter" && ev.target.matches("tr")) activer(ev); });
+document.querySelectorAll(".sous-onglets button").forEach(b => b.addEventListener("click", () => {
+  vue = b.dataset.onglet;
+  document.querySelectorAll(".sous-onglets button").forEach(x => x.setAttribute("aria-pressed", x === b));
+  afficher();
+}));
+$("recherche").addEventListener("input", afficher);
+$("ajouter").addEventListener("click", () => vue === "clients" ? ouvrirFiche(null) : ouvrirGestionnaire(null));
 
 document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".onglets button").forEach(x => x.setAttribute("aria-selected", x === b));
@@ -347,7 +525,6 @@ document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("cl
   $("vue-clients").hidden = b.dataset.vue !== "clients";
   if (b.dataset.vue === "clients" && !donnees) chargerDonnees();
 }));
-window.addEventListener("beforeunload", (ev) => { if (nbModifs()) { ev.preventDefault(); ev.returnValue = ""; } });
 
 // Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
 setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);

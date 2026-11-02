@@ -196,10 +196,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.json({"ok": bool(cible) and ouvrir(cible)})
         elif url.path == "/lancer":
             self.json(lancer(donnees))
-        elif url.path == "/enregistrer":
+        elif url.path in ("/fiche", "/gestionnaire", "/gestionnaire/supprimer"):
             excel = Path(donnees.get("excel") or excel_clients(lire_parametres()))
             try:
-                self.json(edition_excel.enregistrer(excel, donnees.get("onglet", ""), donnees.get("modifications", [])))
+                if url.path == "/fiche":
+                    self.json(edition_excel.enregistrer_fiche(excel, donnees.get("ligne"), donnees.get("valeurs", {})))
+                elif url.path == "/gestionnaire":
+                    self.json(edition_excel.enregistrer_gestionnaire(excel, donnees.get("ligne"), donnees.get("nom", ""),
+                                                                     donnees.get("courriel", "")))
+                else:
+                    self.json(edition_excel.supprimer_gestionnaire(excel, donnees.get("nom", ""), donnees.get("remplacant", "")))
             except PermissionError:
                 self.json({"erreur": "L'Excel des clients est ouvert ailleurs. Fermez-le et enregistrez de nouveau."})
             except Exception as erreur:  # affiché dans la page

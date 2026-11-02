@@ -159,39 +159,50 @@ def texte(valeur) -> str:
 
 
 def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list[str]]:
+    """Lit l'Excel des clients : un onglet « Clients » avec une ligne par entité Hopem et ses destinataires.
+
+    Les entités qui ont exactement les mêmes destinataires (clients, direction, langue) forment un seul
+    courriel. L'ancien format à deux onglets (Clients + Entites) est encore accepté.
+    """
     classeur = load_workbook(chemin, read_only=True, data_only=True)
     alertes = []
-
     courriels_gestionnaires = {
         normaliser(ligne["nom"]): adresses(ligne.get("courriel"))
         for ligne in lire_onglet(classeur, "Gestionnaires") if ligne.get("nom")
     }
 
-    clients = {}
-    for ligne in lire_onglet(classeur, "Clients"):
-        code = texte(ligne["code_client"])
-        if code in clients:
-            alertes.append(f"Code client {code} en double dans l'Excel.")
-        clients[code] = Client(
-            code=code,
-            nom=texte(ligne["nom_client"]),
-            nom_contact=texte(ligne.get("nom_contact")),
-            a=adresses(ligne["courriel_clients"]),
-            direction=adresses(ligne.get("courriel_direction")) or config["envoi"]["direction_defaut"],
-            langue="en" if normaliser(ligne.get("langue") or "fr") in {"en", "anglais"} else "fr",
-            actif=oui(ligne.get("actif", "oui")),
-        )
+    if "Entites" in classeur.sheetnames:
+        anciens = {texte(l["code_client"]): l for l in lire_onglet(classeur, "Clients")}
+        rangees = []
+        for ligne in lire_onglet(classeur, "Entites"):
+            client = anciens.get(texte(ligne.get("code_client")))
+            if client is None:
+                alertes.append(f"Entité {texte(ligne.get('code_entite'))} rattachée au client « {texte(ligne.get('code_client'))} », absent de l'onglet Clients.")
+                continue
+            actif = oui(ligne.get("actif", "oui")) and oui(client.get("actif", "oui"))
+            rangees.append({**ligne, "courriel_clients": client.get("courriel_clients"), "langue": client.get("langue"),
+                            "courriel_direction": client.get("courriel_direction"), "actif": "Oui" if actif else "Non"})
+    else:
+        rangees = lire_onglet(classeur, "Clients")
 
+    clients: dict[str, Client] = {}
+    groupes: dict[tuple, str] = {}
     codes_vus = set()
-    for ligne in lire_onglet(classeur, "Entites"):
+    for ligne in rangees:
         code = cle_code(ligne["code_entite"])
-        client = clients.get(texte(ligne["code_client"]))
-        if client is None:
-            alertes.append(f"Entité {code} rattachée au client « {texte(ligne['code_client'])} », absent de l'onglet Clients.")
-            continue
         if code in codes_vus:
             alertes.append(f"Code d'entité {code} en double dans l'Excel.")
         codes_vus.add(code)
+        a = adresses(ligne.get("courriel_clients"))
+        direction = adresses(ligne.get("courriel_direction")) or config["envoi"]["direction_defaut"]
+        langue = "en" if normaliser(ligne.get("langue") or "fr") in {"en", "anglais"} else "fr"
+        # Un seul courriel pour les entités dont tous les destinataires sont identiques.
+        cle = (tuple(sorted(x.lower() for x in a)), tuple(sorted(x.lower() for x in direction)), langue) if a else ("seul", code)
+        if cle not in groupes:
+            groupes[cle] = f"C{code}"
+            clients[groupes[cle]] = Client(code=groupes[cle], nom="", nom_contact="", a=a, direction=direction,
+                                           langue=langue, actif=True)
+        client = clients[groupes[cle]]
         try:
             fin = int(ligne.get("fin_exercice") or 12)
             assert 1 <= fin <= 12
@@ -692,27 +703,21 @@ h2 {{ margin: 0 0 12px; font-size: 18px; }}
 
 
 def completer_excel(chemin: Path, clients: dict[str, Client], mois: str) -> Path | None:
-    """Copie l'Excel en remplissant les noms vides avec ceux trouvés dans les PDF, pour révision."""
+    """Copie l'Excel en remplissant les noms légaux vides avec ceux trouvés dans les PDF, pour révision."""
     classeur = load_workbook(chemin)
     trouves = {e.code: e for c in clients.values() for e in c.entites if e.nom_pdf}
     remplis = 0
-    for nom_onglet, cle, colonne_nom in (("Entites", "code_entite", "nom_entite"), ("Clients", "code_client", "nom_client")):
-        feuille = classeur[nom_onglet]
+    for feuille in classeur.worksheets:
         entetes = [normaliser(c.value or "").replace(" ", "_") for c in feuille[1]]
-        if colonne_nom not in entetes:
+        if "code_entite" not in entetes or "nom_entite" not in entetes:
             continue
-        i_cle, i_nom = entetes.index(cle), entetes.index(colonne_nom)
+        i_cle, i_nom = entetes.index("code_entite"), entetes.index("nom_entite")
         for rangee in feuille.iter_rows(min_row=2):
             if rangee[i_nom].value or rangee[i_cle].value is None:
                 continue
-            if nom_onglet == "Entites":
-                entite = trouves.get(cle_code(rangee[i_cle].value))
-                nom = entite.nom_pdf if entite else ""
-            else:
-                client = clients.get(texte(rangee[i_cle].value))
-                nom = " et ".join(dict.fromkeys(e.nom_pdf for e in client.entites if e.nom_pdf)) if client else ""
-            if nom:
-                rangee[i_nom].value = nom
+            entite = trouves.get(cle_code(rangee[i_cle].value))
+            if entite:
+                rangee[i_nom].value = entite.nom_pdf
                 remplis += 1
     if not remplis:
         return None
