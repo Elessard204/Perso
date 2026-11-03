@@ -459,6 +459,8 @@ const echap = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;"
 const oui = (v) => ["oui", "o", "x", "yes", "y", "1", "true", "vrai"].includes(String(v || "").trim().toLowerCase());
 const liste = (v) => String(v || "").split(/[;,\n]/).map(a => a.trim()).filter(Boolean);
 const pluriel = (n, s, p) => `${n} ${n > 1 ? p : s}`;
+// Tri numérique des codes d'entité : 21.1 avant 104.1, 143.1 à la fin.
+const ordreCode = (a, b) => { const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number); return (x[0] - y[0]) || ((x[1] || 0) - (y[1] || 0)) || String(a).localeCompare(String(b)); };
 function message(id, texte, genre) { $(id).textContent = texte || ""; $(id).className = "message " + (genre || ""); }
 function moisChoisi() { return $("mois").value; }
 function libelleMois() { const o = $("mois").selectedOptions[0]; return o ? o.textContent : ""; }
@@ -529,7 +531,8 @@ function afficherProcessus() {
 // Étape 3 : possible seulement après l'étape 2 du même mois, sur un poste avec Outlook classique.
 let courrielsPrets = [];
 function preparerEtape3(courriels) {
-  courrielsPrets = courriels;
+  courrielsPrets = [...courriels].sort((a, b) => ordreCode(a.entites[0], b.entites[0]));
+  courriels = courrielsPrets;
   const choix = $("choix-brouillons");
   const nouveaux = courriels.filter(c => !c.deja);
   choix.innerHTML = (nouveaux.length && nouveaux.length < courriels.length ? `<option value="@nouveaux">Seulement ceux pas encore créés (${nouveaux.length})</option>` : "")
@@ -626,7 +629,7 @@ async function lancer(nom, mode, extra) {
     $("bloc-rapport").hidden = false;
     $("ouvrir-apercus").hidden = !r.apercus;
     if (mode !== "liste") {
-      verifie = moisChoisi(); aRegler = r.a_regler || [];
+      verifie = moisChoisi(); aRegler = (r.a_regler || []).sort((a, b) => ordreCode(a.entites[0], b.entites[0]));
       afficherARegler(r.fichiers);
       preparerEtape3(r.courriels || []); etatsAvant[2] = $("etape-3").disabled;
     }
@@ -683,6 +686,7 @@ async function chargerSuivi(mois) {
   $("suivi-mois").value = mois;
   const r = await appeler(`/suivi?mois=${mois}&excel=` + encodeURIComponent($("excel").dataset.plein || ""));
   if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
+  r.lignes.sort((a, b) => ordreCode(a.code, b.code));
   suivi = r; afficherSuivi(); afficherProcessus();
 }
 const FILTRES_SUIVI = {
@@ -793,6 +797,7 @@ function memeCourriel(v) {
 async function chargerDonnees() {
   const r = await appeler("/donnees?excel=" + encodeURIComponent($("excel").dataset.plein || ""));
   if (r.erreur) { message("message", r.erreur, "erreur"); return; }
+  r.entites.sort((a, b) => ordreCode(a.valeurs.code_entite, b.valeurs.code_entite));
   donnees = r; afficher();
 }
 

@@ -239,7 +239,17 @@ def charger_clients(chemin: Path, config: dict) -> tuple[dict[str, Client], list
             entite.avertissements.append(f"Gestionnaire « {gestionnaire} » sans courriel dans l'onglet Gestionnaires : pas en cc.")
         client.entites.append(entite)
 
+    # Toujours du plus petit numéro d'entité au plus grand (21.1, 22.1 … 143.1). Les codes des courriels
+    # (C + première entité lue) ne changent pas : le journal des brouillons s'y fie.
+    for client in clients.values():
+        client.entites.sort(key=lambda e: ordre_code(e.code))
+    clients = dict(sorted(clients.items(), key=lambda kv: min((ordre_code(e.code) for e in kv[1].entites), default=(10**9,))))
     return clients, alertes
+
+
+def ordre_code(code: str) -> tuple:
+    """Clé de tri numérique d'un code d'entité : « 21.1 » avant « 104.1 »."""
+    return tuple(int(x) if x.isdigit() else 10**9 for x in str(code).split("."))
 
 
 def associer_fichiers(dossier: Path, clients: dict[str, Client], mois: str, config: dict) -> list[str]:
