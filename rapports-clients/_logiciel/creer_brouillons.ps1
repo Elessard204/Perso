@@ -95,6 +95,7 @@ foreach ($c in $m.courriels) {
             $mail = $mail.Move($brouillons)
         }
         Write-Output ("OK|{0} : brouillon créé ({1} pièce(s) jointe(s)) -> {2}" -f $c.nom, $c.pieces.Count, $c.a)
+        Write-Output ("CREE|{0}" -f $c.code)
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($mail) | Out-Null
     } catch {
         $nbErreurs++

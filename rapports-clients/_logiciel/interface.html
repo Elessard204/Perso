@@ -633,7 +633,7 @@ async function lancer(nom, mode, extra) {
       $("messages").innerHTML = r.messages.map(l => { const [t, ...m] = l.split("|"); return `<li class="${classes[t] || ""}">${echap(m.join("|") || l)}</li>`; }).join("");
       $("messages").hidden = false;
     }
-    if (mode === "brouillons") await chargerSuivi(moisChoisi());   // la date d'envoi vient d'être inscrite
+    if (mode !== "liste") await chargerSuivi(moisChoisi());   // dates d'envoi inscrites ou reprises du journal
   } catch (e) {
     $("resume").className = "resume bloque";
     $("resume").textContent = "L'outil ne répond plus. Fermez cette page et relancez « Rapports clients ».";

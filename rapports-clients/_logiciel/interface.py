@@ -124,16 +124,61 @@ def ouvrir(chemin: Path) -> bool:
 
 
 def brouillons_deja_crees(mois: str) -> dict[str, str]:
-    """Courriels déjà créés ce mois-ci, d'après le journal : {code du courriel: date et heure}."""
+    """Courriels réellement créés ce mois-ci, d'après le journal : {code du courriel: date et heure}.
+
+    Chaque série commence par « date par qui : codes ». Les séries récentes confirment chaque courriel
+    par une ligne « CREE|code »; pour les plus anciennes, tous les codes comptent si la série n'a pas d'erreur.
+    """
     journal = SORTIE / mois / "brouillons.txt"
-    deja = {}
-    if journal.exists():
-        for ligne in journal.read_text(encoding="utf-8").splitlines():
-            trouve = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) par .*? : (.+)$", ligne)
-            if trouve:
-                for code in trouve.group(2).split(","):
-                    deja[code.strip()] = trouve.group(1)
+    deja: dict[str, str] = {}
+    if not journal.exists():
+        return deja
+
+    def fermer(serie: dict | None) -> None:
+        if serie:
+            codes = serie["crees"] if serie["crees"] else ([] if serie["erreur"] else serie["codes"])
+            for code in codes:
+                deja[code] = serie["quand"]
+
+    serie = None
+    for ligne in journal.read_text(encoding="utf-8").splitlines():
+        trouve = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) par .*? : (.+)$", ligne)
+        if trouve:
+            fermer(serie)
+            serie = {"quand": trouve.group(1), "codes": [c.strip() for c in trouve.group(2).split(",")],
+                     "crees": [], "erreur": False}
+        elif serie and ligne.startswith("CREE|"):
+            serie["crees"].append(ligne[5:].strip())
+        elif serie and ligne.startswith("ERREUR|"):
+            serie["erreur"] = True
+    fermer(serie)
     return deja
+
+
+def inscrire_dates(excel: Path, mois: str, dates: dict[str, str]) -> bool:
+    """Inscrit les dates d'envoi dans le Suivi; réessaie si l'Excel est momentanément verrouillé (OneDrive)."""
+    par_date: dict[str, list[str]] = {}
+    for entite, quand in dates.items():
+        par_date.setdefault(quand, []).append(entite)
+    for essai in range(4):
+        try:
+            for quand, entites in par_date.items():
+                edition_excel.marquer_envoi(excel, mois, entites, quand)
+            return True
+        except Exception:
+            time.sleep(2 + 2 * essai)
+    return False
+
+
+def rattraper_dates(excel: Path, mois: str, courriels: list[dict], deja: dict[str, str]) -> int:
+    """Date d'envoi manquante pour une entité dont le brouillon figure au journal : on la reprend du journal."""
+    try:
+        suivi = edition_excel.etat_suivi(excel, mois)
+    except Exception:
+        return 0
+    manquantes = {e: deja[c["code"]][:10] for c in courriels if c["code"] in deja
+                  for e in c["entites"] if not suivi.get(e, {}).get("date_envoi")}
+    return len(manquantes) if manquantes and inscrire_dates(excel, mois, manquantes) else 0
 
 
 def pluriel(nombre: int, singulier: str, pluriel_: str) -> str:
@@ -287,16 +332,16 @@ def lancer(donnees: dict) -> dict:
         reponse["resume"] = (f"{pluriel(crees, 'brouillon créé', 'brouillons créés')} dans Outlook > Finance > Brouillons"
                              if resultat.reussi else "La création des brouillons a échoué ou est incomplète.")
         reponse["ok"] = resultat.reussi
-        reponse["messages"] = resultat.messages
+        # « CREE|code » : confirmation machine de chaque courriel créé (pas affichée à l'employé).
+        crees_codes = {l[5:].strip() for l in resultat.messages if l.startswith("CREE|")}
+        reponse["messages"] = [l for l in resultat.messages if not l.startswith("CREE|")]
         # Date d'envoi inscrite dans l'onglet Suivi pour chaque courriel créé.
-        crees_noms = {l[3:].split(" : brouillon créé")[0] for l in resultat.messages if "brouillon créé" in l}
-        entites = [e for c in resultat.courriels if c["nom"] in crees_noms for e in c["entites"]]
-        if entites:
-            try:
-                edition_excel.marquer_envoi(excel, mois, entites, f"{date.today():%Y-%m-%d}")
-            except Exception:
-                reponse["messages"].append("AVERT|La date d'envoi n'a pas pu être inscrite dans le Suivi "
-                                           "(Excel des clients ouvert ailleurs?).")
+        aujourdhui = f"{date.today():%Y-%m-%d}"
+        dates = {e: aujourdhui for c in resultat.courriels if c["code"] in crees_codes for e in c["entites"]}
+        if dates and not inscrire_dates(excel, mois, dates):
+            reponse["messages"].append("AVERT|Les brouillons sont créés, mais la date d'envoi n'a pas pu être inscrite "
+                                       "dans le Suivi (Excel des clients verrouillé). Elle sera reprise du journal "
+                                       "à la prochaine vérification.")
         deja = brouillons_deja_crees(mois)
     else:
         reponse["resume"] = (f"{pluriel(resultat.prets, 'courriel prêt', 'courriels prêts')} · "
@@ -306,6 +351,12 @@ def lancer(donnees: dict) -> dict:
     # Les aperçus n'existent qu'à l'étape 2 et 3, pour les courriels prêts.
     reponse["apercus"] = exports is not None and resultat.prets > 0
     reponse["courriels"] = [{**c, "deja": deja.get(c["code"], "")} for c in resultat.courriels]
+    if exports is not None:
+        # Rattrapage : brouillons au journal sans date d'envoi dans le Suivi (Excel verrouillé au mauvais moment).
+        rattrapees = rattraper_dates(excel, mois, resultat.courriels, deja)
+        if rattrapees:
+            reponse.setdefault("messages", []).append(
+                f"OK|{pluriel(rattrapees, 'date d’envoi reprise', 'dates d’envoi reprises')} du journal des brouillons dans le Suivi.")
     reponse["a_regler"] = resultat.a_regler
     reponse["fichiers"] = resultat.fichiers
     if resultat.complete:
