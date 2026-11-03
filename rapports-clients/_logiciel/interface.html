@@ -141,7 +141,9 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
 .case-seule { display: flex; gap: 8px; align-items: center; font-weight: 400; font-size: 14px; }
 .case-seule input, .cases input { width: 18px; height: 18px; accent-color: var(--ok); }
 .tableau-travail { border: 1px solid var(--ligne); border-radius: var(--rayon-carte); overflow: hidden; background: var(--surface); }
+/* Hauteur ajustée par le script : le tableau finit au bas de l'écran, sa barre de défilement horizontale reste visible. */
 .grille { overflow: auto; max-height: 64vh; }
+.message:empty { display: none; }
 .grille table { border-collapse: separate; border-spacing: 0; font-size: 13px; width: 100%; }
 .grille th { position: sticky; top: 0; z-index: 1; background: var(--fond); text-align: left; font-size: 12px; font-weight: 700;
   color: var(--discret); padding: 6px 10px; border-bottom: 1px solid var(--ligne); white-space: nowrap; }
@@ -1018,6 +1020,19 @@ document.querySelectorAll(".sous-onglets button").forEach(b => b.addEventListene
 }));
 $("recherche").addEventListener("input", afficher);
 $("ajouter").addEventListener("click", () => vue === "clients" ? ouvrirFiche(null) : ouvrirGestionnaire(null));
+
+// Le tableau affiché remplit l'écran jusqu'en bas : sa barre de défilement horizontale est visible sans
+// devoir d'abord faire défiler toutes les lignes.
+function ajusterGrilles() {
+  document.querySelectorAll(".page:not([hidden]) .grille").forEach(g => {
+    const statut = g.parentElement.querySelector(".statut");
+    const bas = (statut ? statut.offsetHeight : 0) + 16;
+    g.style.maxHeight = Math.max(260, window.innerHeight - g.getBoundingClientRect().top - window.scrollY - bas) + "px";
+  });
+}
+window.addEventListener("resize", ajusterGrilles);
+new MutationObserver(() => requestAnimationFrame(ajusterGrilles))
+  .observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"]});
 
 // Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
 setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);
