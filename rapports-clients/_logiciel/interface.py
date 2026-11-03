@@ -190,11 +190,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
         pass
 
     def envoyer(self, code: int, contenu: bytes, type_: str) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", type_)
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(contenu)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", type_)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(contenu)
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass   # page fermée ou rafraîchie avant la réponse : le travail est fait, rien à afficher
 
     def json(self, valeur: dict, code: int = 200) -> None:
         self.envoyer(code, json.dumps(valeur, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
@@ -373,8 +376,16 @@ def surveiller(serveur: ThreadingHTTPServer) -> None:
             return
 
 
+class Serveur(ThreadingHTTPServer):
+    def handle_error(self, request, client_address) -> None:
+        # Une connexion coupée par le navigateur n'est pas une erreur de l'outil : on ne l'affiche pas.
+        if isinstance(sys.exc_info()[1], (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)):
+            return
+        super().handle_error(request, client_address)
+
+
 if __name__ == "__main__":
-    serveur = ThreadingHTTPServer(("127.0.0.1", 0), Gestionnaire)
+    serveur = Serveur(("127.0.0.1", 0), Gestionnaire)
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"
     threading.Thread(target=surveiller, args=(serveur,), daemon=True).start()
     if "--sans-navigateur" not in sys.argv:
