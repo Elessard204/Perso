@@ -306,6 +306,8 @@ def lancer(donnees: dict) -> dict:
     # Les aperçus n'existent qu'à l'étape 2 et 3, pour les courriels prêts.
     reponse["apercus"] = exports is not None and resultat.prets > 0
     reponse["courriels"] = [{**c, "deja": deja.get(c["code"], "")} for c in resultat.courriels]
+    reponse["a_regler"] = resultat.a_regler
+    reponse["fichiers"] = resultat.fichiers
     if resultat.complete:
         reponse["complete"] = f"Noms lus dans les PDF ajoutés dans une copie de l'Excel, à réviser : {resultat.complete.name}"
     return reponse

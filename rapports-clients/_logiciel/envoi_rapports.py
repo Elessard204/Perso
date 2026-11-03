@@ -618,18 +618,18 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
                     "liste": "Liste d'extraction : à faire avant de télécharger les rapports de Hopem"}[mode]
     page = f"""<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
+<style>html {{ background: #F3F4F6; }}</style>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Envoi des rapports {e(mois_texte(mois, "fr"))}</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Mise en page : une colonne de contrôle, sommaire d'abord, détail par client ensuite. */
 :root {{
   /* Charte Progim : bandeau marine, accent orange, gris clair (même look que l'outil de facturation). */
-  --marine: #131A2F; --orange: #EE7203; --fond: #F3F4F6; --surface: #FFFFFF; --texte: #131A2F;
-  --discret: #5B6770; --pale: #AEB6C8; --ligne: #DDE2E6; --lien: #0B5D7A; --accent: #EE7203;
-  --ok: #2D7A3E; --ok-fond: #E3F2E6; --bloque: #B4471A; --bloque-fond: #FBEAE2; --attention: #6E5000;
-  --police: "Public Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
+  --marine: #131A2F; --orange: #EE7203; --orange-texte: #B85500; --fond: #F3F4F6; --surface: #FFFFFF; --texte: #131A2F;
+  --discret: #5B6770; --pale: #AEB6C8; --ligne: #DDE2E6; --lien: #0B5D7A;
+  --ok: #2D7A3E; --ok-fond: #E3F2E6; --bloque: #B4471A; --bloque-fond: #FBEAE2; --attention: #6E5000; --info-pale: #E3EFF4;
+  --police: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }}
 [hidden] {{ display: none !important; }}
@@ -639,27 +639,27 @@ body {{ margin: 0; background: var(--fond); color: var(--texte); font: 15px/1.5 
 .bandeau-contenu {{ max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }}
 .bandeau-titre {{ display: flex; flex-direction: column; border-left: 1px solid var(--ligne); padding-left: 14px; }}
 .bandeau img {{ height: 40px; width: auto; }}
-.bandeau-titre b {{ font-size: 17px; letter-spacing: .02em; }}
+.bandeau-titre b {{ font-size: 17px; }}
 .bandeau-titre span {{ font-size: 12px; color: var(--discret); }}
 main {{ max-width: 1100px; margin: 0 auto; padding-block: 28px 64px;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid; gap: 28px; }}
 header {{ display: grid; gap: 4px; }}
-.surtitre {{ font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--orange); }}
+.surtitre {{ font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--orange-texte); }}
 a {{ color: var(--lien); }}
-h1 {{ margin: 0; font-size: clamp(24px, 4vw, 34px); line-height: 1.15; text-wrap: balance; }}
+h1 {{ margin: 0; font-size: clamp(24px, 4vw, 30px); line-height: 1.2; text-wrap: balance; }}
 h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .discret {{ color: var(--discret); font-size: 13px; }}
-.code {{ font-family: var(--mono); font-size: 12.5px; }}
+.code {{ font-weight: 700; font-variant-numeric: tabular-nums; }}
 .compteurs {{ display: flex; flex-wrap: wrap; gap: 12px; }}
 .compteur {{ flex: 1 1 160px; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; padding: 14px 16px; }}
 .compteur b {{ display: block; font-size: 30px; font-variant-numeric: tabular-nums; line-height: 1.1; }}
 .compteur.ok b {{ color: var(--ok); }} .compteur.bloque b {{ color: var(--bloque); }}
 .tableau {{ overflow-x: auto; background: var(--surface); border: 1px solid var(--ligne); border-radius: 10px; }}
-.tableau table {{ width: 100%; border-collapse: collapse; min-width: 760px; }}
-.tableau th {{ text-align: left; font: 500 11.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--discret);
-  padding: 10px 14px; border-bottom: 1px solid var(--ligne); }}
-.tableau td {{ padding: 12px 14px; border-bottom: 1px solid var(--ligne); vertical-align: top; }}
+.tableau table {{ width: 100%; border-collapse: collapse; min-width: 760px; font-size: 13.5px; }}
+.tableau th {{ text-align: left; font-size: 12px; font-weight: 700; color: var(--discret); background: var(--fond);
+  padding: 8px 10px; border-bottom: 1px solid var(--ligne); }}
+.tableau td {{ padding: 8px 10px; border-bottom: 1px solid var(--ligne); vertical-align: top; }}
 .tableau td:last-child {{ width: 50%; }}
 .tableau tr:last-child td {{ border-bottom: 0; }}
 .tableau tr.a-voir td:first-child {{ box-shadow: inset 3px 0 0 var(--bloque); }}
@@ -672,9 +672,9 @@ h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .consigne {{ font-size: 13px; font-weight: 600; }}
 .avertissement {{ color: var(--attention); font-size: 13px; }}
 .avertissement::before {{ content: "· "; }}
-.periode {{ font: 500 11.5px var(--mono); color: var(--lien); border: 1px solid var(--ligne); border-radius: 4px; padding: 0 5px; }}
-.periode.grande {{ font-size: 13px; padding: 1px 8px; }}
-.extraction {{ display: grid; gap: 1px; background: var(--ligne); border: 1px solid var(--ligne); border-radius: 6px; overflow: hidden; }}
+.periode {{ font-size: 12px; font-weight: 600; color: var(--lien); background: var(--info-pale); border-radius: 99px; padding: 1px 8px; font-variant-numeric: tabular-nums; }}
+.periode.grande {{ font-size: 13px; padding: 2px 10px; }}
+.extraction {{ display: grid; gap: 1px; background: var(--ligne); border: 1px solid var(--ligne); border-radius: 10px; overflow: hidden; }}
 .groupe {{ background: var(--surface); padding: 12px 16px; display: grid; gap: 4px; }}
 .groupe-tete {{ display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }}
 .alertes {{ margin: 0; padding-left: 20px; color: var(--bloque); }}
@@ -682,10 +682,12 @@ h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .courriel dl {{ margin: 0; padding: 14px 18px; display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px;
   border-bottom: 1px solid var(--ligne); font-size: 14px; }}
 .courriel dt {{ color: var(--discret); }} .courriel dd {{ margin: 0; min-width: 0; overflow-wrap: anywhere; }}
-.piece {{ display: inline-block; font: 12.5px var(--mono); border: 1px solid var(--ligne); border-radius: 4px; padding: 1px 8px; margin: 0 6px 4px 0; }}
+.piece {{ display: inline-block; font-size: 12.5px; border: 1px solid var(--ligne); border-radius: 6px; padding: 1px 8px; margin: 0 6px 4px 0; }}
 .corps {{ padding: 8px 18px 14px; max-width: 65ch; }}
+.integre .bandeau {{ display: none; }}
 </style></head>
 <body>
+<script>if (window.top !== window) document.body.classList.add("integre");</script>
 <div class="bandeau"><div class="bandeau-contenu">
   {logo_html}
   <div class="bandeau-titre"><b>Rapports clients</b><span>Finance</span></div>
@@ -758,6 +760,24 @@ class Resultat:
     messages: list[str] = field(default_factory=list)   # retour d'Outlook (OK| / AVERT| / ERREUR|)
     reussi: bool = True
     courriels: list[dict] = field(default_factory=list)  # courriels prêts : code et nom
+    a_regler: list[dict] = field(default_factory=list)   # courriels bloqués, avec le problème et le responsable
+    fichiers: list[str] = field(default_factory=list)    # fichiers du dossier non reconnus
+
+
+def dossiers_a_regler(clients: dict[str, Client], mois: str) -> list[dict]:
+    """Un dossier par courriel bloqué : chaque problème dit où il se règle (suivi, fiche ou fichier)."""
+    dossiers = []
+    for client in clients.values():
+        a_envoyer = client.a_envoyer(mois)
+        if not a_envoyer or client.pret(mois):
+            continue
+        problemes = [{"code": client.code, "texte": p, "ou": "fiche"} for p in client.problemes]
+        problemes += [{"code": e.code, "texte": p, "ou": "suivi" if "onglet Suivi" in p else "fichier"}
+                      for e in a_envoyer for p in e.problemes]
+        dossiers.append({"code": client.code, "nom": client.nom_affiche(mois), "problemes": problemes,
+                         "entites": [e.code for e in a_envoyer],
+                         "gestionnaire": ", ".join(dict.fromkeys(e.gestionnaire_nom for e in a_envoyer if e.gestionnaire_nom))})
+    return dossiers
 
 
 def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode: str = "simulation",
@@ -806,7 +826,8 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
                     bloques=sum(not c.pret(mois) for c in concernes),
                     alertes=len(alertes), complete=complete, messages=messages, reussi=reussi,
                     courriels=[{"code": c.code, "nom": c.nom_affiche(mois),
-                                "entites": [e.code for e in c.a_envoyer(mois)]} for c in prets])
+                                "entites": [e.code for e in c.a_envoyer(mois)]} for c in prets],
+                    a_regler=dossiers_a_regler(clients, mois), fichiers=alertes)
 
 
 def main() -> None:

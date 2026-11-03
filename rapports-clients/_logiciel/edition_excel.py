@@ -15,7 +15,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-from envoi_rapports import COURRIEL_VALIDE, ICI, MOIS_FR, adresses, cle_code, normaliser
+from envoi_rapports import COURRIEL_VALIDE, FREQUENCES as MOIS_PAR_FREQUENCE, ICI, MOIS_FR, adresses, cle_code, normaliser
 
 SAUVEGARDES = ICI / "sauvegardes"
 GARDER_SAUVEGARDES = 30
@@ -331,11 +331,19 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
             if v.get("mois", "")[:7] == mois and v.get("code_entite"):
                 suivi[cle_code(v["code_entite"])] = v
     resultat = []
+    numero = int(mois[5:7]) if len(mois) >= 7 and mois[5:7].isdigit() else 0
     for _, v in entites:
         code = cle_code(v.get("code_entite", ""))
         s = suivi.get(code, {})
+        try:
+            fin = int(float(v.get("fin_exercice") or 12))
+        except ValueError:
+            fin = 12
+        # Rapport attendu ce mois-ci selon la fréquence (trimestriel, semestriel, annuel…).
+        du_mois = numero in MOIS_PAR_FREQUENCE.get(normaliser(v.get("frequence") or "mensuel"), {fin})
         resultat.append({"code": code, "nom": v.get("nom_entite", ""), "particularite": v.get("notes", ""),
                          "actif": normaliser(v.get("actif", "oui")) in {"oui", "o", "x", "1", ""},
+                         "du_mois": du_mois,
                          "conciliation": normaliser(s.get("conciliation", "")) in {"oui", "o", "x", "1"},
                          "conciliation_note": s.get("conciliation_note", ""),
                          "ef_verifies": normaliser(s.get("ef_verifies", "")) in {"oui", "o", "x", "1"},
