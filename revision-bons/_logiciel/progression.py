@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,7 @@ from modele import Bon, EntreeTemps, Ligne, PieceJointe
 
 BASE = "https://api.progressionlive.com/server/rest"
 PAGE = 500  # maximum accepté par /task/list
+ESSAIS = 5  # quand Progression demande de ralentir (429)
 
 
 class ErreurProgression(Exception):
@@ -106,11 +108,13 @@ def _liste(reponse) -> list[dict]:
 
 
 class Progression:
-    def __init__(self, cle: str, base: str = BASE, ouvrir=urllib.request.urlopen, cfg: dict | None = None):
+    def __init__(self, cle: str, base: str = BASE, ouvrir=urllib.request.urlopen, cfg: dict | None = None,
+                 dormir=time.sleep):
         self.cle = cle
         self.base = base.rstrip("/")
         self.ouvrir = ouvrir
         self.cfg = cfg or {}
+        self.dormir = dormir
 
     def _appel(self, methode: str, chemin: str, params: dict | None = None, corps: dict | None = None):
         url = self.base + chemin
@@ -122,20 +126,32 @@ class Progression:
             "Accept": "application/json",
             "Content-Type": "application/json",
         })
-        try:
-            with self.ouvrir(requete, timeout=60) as reponse:
-                texte = reponse.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            if e.code in (401, 403):
+        for essai in range(ESSAIS):
+            try:
+                with self.ouvrir(requete, timeout=60) as reponse:
+                    texte = reponse.read().decode("utf-8")
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    if essai == ESSAIS - 1:
+                        raise ErreurProgression(
+                            "Progression reçoit trop de demandes : réessayer dans quelques minutes.") from e
+                    try:
+                        attente = float((e.headers or {}).get("Retry-After") or "")
+                    except ValueError:
+                        attente = 2.0 * 2 ** essai
+                    self.dormir(min(attente, 60.0))
+                    continue
+                if e.code in (401, 403):
+                    raise ErreurProgression(
+                        "Clé Progression refusée ou permissions insuffisantes. "
+                        "Vérifier la clé dans les paramètres.") from e
+                if e.code == 404:
+                    raise ErreurProgression(f"Élément introuvable dans Progression ({chemin}).") from e
+                raise ErreurProgression(f"Progression a répondu une erreur {e.code} ({chemin}).") from e
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
                 raise ErreurProgression(
-                    "Clé Progression refusée ou permissions insuffisantes. "
-                    "Vérifier la clé dans les paramètres.") from e
-            if e.code == 404:
-                raise ErreurProgression(f"Élément introuvable dans Progression ({chemin}).") from e
-            raise ErreurProgression(f"Progression a répondu une erreur {e.code} ({chemin}).") from e
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
-            raise ErreurProgression(
-                "Progression ne répond pas. Vérifier la connexion Internet et réessayer.") from e
+                    "Progression ne répond pas. Vérifier la connexion Internet et réessayer.") from e
         return json.loads(texte) if texte.strip() else {}
 
     def lister_bons(self, logic_ids: str, type_tache: str, rv: str) -> list[dict]:

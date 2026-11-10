@@ -135,3 +135,28 @@ def test_bon_avec_ligne():
     assert p.bon_avec_ligne("rona|A-1|1") == 77
     assert p.bon_avec_ligne("bmr|9|1") is None
     assert "itemExternalId=rona%7CA-1%7C1" in http.requetes[0].full_url
+
+
+def _erreur_429(attente="0"):
+    return urllib.error.HTTPError("u", 429, "Too Many Requests", {"Retry-After": attente}, io.BytesIO(b""))
+
+
+def test_429_attend_puis_reessaie():
+    pauses = []
+    http = FauxHttp([_erreur_429("2"), TACHE])
+    p = Progression("c", ouvrir=http, dormir=pauses.append)
+    assert p.tache_brute(1001)["id"] == 1001
+    assert pauses == [2.0] and len(http.requetes) == 2
+
+
+def test_429_sans_retry_after_attente_croissante():
+    pauses = []
+    http = FauxHttp([_erreur_429(""), _erreur_429(""), TACHE])
+    Progression("c", ouvrir=http, dormir=pauses.append).tache_brute(1001)
+    assert pauses == [2.0, 4.0]
+
+
+def test_429_abandon_apres_plusieurs_essais():
+    http = FauxHttp([_erreur_429() for _ in range(6)])
+    with pytest.raises(ErreurProgression, match="trop de demandes"):
+        Progression("c", ouvrir=http, dormir=lambda s: None).tache_brute(1001)

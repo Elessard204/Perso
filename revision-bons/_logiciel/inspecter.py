@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tomllib
 from pathlib import Path
 
 import cles
@@ -68,8 +69,9 @@ def main() -> int:
     if not cle:
         print(f"Aucune clé Progression dans {cles.fichier()}.")
         return 1
+    cfg = tomllib.loads((ICI / "config.toml").read_text(encoding="utf-8"))["progression"]
     try:
-        texte = rapport_inspection(Progression(cle), args.nombre)
+        texte = rapport_inspection(Progression(cle, cfg["base"], cfg=cfg), args.nombre)
     except ErreurProgression as e:
         print(e)
         return 1
