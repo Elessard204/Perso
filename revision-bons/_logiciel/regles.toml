@@ -1,0 +1,13 @@
+# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.
+[heures]
+pas_minutes = 15
+[materiel]
+marge = 0.10
+refacturer_taxes = false
+[transports]
+regle = "conserver"   # seule valeur implémentée; Hugo définira la vraie règle
+[garde_fous]
+ecart_sous_total = 0.05
+jours_max_facture = 30
+montant_max_ligne = 1000.00
+heures_max_jour = 12
