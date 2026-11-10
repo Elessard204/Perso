@@ -49,6 +49,12 @@ LOGO_CID = "logo-progim"
 COURRIEL_VALIDE = re.compile(r"^[^@\s;,]+@[^@\s;,]+\.[a-z]{2,}$", re.I)
 
 
+def poste() -> str:
+    """Qui travaille, et sur quel ordinateur : nomme les fichiers propres à chaque personne (aucun conflit OneDrive)."""
+    nom = f"{os.environ.get('USERNAME') or os.environ.get('USER') or 'inconnu'}@{os.environ.get('COMPUTERNAME') or 'poste'}"
+    return re.sub(r"[^\w@.-]+", "_", nom)
+
+
 def normaliser(texte) -> str:
     texte = unicodedata.normalize("NFKD", str(texte)).encode("ascii", "ignore").decode()
     return re.sub(r"[\s_\-]+", " ", texte).strip().lower()
@@ -545,7 +551,8 @@ def creer_brouillons(clients: list[Client], mois: str, sortie: Path, config: dic
                 if cle in manuels:
                     lignes.append(f"AVERT|À compléter : {client.nom_affiche(mois)} ({entite.code}) — {manuels[cle]}.")
     # Journal du mois : sert aussi de garde-fou contre une deuxième série de brouillons.
-    with open(sortie / "brouillons.txt", "a", encoding="utf-8") as journal:
+    # Un journal par personne : deux postes qui créent des brouillons en même temps n'écrivent jamais le même fichier.
+    with open(sortie / f"brouillons-{poste()}.txt", "a", encoding="utf-8") as journal:
         journal.write(f"{datetime.now():%Y-%m-%d %H:%M} par {os.environ.get('USERNAME', '?')} : "
                       f"{', '.join(c.code for c in clients)}\n")
         journal.writelines(l + "\n" for l in lignes)
@@ -810,6 +817,8 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
         for client in clients.values():
             for entite in client.a_envoyer(mois):
                 etat = suivi.get(entite.code, {})
+                if etat.get("particularite") is not None:
+                    entite.notes = etat["particularite"]   # la note la plus récente, même tapée par une collègue
                 if not etat.get("conciliation"):
                     entite.problemes.append("Conciliation bancaire pas cochée dans l'onglet Suivi.")
                 if not etat.get("ef_verifies"):

@@ -129,10 +129,7 @@ def brouillons_deja_crees(mois: str) -> dict[str, str]:
     Chaque série commence par « date par qui : codes ». Les séries récentes confirment chaque courriel
     par une ligne « CREE|code »; pour les plus anciennes, tous les codes comptent si la série n'a pas d'erreur.
     """
-    journal = SORTIE / mois / "brouillons.txt"
     deja: dict[str, str] = {}
-    if not journal.exists():
-        return deja
 
     def fermer(serie: dict | None) -> None:
         if serie:
@@ -140,18 +137,24 @@ def brouillons_deja_crees(mois: str) -> dict[str, str]:
             for code in codes:
                 deja[code] = serie["quand"]
 
-    serie = None
-    for ligne in journal.read_text(encoding="utf-8").splitlines():
-        trouve = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) par .*? : (.+)$", ligne)
-        if trouve:
-            fermer(serie)
-            serie = {"quand": trouve.group(1), "codes": [c.strip() for c in trouve.group(2).split(",")],
-                     "crees": [], "erreur": False}
-        elif serie and ligne.startswith("CREE|"):
-            serie["crees"].append(ligne[5:].strip())
-        elif serie and ligne.startswith("ERREUR|"):
-            serie["erreur"] = True
-    fermer(serie)
+    # Un journal par personne (brouillons-<qui>.txt), plus l'ancien journal commun (brouillons.txt).
+    for journal in sorted((SORTIE / mois).glob("brouillons*.txt")):
+        serie = None
+        try:
+            contenu = journal.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for ligne in contenu:
+            trouve = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) par .*? : (.+)$", ligne)
+            if trouve:
+                fermer(serie)
+                serie = {"quand": trouve.group(1), "codes": [c.strip() for c in trouve.group(2).split(",")],
+                         "crees": [], "erreur": False}
+            elif serie and ligne.startswith("CREE|"):
+                serie["crees"].append(ligne[5:].strip())
+            elif serie and ligne.startswith("ERREUR|"):
+                serie["erreur"] = True
+        fermer(serie)
     return deja
 
 

@@ -5,6 +5,8 @@ L'Excel a un onglet « Clients » (une ligne par entité Hopem, avec ses destina
 Une copie de l'Excel est gardée dans _logiciel/sauvegardes avant chaque modification.
 """
 
+import json
+import re
 import shutil
 import tomllib
 from datetime import datetime
@@ -15,7 +17,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-from envoi_rapports import COURRIEL_VALIDE, FREQUENCES as MOIS_PAR_FREQUENCE, ICI, MOIS_FR, adresses, cle_code, normaliser
+from envoi_rapports import COURRIEL_VALIDE, FREQUENCES as MOIS_PAR_FREQUENCE, ICI, MOIS_FR, adresses, cle_code, normaliser, poste
 
 SAUVEGARDES = ICI / "sauvegardes"
 GARDER_SAUVEGARDES = 30
@@ -27,8 +29,47 @@ COLONNES_RETIREES = ["courriel_gestionnaire"]
 # Colonnes abandonnées : retirées même si elles contiennent quelque chose (la copie de sauvegarde les garde).
 COLONNES_ABANDONNEES = ["liste_cheques"]
 SUIVI = "Suivi"
-COLONNES_SUIVI = ["mois", "code_entite", "conciliation", "conciliation_note", "ef_verifies", "date_envoi"]
 ANCIENS = "Anciens clients"
+# Travail à plusieurs : chaque personne écrit ses cases du suivi dans SON fichier (_logiciel/suivi/AAAA-MM/<qui>.jsonl).
+# Personne n'écrit jamais le fichier d'une autre, donc OneDrive n'a aucun conflit à régler; à la lecture,
+# l'outil combine les fichiers de tout le monde et garde, pour chaque case, la modification la plus récente.
+# Les particularités (permanentes) vont dans _logiciel/suivi/notes/.
+DOSSIER_SUIVI = ICI / "suivi"
+CHAMPS_SUIVI = ("conciliation", "conciliation_note", "ef_verifies", "date_envoi")
+NOTES = "notes"
+
+
+def ajouter_journal(groupe: str, entrees: list[tuple[str, str, object]]) -> None:
+    """Ajoute des changements (code, champ, valeur) au fichier de la personne qui travaille."""
+    dossier = DOSSIER_SUIVI / groupe
+    dossier.mkdir(parents=True, exist_ok=True)
+    quand = datetime.now().isoformat(timespec="milliseconds")
+    with open(dossier / f"{poste()}.jsonl", "a", encoding="utf-8") as journal:
+        for code, champ, valeur in entrees:
+            journal.write(json.dumps({"t": quand, "code": cle_code(code), "champ": champ, "valeur": valeur,
+                                      "par": poste()}, ensure_ascii=False) + "\n")
+
+
+def lire_journal(groupe: str) -> dict[tuple[str, str], object]:
+    """Dernière valeur de chaque (code, champ), toutes personnes confondues."""
+    dernier: dict[tuple[str, str], tuple[str, object]] = {}
+    dossier = DOSSIER_SUIVI / groupe
+    if not dossier.is_dir():
+        return {}
+    for fichier in sorted(dossier.glob("*.jsonl")):
+        try:
+            contenu = fichier.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for ligne in contenu:
+            try:
+                e = json.loads(ligne)
+                cle, quand = (cle_code(e["code"]), e["champ"]), str(e["t"])
+            except (ValueError, KeyError, TypeError):
+                continue   # ligne incomplète (fichier en cours de synchronisation) : ignorée
+            if cle not in dernier or quand >= dernier[cle][0]:
+                dernier[cle] = (quand, e.get("valeur"))
+    return {cle: valeur for cle, (_, valeur) in dernier.items()}
 
 
 def config() -> dict:
@@ -156,6 +197,11 @@ def lire(chemin: Path) -> dict:
     compte = {}
     for _, e in entites:
         compte[e.get("gestionnaire", "")] = compte.get(e.get("gestionnaire", ""), 0) + 1
+    notes = lire_journal(NOTES)
+    for _, v in entites:
+        note = notes.get((cle_code(v.get("code_entite", "")), "particularite"))
+        if note is not None:
+            v["notes"] = note
     return {
         "entites": [{"ligne": n, "valeurs": v} for n, v in entites],
         "gestionnaires": [{"ligne": n, "nom": v.get("nom", ""), "courriel": v.get("courriel", ""),
@@ -218,6 +264,8 @@ def enregistrer_fiche(chemin: Path, ligne: int | None, valeurs: dict) -> dict:
     ecrire_ligne(feuille, ligne, valeurs)
     ajuster_tables(feuille)
     classeur.save(chemin)
+    if "notes" in valeurs:
+        ajouter_journal(NOTES, [(code, "particularite", str(valeurs["notes"]).strip())])
     return {"ok": True, "message": f"Fiche {code} enregistrée."}
 
 
@@ -308,18 +356,6 @@ def supprimer_gestionnaire(chemin: Path, nom: str, remplacant: str) -> dict:
 
 # ---- Onglet « Suivi » : une ligne par mois et par entité ----
 
-def feuille_suivi(classeur):
-    if SUIVI not in classeur.sheetnames:
-        feuille = classeur.create_sheet(SUIVI)
-        feuille.append(COLONNES_SUIVI)
-        for cellule in feuille[1]:
-            cellule.font, cellule.fill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="131A2F")
-        for lettre, largeur in zip("ABCDEF", (10, 12, 14, 50, 12, 14)):
-            feuille.column_dimensions[lettre].width = largeur
-        feuille.freeze_panes = "C2"
-    return classeur[SUIVI]
-
-
 def lire_suivi(chemin: Path, mois: str) -> dict:
     """Le suivi d'un mois, avec le code, le nom légal et l'état actif repris de l'onglet Clients."""
     migrer_si_besoin(chemin)
@@ -330,6 +366,7 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
         for _, v in lignes(classeur[SUIVI])[1]:
             if v.get("mois", "")[:7] == mois and v.get("code_entite"):
                 suivi[cle_code(v["code_entite"])] = v
+    journal, notes = lire_journal(mois), lire_journal(NOTES)
     resultat = []
     numero = int(mois[5:7]) if len(mois) >= 7 and mois[5:7].isdigit() else 0
     for _, v in entites:
@@ -348,51 +385,33 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
                          "conciliation_note": s.get("conciliation_note", ""),
                          "ef_verifies": normaliser(s.get("ef_verifies", "")) in {"oui", "o", "x", "1"},
                          "date_envoi": s.get("date_envoi", "")[:10]})
+        ligne = resultat[-1]
+        for champ in CHAMPS_SUIVI:
+            if (code, champ) in journal:
+                valeur = journal[(code, champ)]
+                ligne[champ] = bool(valeur) if champ in ("conciliation", "ef_verifies") else str(valeur or "")[:10 if champ == "date_envoi" else None]
+        if (code, "particularite") in notes:
+            ligne["particularite"] = str(notes[(code, "particularite")] or "")
     return {"mois": mois, "lignes": resultat}
 
 
-def ecrire_suivi(classeur, mois: str, code: str, valeurs: dict) -> None:
-    feuille = feuille_suivi(classeur)
-    _, rangees = lignes(feuille)
-    ligne = next((n for n, v in rangees if v.get("mois", "")[:7] == mois and cle_code(v.get("code_entite", "")) == code), None)
-    if ligne is None:
-        ligne = feuille.max_row + 1
-        feuille.cell(ligne, 1).value, feuille.cell(ligne, 2).value = mois, code
-    for colonne, valeur in valeurs.items():
-        if colonne in COLONNES_SUIVI[2:]:
-            if isinstance(valeur, bool):
-                valeur = "Oui" if valeur else "Non"
-            feuille.cell(ligne, COLONNES_SUIVI.index(colonne) + 1).value = str(valeur).strip() or None
-
-
-def ecrire_particularite(classeur, code: str, texte: str) -> None:
-    """La particularité du Suivi est la même chose que les « Notes / consignes » de la fiche du client."""
-    feuille = classeur["Clients"]
-    _, entites = lignes(feuille)
-    ligne = next((n for n, v in entites if cle_code(v.get("code_entite", "")) == code), None)
-    if ligne:
-        ecrire_ligne(feuille, ligne, {"notes": texte})
-
-
 def enregistrer_suivi(chemin: Path, mois: str, codes: list[str], valeurs: dict) -> dict:
-    """Une case ou un commentaire du suivi (une entité, ou plusieurs avec « tout cocher »), enregistré tout de suite."""
-    classeur = load_workbook(chemin)
-    if "particularite" in valeurs:
-        sauvegarder(chemin)   # touche la fiche du client : copie de sauvegarde comme pour une fiche
-    for code in codes:
-        if "particularite" in valeurs:
-            ecrire_particularite(classeur, cle_code(code), valeurs["particularite"])
-        ecrire_suivi(classeur, mois, cle_code(code), {c: v for c, v in valeurs.items() if c != "particularite"})
-    classeur.save(chemin)
+    """Une case ou un commentaire du suivi (une entité, ou plusieurs avec « tout cocher »), enregistré tout de suite
+    dans le fichier de la personne : jamais dans l'Excel commun, pour ne rien écraser chez les collègues."""
+    if not re.fullmatch(r"\d{4}-\d{2}", mois or ""):
+        return {"erreur": "Mois du suivi invalide."}
+    entrees = [(code, champ, valeur) for code in codes for champ, valeur in valeurs.items() if champ in CHAMPS_SUIVI]
+    notes = [(code, "particularite", str(valeurs["particularite"]).strip()) for code in codes] if "particularite" in valeurs else []
+    if entrees:
+        ajouter_journal(mois, entrees)
+    if notes:
+        ajouter_journal(NOTES, notes)
     return {"ok": True}
 
 
 def marquer_envoi(chemin: Path, mois: str, codes: list[str], date: str) -> None:
     """Inscrit la date d'envoi (création du brouillon) des entités d'un lot."""
-    classeur = load_workbook(chemin)
-    for code in codes:
-        ecrire_suivi(classeur, mois, cle_code(code), {"date_envoi": date})
-    classeur.save(chemin)
+    ajouter_journal(mois, [(code, "date_envoi", date) for code in codes])
 
 
 def etat_suivi(chemin: Path, mois: str) -> dict[str, dict]:

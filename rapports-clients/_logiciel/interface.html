@@ -313,7 +313,7 @@ textarea { resize: vertical; }
     </table></div>
     <div class="statut" id="suivi-statut"></div>
   </div>
-  <p class="note">Chaque case est enregistrée tout de suite dans l'Excel des clients (onglet Suivi). Les cases d'en-tête cochent ou décochent toutes les entités affichées. La particularité est une note interne permanente (la même que « Notes / consignes » dans la fiche du client); elle n'est jamais envoyée au client. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé; elle peut être corrigée à la main.</p>
+  <p class="note">Plusieurs personnes peuvent travailler ici en même temps : chaque case est enregistrée tout de suite, sans toucher au travail des autres, et les cases cochées par vos collègues apparaissent d'elles-mêmes en moins d'une minute. Les cases d'en-tête cochent ou décochent toutes les entités affichées. La particularité est une note interne permanente (la même que « Notes / consignes » dans la fiche du client); elle n'est jamais envoyée au client. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé; elle peut être corrigée à la main.</p>
 </div>
 
 <!-- ===== Clients : modèle Tableau de travail ===== -->
@@ -761,7 +761,7 @@ function afficherSuivi() {
   $("suivi-statut").innerHTML = `<span>Conciliations <b>${n(l => l.conciliation)} / ${actives.length}</b></span>`
     + `<span>États financiers vérifiés <b>${n(l => l.ef_verifies)} / ${actives.length}</b></span>`
     + `<span>Envoyés <b>${n(l => l.date_envoi)} / ${actives.length}</b></span>`
-    + `<span class="source">Source : Excel des clients, onglet Suivi</span>`;
+    + `<span class="source">Mis à jour pour toute l'équipe aux 30 secondes</span>`;
 }
 $("suivi-corps").addEventListener("change", async (ev) => {
   const champ = ev.target.dataset.champ, tr = ev.target.closest("tr");
@@ -775,6 +775,23 @@ $("suivi-corps").addEventListener("change", async (ev) => {
   if (ev.target.type !== "text") afficherSuivi();
 });
 $("suivi-mois").addEventListener("change", () => chargerSuivi($("suivi-mois").value));
+
+// Travail à plusieurs : les cases des collègues arrivent par OneDrive. On relit le suivi toutes les 30 secondes
+// (et au retour sur la page), sans déranger une saisie en cours ni une fenêtre ouverte.
+async function rafraichirSuivi() {
+  if (document.hidden || !suivi || document.querySelector("dialog[open]")) return;
+  const actif = document.activeElement;
+  if (actif && actif.closest && actif.closest("#suivi-corps") && actif.type !== "checkbox") return;
+  try {
+    const r = await appeler(`/suivi?mois=${suivi.mois}&excel=` + encodeURIComponent($("excel").dataset.plein || ""));
+    if (r.erreur || !r.lignes) return;
+    r.lignes.sort((a, b) => ordreCode(a.code, b.code));
+    if (JSON.stringify(r.lignes) === JSON.stringify(suivi.lignes) || r.mois !== suivi.mois) return;
+    suivi = r; afficherSuivi(); afficherProcessus();
+  } catch (e) { /* outil fermé : rien à faire */ }
+}
+setInterval(rafraichirSuivi, 30000);
+window.addEventListener("focus", rafraichirSuivi);
 $("suivi-inactifs").addEventListener("change", afficherSuivi);
 $("suivi-recherche").addEventListener("input", afficherSuivi);
 

@@ -1,5 +1,6 @@
 # Jamais de vraies données clients dans le repo
 rapports-clients/_logiciel/sortie/
+rapports-clients/_logiciel/suivi/
 rapports-clients/_logiciel/demo/exports/
 rapports-clients/_logiciel/demo/*.xlsx
 *.xlsx
