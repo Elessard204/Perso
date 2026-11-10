@@ -1,0 +1,23 @@
+{
+  "id": 1001,
+  "code": "BS-1001",
+  "label": "Fuite sous évier",
+  "rv": "2026-11-03T08:00:00-05:00",
+  "updated": "2026-11-03T16:42:10-05:00",
+  "description": "changer robinet cuisine fuite sous lavabo, posé 2 raccord",
+  "summary": "Fuite",
+  "client": {"id": 77, "label": "Gestion Fictive inc."},
+  "currentState": {"label": "Complété", "logicId": 600},
+  "properties": {"notesTech": "texte du technicien dans un champ perso"},
+  "itemList": {
+    "subTotal": 250.0,
+    "items": [
+      {"id": 501, "label": "Main-d'œuvre", "description": "Luc Tremblay", "quantity": 2.0833, "price": 95.0, "unitCost": 40.0, "product": {"id": 9, "label": "MO-PLOMB", "code": "MO-PLOMB"}},
+      {"id": 502, "label": "Transport", "description": "", "quantity": 1, "price": 45.0, "product": {"id": 10, "label": "TRANSPORT", "code": "TRANSPORT"}}
+    ]
+  },
+  "attachments": [
+    {"id": 9001, "name": "IMG_2041.jpg", "contentType": "image/jpeg"},
+    {"id": 9002, "name": "facture_rona.pdf", "contentType": "application/pdf"}
+  ]
+}

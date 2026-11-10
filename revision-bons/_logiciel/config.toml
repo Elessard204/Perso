@@ -1,0 +1,14 @@
+# Configuration de la révision des bons. Change rarement.
+# Les champs vides se remplissent après l'inspection de vrais bons (python inspecter.py).
+[progression]
+base = "https://api.progressionlive.com/server/rest"
+logic_ids_a_facturer = ""     # état « terminé, à facturer » (spec 9.1)
+type_tache = ""               # type des bons de service (spec 9.1)
+champ_description = "description"   # ou "properties.<nom>" (spec 9.2)
+produit_transport = ""        # code du produit transport (spec 9.4)
+produit_materiel = ""         # produit générique pour le matériel refacturé (spec 9.6)
+ecriture_validee = false      # passe à true seulement après l'essai sur un bon de test
+
+[claude]
+modele = "claude-opus-5-5"
+effort = "medium"
