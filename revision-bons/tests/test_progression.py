@@ -102,3 +102,9 @@ def test_erreur_401():
 def test_erreur_reseau():
     with pytest.raises(ErreurProgression, match="Progression ne répond pas"):
         Progression("c", ouvrir=FauxHttp([urllib.error.URLError("timeout")])).lire_bon(1)
+
+
+def test_tache_brute_une_seule_requete_get():
+    http = FauxHttp([TACHE])
+    assert Progression("c", ouvrir=http).tache_brute(1001)["updated"] == TACHE["updated"]
+    assert [(r.get_method(), r.full_url.rsplit("/rest", 1)[1]) for r in http.requetes] == [("GET", "/task/1001")]

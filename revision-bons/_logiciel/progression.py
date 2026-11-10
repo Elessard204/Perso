@@ -153,6 +153,10 @@ class Progression:
             "logicId": logic_ids, "order": "updated DESC", "maxResults": nombre, "startResult": 0,
         }))[:nombre]
 
+    def tache_brute(self, identifiant: int) -> dict:
+        """La tâche seule (sans entrées de temps), pour vérifier qu'elle n'a pas changé avant d'écrire."""
+        return self._appel("GET", f"/task/{identifiant}")
+
     def lire_tache(self, identifiant: int) -> tuple[dict, list[dict]]:
         """La tâche et ses entrées de temps, telles que Progression les renvoie."""
         tache = self._appel("GET", f"/task/{identifiant}")
