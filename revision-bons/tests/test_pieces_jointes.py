@@ -94,3 +94,57 @@ def test_parametres_api():
     assert k["fallbacks"] == "default" and k["betas"] == ["server-side-fallback-2026-07-01"]
     assert k["output_config"]["effort"] == "medium"
     assert k["output_config"]["format"]["type"] == "json_schema"
+
+
+import anthropic
+import pytest
+
+
+def erreur(classe):
+    return classe.__new__(classe)   # pas besoin d'une vraie réponse HTTP pour tester le « except »
+
+
+class ClaudeQuiLeve(FauxClaude):
+    def __init__(self, exc):
+        super().__init__()
+        self.exc = exc
+
+    def _create(self, **kwargs):
+        self.appels.append(kwargs)
+        raise self.exc
+
+
+def test_image_trop_lourde_pour_l_api():
+    c = FauxClaude()
+    a = analyser_piece(PieceJointe(1, "p.jpg", "image/jpeg"), b"0" * (5 * 1024 * 1024 + 1), c, CFG)
+    assert a.genre == "incertain" and "trop" in a.raison and c.appels == []
+
+
+def test_pdf_trop_lourd_pour_l_api():
+    c = FauxClaude()
+    a = analyser_piece(PieceJointe(1, "f.pdf", "application/pdf"), b"0" * (23 * 1024 * 1024), c, CFG)
+    assert a.genre == "incertain" and c.appels == []
+
+
+@pytest.mark.parametrize("classe", [anthropic.BadRequestError, anthropic.RequestTooLargeError,
+                                    anthropic.UnprocessableEntityError])
+def test_refus_de_l_api_pour_cette_piece(classe):
+    a = analyser_piece(PieceJointe(1, "f.pdf", "application/pdf"), b"x", ClaudeQuiLeve(erreur(classe)), CFG)
+    assert a.genre == "incertain" and "refusée" in a.raison
+
+
+def test_erreur_temporaire_remonte():
+    with pytest.raises(anthropic.RateLimitError):
+        analyser_piece(PieceJointe(1, "f.pdf", "application/pdf"), b"x", ClaudeQuiLeve(erreur(anthropic.RateLimitError)), CFG)
+
+
+def test_nombre_illisible_dans_la_reponse():
+    texte = json.dumps({**FACTURE_JSON, "lignes": [{"description": "Vis", "quantite": "deux", "prix_unitaire": 10}]})
+    a = analyser_piece(PieceJointe(1, "f.pdf", "application/pdf"), b"x", FauxClaude(texte), CFG)
+    assert a.genre == "incertain"
+
+
+def test_type_mime_en_majuscules():
+    c = FauxClaude()
+    analyser_piece(PieceJointe(1, "P.JPG", "IMAGE/JPEG"), b"x", c, CFG)
+    assert bloc(c)["source"]["media_type"] == "image/jpeg"

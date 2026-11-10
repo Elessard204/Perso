@@ -8,7 +8,7 @@ import urllib.request
 import pytest
 
 from conftest import LOGICIEL
-from interface import Application, Serveur, creer_gestionnaire
+from interface import Application, ErreurDemande, Serveur, creer_gestionnaire, doit_arreter
 
 
 @pytest.fixture
@@ -20,10 +20,11 @@ def site(tmp_path):
     threading.Thread(target=serveur.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{serveur.server_address[1]}"
 
-    def appel(chemin, corps=None):
+    def appel(chemin, corps=None, entetes=None):
         donnees = json.dumps(corps).encode() if corps is not None else None
         req = urllib.request.Request(base + chemin, data=donnees, method="POST" if corps is not None else "GET",
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": "application/json", "X-Jeton": app.jeton,
+                                              **(entetes or {})})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 return r.status, json.loads(r.read() or b"{}")
@@ -31,6 +32,7 @@ def site(tmp_path):
             return e.code, json.loads(e.read() or b"{}")
 
     appel.base = base
+    appel.app = app
     yield appel
     serveur.shutdown()
 
@@ -40,11 +42,7 @@ def charger_et_analyser(appel):
     assert code == 200 and liste["bons"]
     ids = [b["id"] for b in liste["bons"]]
     appel("/analyser", {"bon_ids": ids})
-    for _ in range(200):
-        _, p = appel("/progres")
-        if not p["en_cours"]:
-            break
-        time.sleep(0.05)
+    attendre(appel)
     _, liste = appel("/bons")
     return {b["code"]: b for b in liste["bons"]}
 
@@ -128,7 +126,7 @@ def test_piece_servie(site):
     bons = charger_et_analyser(site)
     _, detail = site(f"/bon/{next(iter(bons.values()))['id']}")
     pid = detail["pieces"][0]["id"]
-    with urllib.request.urlopen(site.base + f"/piece/{pid}", timeout=10) as r:
+    with urllib.request.urlopen(site.base + f"/piece/{pid}?jeton={site.app.jeton}", timeout=10) as r:
         assert r.status == 200 and r.headers["Content-Type"] in ("application/pdf", "image/png")
         assert r.read()
 
@@ -144,3 +142,95 @@ def test_raison_montre_l_alerte_la_plus_importante(site):
     assert "Facture" in bons["BS-2002"]["raison"]          # bloquante avant le transport
     assert "Aucune heure" in bons["BS-2005"]["raison"]
     assert "transport" not in bons["BS-2003"]["raison"].lower()   # pièce illisible avant le transport
+
+
+
+def test_page_contient_le_jeton(site):
+    with urllib.request.urlopen(site.base + "/", timeout=10) as r:
+        assert site.app.jeton in r.read().decode("utf-8")
+
+
+def test_sans_jeton_refuse(site):
+    assert site("/approuver", {"bon_ids": []}, {"X-Jeton": "faux"})[0] == 403
+    assert site("/bons", None, {"X-Jeton": ""})[0] == 403
+
+
+def test_host_etranger_refuse(site):
+    assert site("/bons", None, {"Host": "evil.example:80"})[0] == 403
+
+
+def test_origin_etrangere_refusee(site):
+    assert site("/approuver", {"bon_ids": []}, {"Origin": "http://evil.example"})[0] == 403
+
+
+def test_doublon_entre_deux_bons_du_lot(site):
+    bons = charger_et_analyser(site)
+    _, detail = site(f"/bon/{bons['BS-2002']['id']}")
+    assert "facture_autre_bon" in [a["code"] for a in detail["proposition"]["alertes"]]
+    _, detail = site(f"/bon/{bons['BS-2001']['id']}")
+    assert "facture_autre_bon" not in [a["code"] for a in detail["proposition"]["alertes"]]
+
+
+def test_charger_refuse_pendant_une_analyse(site):
+    site.app.progres["en_cours"] = True
+    code, r = site("/charger", {"debut": "2026-11-01", "fin": "2026-11-30"})
+    assert code == 400 and "en cours" in r["erreur"]
+
+
+def test_envoi_refuse_pendant_un_autre_envoi(site):
+    bons = charger_et_analyser(site)
+    bon = next(b for b in bons.values() if b["statut"] != "bloque")
+    site("/approuver", {"bon_ids": [bon["id"]]})
+    site.app.envoi_en_cours = True
+    code, r = site("/envoyer", {"mode": "simulation"})
+    assert code == 400 and "en cours" in r["erreur"]
+
+
+@pytest.mark.parametrize("champ,valeur", [("marge", 10), ("marge", "nan"), ("marge", "inf"),
+                                           ("regle_transports", "autre"), ("pas_minutes", 0)])
+def test_regles_hors_bornes(site, champ, valeur):
+    _, r = site("/regles")
+    assert site("/regles", {**r, champ: valeur})[0] == 400
+
+
+def test_forcer_reanalyse(site):
+    bons = charger_et_analyser(site)
+    bon_id = bons["BS-2001"]["id"]
+    [fichier] = (site.app.cache).glob(f"{bon_id}_*.json")
+    contenu = json.loads(fichier.read_text(encoding="utf-8"))
+    contenu["description"] = "VIEUX CACHE"
+    fichier.write_text(json.dumps(contenu), encoding="utf-8")
+    site("/analyser", {"bon_ids": [bon_id], "forcer": False}); attendre(site)
+    assert site(f"/bon/{bon_id}")[1]["proposition"]["description"] == "VIEUX CACHE"
+    site("/analyser", {"bon_ids": [bon_id], "forcer": True}); attendre(site)
+    assert site(f"/bon/{bon_id}")[1]["proposition"]["description"] != "VIEUX CACHE"
+
+
+def test_bon_deja_envoye_reconnu_apres_redemarrage(site):
+    from demo.faux_services import FausseProgression
+    maj = FausseProgression().tache_brute(2001)["updated"]
+    site.app.journal.inscrire("ecrit", 2001, "avant", {"maj_apres": maj})
+    bons = charger_et_analyser(site)
+    assert bons["BS-2001"]["statut"] == "envoye"
+
+
+def test_arret_automatique_jamais_pendant_le_travail(tmp_path):
+    app = Application(LOGICIEL, demo=True, personne="hugo", donnees=tmp_path)
+    assert doit_arreter(app, inactif_depuis=301) is True
+    assert doit_arreter(app, inactif_depuis=120) is False
+    app.progres["en_cours"] = True
+    assert doit_arreter(app, inactif_depuis=3600) is False
+
+
+def test_configuration_vide_refusee_hors_demo(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    app = Application(LOGICIEL, demo=False, personne="hugo", donnees=tmp_path)
+    with pytest.raises(ErreurDemande, match="config.toml"):
+        app.charger("2026-11-01", "2026-11-30")
+
+
+def attendre(appel):
+    for _ in range(200):
+        if not appel("/progres")[1]["en_cours"]:
+            return
+        time.sleep(0.05)

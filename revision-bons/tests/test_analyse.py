@@ -113,12 +113,25 @@ def test_photo_ignoree(tmp_path):
     assert not [l for l in p.lignes if l.external_id]
 
 
-def test_facture_deja_refacturee_bloque(tmp_path):
+def test_facture_deja_ecrite_dans_ce_bon_pas_reproposee(tmp_path):
     j = Journal(tmp_path / "journal", "hugo")
-    j.inscrire("ecrit", 555, "m", {"external_ids": ["rona|A-1|1"]})
+    j.inscrire("ecrit", 1001, "ancien", {"external_ids": ["rona|A-1|1"]})
     p = analyser(nouveau_bon(), FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path, journal=j)
-    assert "facture_doublon" in codes(p) and p.statut == "bloque"
     assert not [l for l in p.lignes if l.external_id]
+
+
+def test_cache_depend_des_regles(tmp_path):
+    analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    claude = FauxClaude(PHOTO, PHOTO, TEXTE)
+    analyser(nouveau_bon(), claude, tmp_path, r=copy.copy(R).__class__(**{**R.__dict__, "marge": 0.2}))
+    assert len(claude.appels) == 3   # nouvelle marge : nouvelle analyse
+
+
+def test_echec_de_telechargement_pas_mis_en_cache(tmp_path):
+    analyser(nouveau_bon(), FauxClaude(FACTURE, TEXTE), tmp_path, progression=FauxProgression(erreur_sur={9001}))
+    claude = FauxClaude(PHOTO, FACTURE, TEXTE)
+    p = analyser(nouveau_bon(), claude, tmp_path)
+    assert len(claude.appels) == 3 and p.analyses[0].genre == "photo"
 
 
 def test_meme_facture_deux_fois_dans_le_bon(tmp_path):

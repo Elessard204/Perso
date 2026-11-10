@@ -52,7 +52,7 @@ def rapport_inspection(prog: Progression, nombre: int) -> str:
         lignes.append("-- Entrées de temps")
         for e in entrees:
             lignes.append(
-                f"  {(e.get('humanResource') or {}).get('label')} : {minutes_iso(e.get('duration') or '')} min "
+                f"  {(e.get('humanResource') or {}).get('label')} : {minutes_iso(e.get('duration') or ''):g} min "
                 f"le {(e.get('start') or '')[:10]}  item={(e.get('item') or {}).get('id')}")
         lignes.append("-- Pièces jointes")
         for a in tache.get("attachments") or []:

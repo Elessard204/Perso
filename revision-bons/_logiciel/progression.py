@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
-import math
 import re
 import urllib.error
 import urllib.parse
@@ -21,13 +21,17 @@ class ErreurProgression(Exception):
     """Erreur de Progression, avec un message lisible par l'équipe."""
 
 
-def minutes_iso(duree: str) -> int:
-    """Durée ISO 8601 (PT1H20M) en minutes, secondes arrondies à la minute supérieure."""
-    m = re.fullmatch(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?", duree or "")
+def minutes_iso(duree: str) -> float:
+    """Durée ISO 8601 (PT1H20M, PT7M20S, PT1.5H) en minutes exactes.
+
+    Les secondes ne sont pas arrondies ici : on additionne le temps exact du technicien,
+    puis on arrondit une seule fois son total (regles.heures_facturees).
+    """
+    m = re.fullmatch(r"P(?:([\d.]+)D)?T?(?:([\d.]+)H)?(?:([\d.]+)M)?(?:([\d.]+)S)?", duree or "")
     if not m or not duree:
-        return 0
+        return 0.0
     jours, heures, minutes, secondes = (float(x) if x else 0.0 for x in m.groups())
-    return math.ceil(jours * 1440 + heures * 60 + minutes + secondes / 60)
+    return jours * 1440 + heures * 60 + minutes + secondes / 60
 
 
 def _jour(horodatage: str | None) -> date | None:
@@ -168,7 +172,15 @@ class Progression:
 
     def telecharger_piece(self, piece_id: int) -> bytes:
         piece = self._appel("GET", f"/task/attachment/{piece_id}")
-        return base64.b64decode(piece.get("data") or "")
+        try:
+            return base64.b64decode(piece.get("data") or "", validate=True)
+        except (binascii.Error, ValueError) as e:
+            raise ErreurProgression(f"Pièce jointe {piece_id} illisible (contenu reçu invalide).") from e
+
+    def bon_avec_ligne(self, external_id: str) -> int | None:
+        """Le bon qui porte déjà une ligne avec cet externalId, s'il y en a un."""
+        taches = _liste(self._appel("GET", "/task/list", {"itemExternalId": external_id, "maxResults": 1}))
+        return taches[0].get("id") if taches else None
 
     def mettre_a_jour(self, identifiant: int, corps: dict) -> dict:
         return self._appel("POST", f"/task/{identifiant}/update", corps=corps)

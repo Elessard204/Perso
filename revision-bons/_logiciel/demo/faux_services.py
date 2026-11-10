@@ -153,6 +153,12 @@ class FausseProgression:
             return _png((90 + piece_id % 120, 120, 150))
         return b"\x00\x00\x00 ftypheic"
 
+    def bon_avec_ligne(self, external_id: str) -> int | None:
+        for identifiant, corps in self.ecrits:
+            if any(i.get("externalId") == external_id for i in corps["itemList"]["items"]):
+                return identifiant
+        return None
+
     def mettre_a_jour(self, identifiant: int, corps: dict) -> dict:
         self.ecrits.append((identifiant, corps))
         return {}

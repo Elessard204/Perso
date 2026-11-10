@@ -206,7 +206,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <p class="surtitre">Matériel refacturé</p>
       <div class="champ"><label for="r-marge">Marge sur le coût d'achat (ex. 0,10 = 10 %)</label><input id="r-marge" name="marge" inputmode="decimal">
         <small>Appliquée au prix unitaire avant taxes de chaque ligne de facture.</small></div>
-      <label class="case-seule"><input type="checkbox" id="r-taxes" name="refacturer_taxes"> Refacturer aussi les taxes, écofrais et consignes</label>
+      <p class="note">Les taxes, écofrais et consignes des factures fournisseurs ne sont pas refacturés.</p>
     </section>
     <section class="carte">
       <p class="surtitre">Transports</p>
@@ -303,6 +303,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 
 <script>
 const $ = id => document.getElementById(id);
+const JETON = "__JETON__";   // remplacé par le serveur à chaque lancement
 const STATUTS = { a_analyser: "À analyser", pret: "Prêt", a_verifier: "À vérifier", bloque: "Bloqué", envoye: "Envoyé" };
 const RESULTATS = { simule: "Simulé", ecrit: "Écrit", deja_ecrit: "Déjà écrit", perime: "Modifié depuis l'analyse", echec: "Échec" };
 const EVENEMENTS = { approuve: "Approuvé", ecrit: "Écrit dans Progression", echec: "Échec d'écriture" };
@@ -315,7 +316,8 @@ function pastille(statut) { return `<span class="pastille ${statut}">${STATUTS[s
 function message(id, texte, ok) { const m = $(id); m.textContent = texte || ""; m.className = "message " + (ok ? "ok" : "erreur"); }
 
 async function api(chemin, corps) {
-  const options = corps === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) };
+  const options = corps === undefined ? { headers: { "X-Jeton": JETON } }
+    : { method: "POST", headers: { "Content-Type": "application/json", "X-Jeton": JETON }, body: JSON.stringify(corps) };
   const r = await fetch(chemin, options);
   const donnees = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(donnees.erreur || `Erreur ${r.status}`);
@@ -378,7 +380,8 @@ $("charger").addEventListener("click", async () => {
 $("analyser").addEventListener("click", async () => {
   const coches = [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id));
   const ids = coches.length ? coches : bons.filter(b => b.statut !== "envoye").map(b => b.id);
-  try { await api("/analyser", { bon_ids: ids }); suivreAnalyse(); }
+  // Bons cochés : on refait l'analyse au complet (le cache est ignoré).
+  try { await api("/analyser", { bon_ids: ids, forcer: coches.length > 0 }); suivreAnalyse(); }
   catch (e) { message("message-liste", e.message); }
 });
 
@@ -405,6 +408,8 @@ $("envoyer").addEventListener("click", async () => {
   const mode = $("mode").value;
   const nombre = bons.filter(b => b.approuve).length;
   if (mode === "reel" && !confirm(`Écrire ${nombre} bon(s) dans Progression ?`)) return;
+  $("envoyer").disabled = true; $("analyser").disabled = true; $("charger").disabled = true;
+  message("message-liste", mode === "simulation" ? "Simulation en cours…" : "Écriture en cours…", true);
   try {
     const r = await api("/envoyer", { mode });
     bons = r.bons; afficherListe();
@@ -413,6 +418,7 @@ $("envoyer").addEventListener("click", async () => {
       <td>${echapper(RESULTATS[x.resultat] || x.resultat)}</td><td>${echapper(x.message)}</td></tr>`).join("");
     message("message-liste", mode === "simulation" ? "Simulation terminée : rien n'a été écrit." : "Envoi terminé.", true);
   } catch (e) { message("message-liste", e.message); }
+  finally { $("charger").disabled = false; afficherListe(); }
 });
 
 // ---------- fiche ----------
@@ -455,8 +461,8 @@ function afficherFiche() {
   const GENRES = { facture: "Facture", photo: "Photo", incertain: "Incertain" };
   $("fiche-pieces").innerHTML = d.pieces.map(pc => {
     const a = analyses[pc.id] || {};
-    const apercu = pc.type === "application/pdf" ? `<iframe src="/piece/${pc.id}" title="${echapper(pc.nom)}"></iframe>`
-      : pc.type.startsWith("image/") && pc.type !== "image/heic" ? `<img src="/piece/${pc.id}" alt="${echapper(pc.nom)}" loading="lazy">`
+    const apercu = pc.type === "application/pdf" ? `<iframe src="/piece/${pc.id}?jeton=${JETON}" title="${echapper(pc.nom)}"></iframe>`
+      : pc.type.startsWith("image/") && pc.type !== "image/heic" ? `<img src="/piece/${pc.id}?jeton=${JETON}" alt="${echapper(pc.nom)}" loading="lazy">`
       : `<p class="note">Aperçu impossible pour ce format : ouvrir la pièce dans Progression.</p>`;
     const f = a.facture;
     const tableau = f ? `<table>${f.lignes.map(x => `<tr><td>${qte(x.quantite)} ×</td><td>${echapper(x.description)}</td><td class="nombre">${argent(x.prix_unitaire)}</td></tr>`).join("")}
@@ -464,7 +470,7 @@ function afficherFiche() {
     const classe = a.genre === "facture" ? "pret" : a.genre === "incertain" ? "a_verifier" : "a_analyser";
     return `<div class="piece"><div class="piece-tete"><b title="${echapper(pc.nom)}">${echapper(pc.nom)}</b>
         <span class="pastille ${classe}">${GENRES[a.genre] || "?"}</span>
-        <a class="lien-bouton" href="/piece/${pc.id}" target="_blank" rel="noopener">Ouvrir</a></div>
+        <a class="lien-bouton" href="/piece/${pc.id}?jeton=${JETON}" target="_blank" rel="noopener">Ouvrir</a></div>
       <div class="piece-corps">${apercu}<div class="note">${echapper(a.raison)}</div>
         ${f ? `<div><b>${echapper(f.fournisseur)}</b> · facture ${echapper(f.numero)} · ${echapper(f.date || "date ?")}</div>${tableau}` : ""}</div></div>`;
   }).join("") || '<p class="note">Aucune pièce jointe.</p>';
@@ -492,14 +498,14 @@ async function chargerRegles() {
   try {
     const r = await api("/regles");
     $("r-pas").value = r.pas_minutes; $("r-marge").value = String(r.marge).replace(".", ",");
-    $("r-taxes").checked = r.refacturer_taxes; $("r-transports").value = r.regle_transports;
+    $("r-transports").value = r.regle_transports;
     $("r-ecart").value = String(r.ecart_sous_total).replace(".", ","); $("r-jours").value = r.jours_max_facture;
     $("r-montant").value = String(r.montant_max_ligne).replace(".", ","); $("r-heures").value = String(r.heures_max_jour).replace(".", ",");
   } catch (e) { message("message-regles", e.message); }
   afficherCles();
 }
 $("enregistrer-regles").addEventListener("click", async () => {
-  const valeurs = { pas_minutes: $("r-pas").value, marge: $("r-marge").value, refacturer_taxes: $("r-taxes").checked,
+  const valeurs = { pas_minutes: $("r-pas").value, marge: $("r-marge").value,
     regle_transports: $("r-transports").value, ecart_sous_total: $("r-ecart").value, jours_max_facture: $("r-jours").value,
     montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value };
   try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
@@ -550,6 +556,7 @@ async function chargerHistorique() {
     bons = (await api("/bons")).bons; afficherListe();
   } catch (e) { message("message-liste", e.message); }
   setInterval(() => fetch("/signe-de-vie").catch(() => {}), 20000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) fetch("/signe-de-vie").catch(() => {}); });
 })();
 </script>
 </body>

@@ -37,3 +37,10 @@ def test_ligne_corrompue_ignoree(tmp_path):
     with open(tmp_path / "hugo.jsonl", "a", encoding="utf-8") as f:
         f.write("{coupé\n")
     assert len(j.historique()) == 1
+
+
+def test_deja_ecrit_reconnait_la_date_apres_ecriture(tmp_path):
+    j = Journal(tmp_path, "hugo")
+    j.inscrire("ecrit", 1, "avant", {"maj_apres": "apres"})
+    assert j.deja_ecrit(1, "avant") and j.deja_ecrit(1, "apres")
+    assert not j.deja_ecrit(1, "")

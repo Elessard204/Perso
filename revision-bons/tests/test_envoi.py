@@ -39,9 +39,14 @@ class FauxProgression:
         self.maj = maj
         self.erreur_sur = set(erreur_sur)
         self.ecrits = []
+        self.porteurs = {}
 
     def tache_brute(self, identifiant):
-        return {**copy.deepcopy(TACHE), "id": identifiant, "updated": self.maj}
+        maj = "apres-ecriture" if any(i == identifiant for i, _ in self.ecrits) else self.maj
+        return {**copy.deepcopy(TACHE), "id": identifiant, "updated": maj}
+
+    def bon_avec_ligne(self, external_id):
+        return self.porteurs.get(external_id)
 
     def mettre_a_jour(self, identifiant, corps):
         if identifiant in self.erreur_sur:
@@ -57,8 +62,21 @@ def test_aucun_none():
 def test_liste_complete_avec_ids():
     items = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"]
     assert [i.get("id") for i in items] == [501, 502, None]
-    assert items[0] == {"id": 501, "label": "Main-d'œuvre", "description": "Luc", "quantity": 2.25,
-                        "price": 95.0, "unitCost": 40.0}
+
+
+def test_lignes_existantes_seulement_les_champs_modifies():
+    items = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"]
+    assert items[0] == {"id": 501, "description": "Luc", "quantity": 2.25}   # libellé, prix et coût inchangés
+    assert items[1] == {"id": 502}
+
+
+def test_prix_nul_dans_progression_jamais_renvoye_a_zero():
+    tache = copy.deepcopy(TACHE)
+    tache["itemList"]["items"][1]["price"] = None
+    p = proposition()
+    p.lignes[1].prix = 0.0   # valeur lue comme 0 faute de prix
+    items = corps_mise_a_jour(p, CFG, tache)["itemList"]["items"]
+    assert items[1] == {"id": 502}
 
 
 def test_external_id_sur_nouvelles_lignes():
@@ -123,7 +141,52 @@ def test_reprise_apres_coupure(tmp_path):
 
 
 def test_jamais_timeentry(tmp_path):
-    http = FauxHttp([TACHE, {}])
+    http = FauxHttp([TACHE, [], {}, TACHE])
     envoyer([proposition()], Progression("c", ouvrir=http), Journal(tmp_path, "hugo"), CFG, "reel")
     assert http.requetes and not any("timeEntr" in r.full_url for r in http.requetes)
-    assert [r.get_method() for r in http.requetes] == ["GET", "POST"]
+    assert [r.get_method() for r in http.requetes] == ["GET", "GET", "POST", "GET"]
+
+
+def test_date_de_modification_absente_refusee(tmp_path):
+    prog = FauxProgression(maj="")
+    [r] = envoyer([proposition(maj="")], prog, Journal(tmp_path, "hugo"), CFG, "reel")
+    assert r["resultat"] == "echec" and prog.ecrits == []
+
+
+def test_doublon_journal_au_moment_de_l_envoi(tmp_path):
+    j = Journal(tmp_path, "hugo")
+    j.inscrire("ecrit", 777, "m", {"external_ids": ["rona|A-1|1"]})
+    prog = FauxProgression()
+    [r] = envoyer([proposition()], prog, j, CFG, "reel")
+    assert r["resultat"] == "doublon" and "777" in r["message"] and prog.ecrits == []
+
+
+def test_doublon_progression_au_moment_de_l_envoi(tmp_path):
+    prog = FauxProgression()
+    prog.porteurs = {"rona|A-1|1": 888}
+    [r] = envoyer([proposition()], prog, Journal(tmp_path, "hugo"), CFG, "reel")
+    assert r["resultat"] == "doublon" and prog.ecrits == []
+
+
+def test_meme_facture_deux_bons_du_meme_envoi(tmp_path):
+    prog = FauxProgression()
+    r = envoyer([proposition(1), proposition(2)], prog, Journal(tmp_path, "hugo"), CFG, "reel")
+    assert [x["resultat"] for x in r] == ["ecrit", "doublon"]
+
+
+def test_doublon_signale_en_simulation(tmp_path):
+    r = envoyer([proposition(1), proposition(2)], FauxProgression(), Journal(tmp_path, "hugo"), CFG, "simulation")
+    assert [x["resultat"] for x in r] == ["simule", "doublon"]
+
+
+def test_date_apres_ecriture_journalisee(tmp_path):
+    j = Journal(tmp_path, "hugo")
+    envoyer([proposition()], FauxProgression(), j, CFG, "reel")
+    assert j.historique()[0]["details"]["maj_apres"] == "apres-ecriture"
+    assert j.deja_ecrit(1001, "apres-ecriture")
+
+
+def test_simulation_avec_lignes_originales(tmp_path):
+    originaux = {1001: proposition().lignes[:2]}
+    [r] = envoyer([proposition()], FauxProgression(), Journal(tmp_path, "hugo"), CFG, "simulation", originaux)
+    assert r["corps"]["itemList"]["items"][1] == {"id": 502}

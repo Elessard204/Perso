@@ -55,14 +55,14 @@ def argent_fr(montant: float) -> str:
     return f"{cents(montant):,.2f} $".replace(",", " ").replace(".", ",")
 
 
-def arrondir_minutes(minutes: int, pas: int = 15) -> int:
-    """Arrondit au pas supérieur : 125 -> 135, 135 reste 135."""
-    return math.ceil(minutes / pas) * pas
+def arrondir_minutes(minutes: float, pas: int = 15) -> int:
+    """Arrondit au pas supérieur : 125 -> 135, 135 reste 135, 14 min 40 s -> 15."""
+    return math.ceil(round(minutes, 6) / pas) * pas
 
 
 def heures_facturees(entrees: list[EntreeTemps], pas: int) -> dict[str, float]:
     """Heures facturées par technicien : son total du bon, arrondi au pas supérieur."""
-    totaux: dict[str, int] = defaultdict(int)
+    totaux: dict[str, float] = defaultdict(float)
     for e in entrees:
         totaux[e.technicien] += e.minutes
     return {tech: arrondir_minutes(m, pas) / 60 for tech, m in totaux.items()}
@@ -114,7 +114,7 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
 def garde_fous_temps(entrees: list[EntreeTemps], r: Regles) -> list[Alerte]:
     if not entrees:
         return [Alerte("sans_heures", "Aucune heure inscrite sur ce bon.", bloquante=True)]
-    par_jour: dict[tuple[str, date | None], int] = defaultdict(int)
+    par_jour: dict[tuple[str, date | None], float] = defaultdict(float)
     for e in entrees:
         par_jour[(e.technicien, e.jour)] += e.minutes
     return [

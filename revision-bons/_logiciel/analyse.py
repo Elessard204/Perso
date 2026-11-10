@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections import defaultdict
@@ -60,12 +61,20 @@ def _alertes_main_oeuvre(bon: Bon, heures: dict[str, float]) -> list[Alerte]:
     return alertes
 
 
-def fichier_cache(cache: Path, bon: Bon) -> Path:
-    return Path(cache) / f"{bon.id}_{re.sub(r'[^0-9A-Za-z]', '', bon.maj)}.json"
+def chemin_cache(cache: Path, bon: Bon, r: Regles, cfg: dict) -> Path:
+    """Un fichier par bon, par date de modification ET par version des règles et du modèle."""
+    reglages = json.dumps([asdict(r), cfg.get("claude", {})], sort_keys=True, default=str)
+    empreinte = hashlib.sha1(reglages.encode("utf-8")).hexdigest()[:10]
+    return Path(cache) / f"{bon.id}_{re.sub(r'[^0-9A-Za-z]', '', bon.maj)}_{empreinte}.json"
+
+
+def effacer_cache(cache: Path, bon_id: int) -> None:
+    for fichier in Path(cache).glob(f"{bon_id}_*.json"):
+        fichier.unlink(missing_ok=True)
 
 
 def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, cache: Path) -> Proposition:
-    fichier = fichier_cache(cache, bon)
+    fichier = chemin_cache(cache, bon, r, cfg)
     if fichier.exists():
         return proposition_depuis_dict(json.loads(fichier.read_text(encoding="utf-8")))
 
@@ -101,13 +110,9 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
             alertes.append(Alerte("facture_doublon", f"Facture {nom} jointe deux fois à ce bon.", bloquante=True))
             continue
         vues.add(f.cle)
-        if f.cle in deja_dans_le_bon:
+        if f.cle in deja_dans_le_bon or deja_refacturees.get(f.cle) == bon.id:
             continue  # déjà refacturée dans ce bon lors d'un envoi précédent
-        autre = deja_refacturees.get(f.cle)
-        if autre is not None and autre != bon.id:
-            alertes.append(Alerte("facture_doublon", f"Facture {nom} déjà refacturée dans le bon {autre}.",
-                                  bloquante=True))
-            continue
+        # Une facture refacturée dans un AUTRE bon est vérifiée par doublons_externes, à chaque affichage.
         alertes += garde_fous_facture(f, bon.date_rv, r)
         for ligne in lignes_materiel(f, r.marge):
             lignes.append(ligne)
@@ -119,9 +124,46 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
     proposition = Proposition(
         bon_id=bon.id, maj=bon.maj, description=description, description_originale=bon.description,
         lignes=lignes, analyses=analyses, alertes=alertes, origine=origine)
-    fichier.parent.mkdir(parents=True, exist_ok=True)
-    fichier.write_text(json.dumps(proposition_vers_dict(proposition), ensure_ascii=False, indent=1), encoding="utf-8")
+    if not any(a.raison.startswith("Téléchargement impossible") for a in analyses):
+        # Un échec de téléchargement est passager : on ne le garde pas, la prochaine analyse réessaie.
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(json.dumps(proposition_vers_dict(proposition), ensure_ascii=False, indent=1),
+                           encoding="utf-8")
     return proposition
+
+
+def doublons_externes(propositions: list[Proposition], journal, progression, memo: dict) -> None:
+    """Bloque un bon dont une nouvelle facture est déjà dans un autre bon : journal, lot en cours ou Progression.
+
+    Recalculé à chaque fois (jamais mis en cache) : l'alerte apparaît ou disparaît selon l'état actuel.
+    `memo` garde les réponses de Progression (externalId -> bon) pour ne pas refaire les requêtes.
+    """
+    refacturees = journal.factures_refacturees()
+    vues: dict[str, int] = {}
+    for p in propositions:
+        p.alertes = [a for a in p.alertes if a.code != "facture_autre_bon"]
+        signalees: set[str] = set()
+        for ligne in p.lignes:
+            if ligne.id is not None or not ligne.external_id:
+                continue
+            cle = ligne.external_id.rsplit("|", 1)[0]
+            if cle in signalees:
+                continue
+            autre = refacturees.get(cle)
+            if autre in (None, p.bon_id):
+                autre = vues.get(cle)
+            if autre in (None, p.bon_id) and progression is not None:
+                if ligne.external_id not in memo:
+                    memo[ligne.external_id] = progression.bon_avec_ligne(ligne.external_id)
+                autre = memo[ligne.external_id]
+            if autre not in (None, p.bon_id):
+                signalees.add(cle)
+                fournisseur, numero = cle.split("|", 1)
+                p.alertes.append(Alerte("facture_autre_bon",
+                                        f"Facture {fournisseur} {numero} déjà refacturée ou jointe au bon {autre}.",
+                                        bloquante=True))
+            else:
+                vues.setdefault(cle, p.bon_id)
 
 
 def proposition_vers_dict(p: Proposition) -> dict:

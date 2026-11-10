@@ -8,8 +8,16 @@ from datetime import date
 from claude_client import demander_json
 from modele import AnalysePiece, Facture, LigneFacture, PieceJointe
 
+try:
+    import anthropic
+    REFUS_DE_LA_PIECE: tuple = (anthropic.BadRequestError, anthropic.RequestTooLargeError,
+                                anthropic.UnprocessableEntityError)
+except ImportError:  # mode démo sans le module
+    REFUS_DE_LA_PIECE = ()
+
 TYPES_LISIBLES = {"application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"}
-TAILLE_MAX = 30 * 1024 * 1024
+TAILLE_MAX = 22 * 1024 * 1024        # PDF : la requête à l'API est limitée à 32 Mo une fois encodée
+TAILLE_MAX_IMAGE = 5 * 1024 * 1024   # limite de l'API par image
 
 NOMBRE_OU_NUL = {"anyOf": [{"type": "number"}, {"type": "null"}]}
 SCHEMA = {
@@ -71,15 +79,22 @@ def analyser_piece(piece: PieceJointe, contenu: bytes, client, cfg: dict) -> Ana
     type_mime = (piece.type_mime or "").lower()
     if type_mime not in TYPES_LISIBLES:
         return _incertain(piece, f"Format non lisible ({piece.type_mime or 'inconnu'})")
-    if len(contenu) > TAILLE_MAX:
-        return _incertain(piece, f"Fichier trop gros ({len(contenu) // (1024 * 1024)} Mo)")
+    limite = TAILLE_MAX if type_mime == "application/pdf" else TAILLE_MAX_IMAGE
+    if len(contenu) > limite:
+        return _incertain(piece, f"Fichier trop gros pour l'analyse ({len(contenu) / (1024 * 1024):.1f} Mo) : "
+                                 "le vérifier dans Progression.")
 
     donnees = base64.standard_b64encode(contenu).decode("ascii")
     genre_bloc = "document" if type_mime == "application/pdf" else "image"
     bloc = {"type": genre_bloc, "source": {"type": "base64", "media_type": type_mime, "data": donnees}}
     texte = {"type": "text", "text": f"Pièce jointe « {piece.nom} ». Classe-la et extrais la facture s'il y a lieu."}
 
-    resultat = demander_json(client, cfg, [bloc, texte], SCHEMA, SYSTEME)
+    try:
+        resultat = demander_json(client, cfg, [bloc, texte], SCHEMA, SYSTEME)
+    except REFUS_DE_LA_PIECE:
+        # PDF protégé ou corrompu, image refusée : propre à cette pièce, inutile de réessayer.
+        # Les erreurs temporaires (429, 5xx, réseau) remontent : le bon reste « à analyser ».
+        return _incertain(piece, "Pièce refusée par l'IA (fichier protégé, corrompu ou trop lourd).")
     if resultat is None:
         return _incertain(piece, "L'IA n'a pas pu lire cette pièce (réponse refusée ou invalide).")
 
@@ -89,17 +104,22 @@ def analyser_piece(piece: PieceJointe, contenu: bytes, client, cfg: dict) -> Ana
         return AnalysePiece(piece.id, "photo", None, raison)
     if genre != "facture":
         return _incertain(piece, raison or "Classement incertain.")
-    lignes = [
-        LigneFacture(str(l["description"]), float(l["quantite"]), float(l["prix_unitaire"]))
-        for l in resultat.get("lignes") or []
-    ]
+    try:
+        lignes = [
+            LigneFacture(str(l["description"]), float(l["quantite"]), float(l["prix_unitaire"]))
+            for l in resultat.get("lignes") or []
+        ]
+        sous_total = resultat.get("sous_total")
+        sous_total = float(sous_total) if sous_total is not None else None
+    except (KeyError, TypeError, ValueError):
+        return _incertain(piece, "Montants de la facture illisibles.")
     if not lignes:
         return _incertain(piece, "Facture reconnue, mais aucune ligne de matériel lisible.")
     facture = Facture(
         fournisseur=(resultat.get("fournisseur") or "").strip() or "Fournisseur inconnu",
         numero=(resultat.get("numero") or "").strip() or f"piece-{piece.id}",
         date=_date(resultat.get("date") or ""),
-        sous_total=resultat.get("sous_total"),
+        sous_total=sous_total,
         lignes=lignes,
     )
     return AnalysePiece(piece.id, "facture", facture, raison)

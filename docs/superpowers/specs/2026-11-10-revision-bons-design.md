@@ -151,7 +151,11 @@ vrais bons déjà facturés pour confirmer :
    fournie remplace-t-elle toute la liste, ou s'ajoute-t-elle? À tester sur un
    bon de test créé exprès, jamais sur un vrai bon;
 6. s'il existe un produit générique « Matériel » à utiliser pour les lignes
-   refacturées, et la configuration de taxes à leur appliquer.
+   refacturées, et la configuration de taxes à leur appliquer;
+7. que l'ajout d'une pièce jointe ou d'une entrée de temps change bien le champ
+   `updated` du bon (la protection « bon modifié depuis l'analyse » en dépend);
+8. que `GET /task/list?itemExternalId=` retrouve bien un bon par l'externalId
+   d'une de ses lignes (détection des factures déjà refacturées).
 
 Le design s'ajuste selon les réponses avant d'écrire le reste.
 

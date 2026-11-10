@@ -57,7 +57,7 @@ def test_minutes_iso():
     assert minutes_iso("PT1H20M") == 80
     assert minutes_iso("PT45M") == 45
     assert minutes_iso("PT2H") == 120
-    assert minutes_iso("PT1H0M30S") == 61   # secondes arrondies à la minute supérieure
+    assert minutes_iso("PT1H0M30S") == 60.5   # secondes exactes; l arrondi se fait sur le total
     assert minutes_iso("") == 0
 
 
@@ -108,3 +108,30 @@ def test_tache_brute_une_seule_requete_get():
     http = FauxHttp([TACHE])
     assert Progression("c", ouvrir=http).tache_brute(1001)["updated"] == TACHE["updated"]
     assert [(r.get_method(), r.full_url.rsplit("/rest", 1)[1]) for r in http.requetes] == [("GET", "/task/1001")]
+
+
+def test_minutes_exactes_et_decimales():
+    assert minutes_iso("PT7M20S") == pytest.approx(7 + 1 / 3)
+    assert minutes_iso("PT1.5H") == 90
+
+
+def test_secondes_additionnees_avant_arrondi():
+    from regles import heures_facturees
+    entrees = [{"id": i, "duration": "PT7M20S", "start": "2026-11-03T08:00:00", "humanResource": {"label": "Luc"},
+                "item": {"id": 501}} for i in (1, 2)]
+    bon = bon_depuis_json(TACHE, entrees, CFG)
+    assert heures_facturees(bon.entrees, 15) == {"Luc": 0.25}   # 14 min 40 s -> 15 min, pas 30
+
+
+def test_piece_base64_invalide():
+    http = FauxHttp([{"id": 1, "data": "pas du base64!!!"}])
+    with pytest.raises(ErreurProgression, match="illisible"):
+        Progression("c", ouvrir=http).telecharger_piece(1)
+
+
+def test_bon_avec_ligne():
+    http = FauxHttp([[{"id": 77}], []])
+    p = Progression("c", ouvrir=http)
+    assert p.bon_avec_ligne("rona|A-1|1") == 77
+    assert p.bon_avec_ligne("bmr|9|1") is None
+    assert "itemExternalId=rona%7CA-1%7C1" in http.requetes[0].full_url

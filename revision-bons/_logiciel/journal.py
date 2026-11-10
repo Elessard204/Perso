@@ -39,8 +39,13 @@ class Journal:
         return list(reversed(self._tous()))[:limite]
 
     def deja_ecrit(self, bon_id: int, maj: str) -> bool:
+        """Vrai si ce bon, dans cet état, a déjà été écrit (date d'avant ou d'après l'écriture)."""
+        if not maj:
+            return False
         return any(
-            e["evenement"] == "ecrit" and e["bon_id"] == bon_id and e["maj"] == maj for e in self._tous())
+            e["evenement"] == "ecrit" and e["bon_id"] == bon_id
+            and maj in (e["maj"], (e.get("details") or {}).get("maj_apres"))
+            for e in self._tous())
 
     def factures_refacturees(self) -> dict[str, int]:
         """« fournisseur|numéro » -> bon où la facture a déjà été refacturée."""

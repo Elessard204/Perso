@@ -13,7 +13,7 @@ class EntreeTemps:
     id: int
     technicien: str
     jour: date | None
-    minutes: int
+    minutes: float  # exactes (secondes comprises)
     ligne_id: int | None  # ligne facturable générée à partir de cette entrée
 
 
