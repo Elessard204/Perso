@@ -1,0 +1,18 @@
+RÉVISION DES BONS DE SERVICE – mode d'emploi
+
+Double-cliquer sur « Révision des bons.bat ». L'outil s'ouvre dans le navigateur.
+Pour essayer sans toucher à Progression : « Essai (démo).bat » (bons fictifs).
+
+1. Onglet À réviser : choisir la période, cliquer « Charger les bons », puis « Analyser ».
+   L'outil lit les pièces jointes, prépare les lignes de matériel (coût + 10 %),
+   arrondit les heures facturées au 15 minutes et propose une description corrigée.
+2. Cliquer sur un bon pour comparer l'original et la proposition. Tout se modifie.
+   « Prêt » : rien à signaler. « À vérifier » : lire la raison. « Bloqué » : corriger
+   dans Progression puis réanalyser.
+3. Cocher les bons, « Approuver la sélection », puis « Envoyer les bons approuvés ».
+   La simulation n'écrit rien. L'écriture dans Progression reste verrouillée tant que
+   l'essai sur un bon de test n'a pas été validé.
+
+L'onglet Règles montre toutes les règles et tous les garde-fous. Les clés API se
+saisissent dans sa section Connexions (gardées dans votre profil Windows).
+Les heures des feuilles de temps (paie) ne sont jamais modifiées.

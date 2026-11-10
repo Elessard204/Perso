@@ -13,7 +13,7 @@ from modele import Alerte, AnalysePiece, Bon, Facture, Ligne, LigneFacture, Prop
 from pieces_jointes import analyser_piece
 from progression import ErreurProgression
 from redaction import rediger
-from regles import Regles, garde_fous_facture, garde_fous_temps, heures_facturees, lignes_materiel
+from regles import Regles, garde_fous_facture, garde_fous_temps, heures_facturees, heures_fr, lignes_materiel
 
 
 def ajuster_main_oeuvre(bon: Bon, heures: dict[str, float]) -> tuple[list[Ligne], dict[str, str]]:
@@ -37,7 +37,7 @@ def ajuster_main_oeuvre(bon: Bon, heures: dict[str, float]) -> tuple[list[Ligne]
             continue
         derniere = par_id[ids[-1]]
         derniere.quantite = round(derniere.quantite + ecart, 4)
-        origine[str(derniere.id)] = f"Arrondi au 15 min supérieur – {tech} : {cible:g} h facturées"
+        origine[str(derniere.id)] = f"Arrondi au 15 min supérieur – {tech} : {heures_fr(cible)} h facturées"
     return lignes, origine
 
 
@@ -60,12 +60,12 @@ def _alertes_main_oeuvre(bon: Bon, heures: dict[str, float]) -> list[Alerte]:
     return alertes
 
 
-def _fichier_cache(cache: Path, bon: Bon) -> Path:
+def fichier_cache(cache: Path, bon: Bon) -> Path:
     return Path(cache) / f"{bon.id}_{re.sub(r'[^0-9A-Za-z]', '', bon.maj)}.json"
 
 
 def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, cache: Path) -> Proposition:
-    fichier = _fichier_cache(cache, bon)
+    fichier = fichier_cache(cache, bon)
     if fichier.exists():
         return proposition_depuis_dict(json.loads(fichier.read_text(encoding="utf-8")))
 
@@ -111,7 +111,7 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
         alertes += garde_fous_facture(f, bon.date_rv, r)
         for ligne in lignes_materiel(f, r.marge):
             lignes.append(ligne)
-            origine[ligne.external_id] = f"Facture {nom}, coût + {r.marge * 100:g} %"
+            origine[ligne.external_id] = f"Facture {nom}, coût + {r.marge * 100:g} %".replace(".", ",")
 
     description, alertes_texte = rediger(bon.description, client, cfg["claude"])
     alertes += alertes_texte

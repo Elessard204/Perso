@@ -62,7 +62,8 @@ def test_facture_conforme_sans_alerte():
 
 def test_ecart_sous_total():
     f = Facture("Rona", "A-1", J, 25.0, [LigneFacture("Vis", 2, 10.0)])
-    assert codes(garde_fous_facture(f, J, R)) == ["ecart_sous_total"]
+    [a] = garde_fous_facture(f, J, R)
+    assert a.code == "ecart_sous_total" and "20,00 $" in a.message and "25,00 $" in a.message
 
 
 def test_ecart_dans_la_tolerance():
@@ -79,13 +80,15 @@ def test_facture_ancienne():
 
 def test_ligne_elevee():
     f = Facture("Rona", "A-1", J, 1000.01, [LigneFacture("Chauffe-eau", 1, 1000.01)])
-    assert codes(garde_fous_facture(f, J, R)) == ["ligne_elevee"]
+    [a] = garde_fous_facture(f, J, R)
+    assert a.code == "ligne_elevee" and "1 000,00 $" in a.message
 
 
 def test_plus_12h():
     e = [EntreeTemps(1, "Luc", J, 12 * 60 + 1, 10)]
     alertes = garde_fous_temps(e, R)
     assert codes(alertes) == ["plus_12h"]
+    assert "12,02 h" in alertes[0].message and "12 h" in alertes[0].message
     assert not alertes[0].bloquante
     assert garde_fous_temps([EntreeTemps(1, "Luc", J, 12 * 60, 10)], R) == []
 

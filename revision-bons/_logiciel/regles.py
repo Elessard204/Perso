@@ -44,6 +44,17 @@ def cents(montant: float) -> float:
     return float(Decimal(str(montant)).quantize(Decimal("0.01"), ROUND_HALF_UP))
 
 
+def heures_fr(heures: float) -> str:
+    """12.5 -> « 12,50 », 12.0 -> « 12 »."""
+    texte = f"{heures:.2f}".replace(".", ",")
+    return texte[:-3] if texte.endswith(",00") else texte
+
+
+def argent_fr(montant: float) -> str:
+    """1000.5 -> « 1 000,50 $ »."""
+    return f"{cents(montant):,.2f} $".replace(",", " ").replace(".", ",")
+
+
 def arrondir_minutes(minutes: int, pas: int = 15) -> int:
     """Arrondit au pas supérieur : 125 -> 135, 135 reste 135."""
     return math.ceil(minutes / pas) * pas
@@ -85,8 +96,8 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
         if ecart > Decimal(str(r.ecart_sous_total)):
             alertes.append(Alerte(
                 "ecart_sous_total",
-                f"Facture {nom} : les lignes totalisent {cents(total):.2f} $, "
-                f"le sous-total imprimé est {facture.sous_total:.2f} $."))
+                f"Facture {nom} : les lignes totalisent {argent_fr(total)}, "
+                f"le sous-total imprimé est {argent_fr(facture.sous_total)}."))
     if facture.date and date_bon and abs((date_bon - facture.date).days) > r.jours_max_facture:
         alertes.append(Alerte(
             "facture_ancienne",
@@ -96,7 +107,7 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
         if l.quantite * l.prix_unitaire > r.montant_max_ligne:
             alertes.append(Alerte(
                 "ligne_elevee",
-                f"Facture {nom} : « {l.description} » dépasse {r.montant_max_ligne:.2f} $."))
+                f"Facture {nom} : « {l.description} » dépasse {argent_fr(r.montant_max_ligne)}."))
     return alertes
 
 
@@ -107,7 +118,7 @@ def garde_fous_temps(entrees: list[EntreeTemps], r: Regles) -> list[Alerte]:
     for e in entrees:
         par_jour[(e.technicien, e.jour)] += e.minutes
     return [
-        Alerte("plus_12h", f"{tech} a {m / 60:.2f} h le {jour}, plus de {r.heures_max_jour:g} h.")
+        Alerte("plus_12h", f"{tech} a {heures_fr(m / 60)} h le {jour}, plus de {heures_fr(r.heures_max_jour)} h.")
         for (tech, jour), m in par_jour.items()
         if m > r.heures_max_jour * 60
     ]

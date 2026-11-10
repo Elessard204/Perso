@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<style>html { background: #F3F4F6; }</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Révision des bons – Progim</title>
+<style>
+/* Design system Progim : mêmes jetons que l'outil des rapports clients. */
+:root {
+  --marine: #131A2F; --marine-desactive: #2E3650;
+  --orange: #EE7203; --orange-survol: #D96500; --orange-texte: #B85500;
+  --fond: #F3F4F6; --surface: #FFFFFF; --surface-lecture: #F8F9FA; --survol: #E8EBEF; --ligne: #DDE2E6;
+  --discret: #5B6770; --pale: #AEB6C8; --texte-sur-marine: #C9CFDB;
+  --ok: #2D7A3E; --ok-pale: #E3F2E6; --fait: #F3FAF4;
+  --bloque: #B4471A; --bloque-pale: #FBEAE2; --avert: #6E5000; --avert-pale: #FFF4D6;
+  --info: #0B5D7A; --info-pale: #E3EFF4;
+  --ligne-survol: #FFF4E8; --special: #FFF1E0; --voile: rgba(19,26,47,.45);
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --rayon-controle: 6px; --rayon-carte: 10px; --rayon-dialogue: 12px; --rayon-pastille: 99px;
+  --ombre-dialogue: 0 20px 60px rgba(19,26,47,.35);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--fond); color: var(--marine); font: 15px/22px var(--font-sans); }
+.bandeau { background: var(--surface); border-bottom: 3px solid var(--orange); padding: 12px 24px; }
+.bandeau-contenu, .entete-contenu { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 14px; }
+.bandeau img { height: 40px; width: auto; }
+.bandeau-titre { border-left: 1px solid var(--ligne); padding-left: 14px; display: flex; flex-direction: column; }
+.bandeau-titre b { font-size: 17px; } .bandeau-titre span { font-size: 12px; color: var(--discret); }
+.bandeau .espace { flex: 1; }
+.entete { background: var(--surface); border-bottom: 1px solid var(--ligne); padding: 0 24px; }
+.onglets { display: flex; gap: 4px; min-height: 56px; align-items: stretch; }
+.onglets button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 0 16px;
+  font-size: 14px; font-weight: 700; color: var(--discret); }
+.onglets button[aria-selected="true"] { color: var(--marine); border-bottom-color: var(--orange); }
+.onglets button:hover { background: none; color: var(--marine); }
+.page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 48px; display: grid; gap: 16px; }
+.note { color: var(--discret); margin: 0; font-size: 12px; line-height: 18px; }
+.surtitre { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--orange-texte); margin: 0; }
+h2 { margin: 0; font-size: 17px; }
+label { font-weight: 700; font-size: 14px; }
+select, input, textarea { font: inherit; color: inherit; border: 1px solid var(--ligne); border-radius: var(--rayon-controle); padding: 7px 10px;
+  background: var(--surface); min-width: 0; width: 100%; }
+select { width: auto; } input[type=date] { width: auto; }
+textarea { resize: vertical; min-height: 110px; }
+button { font: inherit; cursor: pointer; border-radius: var(--rayon-controle); padding: 8px 14px; border: 1px solid var(--ligne);
+  background: var(--surface); color: var(--marine); }
+button:hover { background: var(--survol); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, tr:focus-visible {
+  outline: 2px solid var(--orange); outline-offset: 2px; }
+button:disabled { color: var(--pale); cursor: default; background: var(--surface); }
+.principal { background: var(--orange); color: #FFFFFF; border-color: var(--orange); font-weight: 700; }
+.principal:hover { background: var(--orange-survol); }
+.principal:disabled { background: var(--marine-desactive); border-color: var(--marine-desactive); color: var(--pale); }
+.engageant { background: var(--marine); color: #FFFFFF; border-color: var(--marine); font-weight: 700; }
+.engageant:hover { background: var(--marine-desactive); }
+.lien-bouton { border: 0; background: none; color: var(--info); padding: 2px 0; font-weight: 700; }
+.lien-bouton:hover { background: none; text-decoration: underline; }
+.message { margin: 0; font-weight: 700; } .message:empty { display: none; }
+.message.ok { color: var(--ok); } .message.erreur { color: var(--bloque); }
+.pastille { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: var(--rayon-pastille); white-space: nowrap; }
+.pastille.pret, .pastille.envoye, .pastille.oui { color: var(--ok); background: var(--ok-pale); }
+.pastille.a_verifier { color: var(--avert); background: var(--avert-pale); }
+.pastille.bloque, .pastille.non { color: var(--bloque); background: var(--bloque-pale); }
+.pastille.a_analyser { color: var(--info); background: var(--info-pale); }
+.demo { background: var(--avert-pale); color: var(--avert); font-weight: 700; font-size: 13px; padding: 6px 24px; text-align: center; }
+.outils { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 12px 14px; }
+.barre { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.barre .espace { flex: 1; }
+.champ { display: grid; gap: 4px; min-width: 0; } .champ small { color: var(--discret); font-size: 12px; }
+.avancement { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--discret); }
+.piste { width: 220px; height: 8px; border-radius: var(--rayon-pastille); background: var(--survol); overflow: hidden; }
+.piste div { height: 100%; background: var(--orange); width: 0; transition: width .3s; }
+.compteurs { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.tableau-travail { border: 1px solid var(--ligne); border-radius: var(--rayon-carte); overflow: hidden; background: var(--surface); }
+.grille { overflow: auto; max-height: 62vh; }
+.grille table { border-collapse: separate; border-spacing: 0; font-size: 13px; width: 100%; }
+.grille th { position: sticky; top: 0; z-index: 1; background: var(--fond); text-align: left; font-size: 12px; font-weight: 700;
+  color: var(--discret); padding: 6px 10px; border-bottom: 1px solid var(--ligne); white-space: nowrap; }
+.grille td { padding: 7px 10px; border-bottom: 1px solid var(--ligne); vertical-align: top; }
+.grille tbody tr.cliquable { cursor: pointer; }
+.grille tbody tr.cliquable:hover td { background: var(--ligne-survol); }
+.grille .code { font-weight: 700; white-space: nowrap; }
+.grille .discret { color: var(--discret); font-size: 12px; }
+.grille .nombre { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grille input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--ok); }
+.vide { padding: 28px; text-align: center; color: var(--discret); }
+.pied { background: var(--marine); color: #FFFFFF; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.pied .espace { flex: 1; } .pied label { color: var(--texte-sur-marine); font-size: 13px; }
+.pied select { padding: 5px 8px; color: var(--marine); }
+/* Fiche d'un bon */
+dialog { border: 0; border-radius: var(--rayon-dialogue); padding: 0; width: min(1180px, 97vw); max-height: 94vh; box-shadow: var(--ombre-dialogue); color: var(--marine); }
+dialog::backdrop { background: var(--voile); }
+.fiche { display: grid; grid-template-rows: auto 1fr auto; max-height: 94vh; }
+.fiche-tete { padding: 14px 22px; border-bottom: 3px solid var(--orange); display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.fiche-tete h2 { font-size: 19px; }
+.fiche-corps { padding: 16px 22px; overflow: auto; display: grid; gap: 18px; }
+.fiche-pied { padding: 12px 22px; border-top: 1px solid var(--ligne); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fiche-pied .message { flex: 1; }
+fieldset { border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 12px 14px 14px; margin: 0; display: grid; gap: 10px; min-width: 0; }
+legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--orange-texte); padding: 0 6px; text-transform: uppercase; }
+.deux { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.original { background: var(--surface-lecture); border: 1px solid var(--ligne); border-radius: var(--rayon-controle); padding: 8px 10px; white-space: pre-wrap; min-height: 110px; font-size: 14px; }
+.alertes { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.alertes li { padding: 6px 10px; border-radius: var(--rayon-controle); font-size: 13px; background: var(--avert-pale); color: var(--avert); }
+.alertes li.bloquante { background: var(--bloque-pale); color: var(--bloque); font-weight: 700; }
+.lignes input { padding: 3px 6px; font-size: 13px; width: 90px; text-align: right; }
+.lignes input.libelle { width: 100%; text-align: left; }
+.lignes tr.ajoutee td { background: var(--fait); }
+.lignes tr.modifiee td.qte { background: var(--special); }
+.origine { color: var(--info); font-size: 12px; }
+.pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.piece { border: 1px solid var(--ligne); border-radius: var(--rayon-carte); overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
+.piece-tete { padding: 8px 10px; display: flex; gap: 8px; align-items: center; background: var(--surface-lecture); border-bottom: 1px solid var(--ligne); font-size: 13px; }
+.piece-tete b { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piece-corps { padding: 8px 10px; display: grid; gap: 8px; font-size: 13px; }
+.piece-corps img, .piece-corps iframe { width: 100%; height: 220px; object-fit: contain; border: 0; background: var(--fond); border-radius: 4px; }
+.piece-corps table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.piece-corps td { padding: 2px 4px; border-bottom: 1px solid var(--ligne); }
+/* Règles */
+.cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.carte { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
+.carte h2 { font-size: 15px; }
+.carte ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--discret); display: grid; gap: 4px; }
+.case-seule { display: flex; gap: 8px; align-items: center; font-weight: 400; font-size: 14px; }
+.case-seule input { width: 18px; height: 18px; accent-color: var(--ok); }
+@media (max-width: 860px) {
+  .deux { grid-template-columns: 1fr; }
+  .page { padding: 16px; }
+  .piste { width: 120px; }
+  .bandeau-titre span, #qui { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="bandeau"><div class="bandeau-contenu">
+  <img src="/logo.png" alt="Progim">
+  <div class="bandeau-titre"><b>Révision des bons</b><span>Bons de service Progression avant facturation</span></div>
+  <span class="espace"></span>
+  <span class="note" id="qui"></span>
+</div></div>
+<div class="demo" id="bandeau-demo" hidden>Mode démo : bons fictifs, rien n'est lu ni écrit dans Progression.</div>
+<div class="entete"><div class="entete-contenu">
+  <nav class="onglets" aria-label="Sections">
+    <button type="button" data-vue="reviser" aria-selected="true">À réviser</button>
+    <button type="button" data-vue="regles" aria-selected="false">Règles</button>
+    <button type="button" data-vue="historique" aria-selected="false">Historique</button>
+  </nav>
+</div></div>
+
+<!-- ===== À réviser ===== -->
+<main class="page" id="vue-reviser">
+  <section class="outils">
+    <div class="barre">
+      <div class="champ"><label for="debut">Du</label><input type="date" id="debut"></div>
+      <div class="champ"><label for="fin">Au</label><input type="date" id="fin"></div>
+      <button type="button" class="engageant" id="charger">Charger les bons</button>
+      <button type="button" class="principal" id="analyser" disabled>Analyser</button>
+      <div class="avancement" id="avancement" hidden><div class="piste"><div id="barre"></div></div><span id="progres-texte"></span></div>
+      <span class="espace"></span>
+      <div class="compteurs" id="compteurs"></div>
+    </div>
+    <p class="message" id="message-liste" role="status"></p>
+  </section>
+
+  <section class="tableau-travail">
+    <div class="grille" id="grille">
+      <table>
+        <thead><tr>
+          <th><input type="checkbox" id="tout-cocher" title="Cocher tous les bons prêts" aria-label="Cocher tous les bons prêts"></th>
+          <th>Bon</th><th>Client</th><th>Date</th><th>Statut</th><th>Raison</th><th>Approuvé</th>
+        </tr></thead>
+        <tbody id="corps"></tbody>
+      </table>
+      <div class="vide" id="vide">Choisir une période et cliquer « Charger les bons ».</div>
+    </div>
+    <div class="pied">
+      <button type="button" class="principal" id="approuver" disabled>Approuver la sélection</button>
+      <span class="espace"></span>
+      <label for="mode">Envoi</label>
+      <select id="mode">
+        <option value="simulation">Simulation (rien n'est écrit)</option>
+        <option value="reel">Écrire dans Progression</option>
+      </select>
+      <button type="button" class="principal" id="envoyer" disabled>Envoyer les bons approuvés</button>
+    </div>
+  </section>
+  <section class="outils" id="resultats" hidden>
+    <h2>Résultat de l'envoi</h2>
+    <div class="grille"><table><thead><tr><th>Bon</th><th>Résultat</th><th>Détail</th></tr></thead><tbody id="resultats-corps"></tbody></table></div>
+  </section>
+</main>
+
+<!-- ===== Règles ===== -->
+<main class="page" id="vue-regles" hidden>
+  <p class="note">Ces règles s'appliquent à chaque analyse. Une modification vaut pour les prochaines analyses; les bons déjà analysés gardent leur proposition.</p>
+  <form id="form-regles" class="cartes">
+    <section class="carte">
+      <p class="surtitre">Heures facturées</p>
+      <div class="champ"><label for="r-pas">Arrondi au … supérieur (minutes)</label><input id="r-pas" name="pas_minutes" inputmode="numeric">
+        <small>Par technicien, sur son temps total dans le bon. Les feuilles de temps (paie) ne sont jamais modifiées. Une ligne déjà plus haute n'est jamais réduite.</small></div>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Matériel refacturé</p>
+      <div class="champ"><label for="r-marge">Marge sur le coût d'achat (ex. 0,10 = 10 %)</label><input id="r-marge" name="marge" inputmode="decimal">
+        <small>Appliquée au prix unitaire avant taxes de chaque ligne de facture.</small></div>
+      <label class="case-seule"><input type="checkbox" id="r-taxes" name="refacturer_taxes"> Refacturer aussi les taxes, écofrais et consignes</label>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Transports</p>
+      <div class="champ"><label for="r-transports">Règle</label>
+        <select id="r-transports" name="regle_transports"><option value="conserver">À définir : garder le nombre inscrit et signaler le bon</option></select>
+        <small>La règle de calcul des transports sera ajoutée quand Hugo l'aura définie.</small></div>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Garde-fous : le bon passe « À vérifier »</p>
+      <div class="champ"><label for="r-ecart">Écart permis entre les lignes et le sous-total d'une facture ($)</label><input id="r-ecart" name="ecart_sous_total" inputmode="decimal"></div>
+      <div class="champ"><label for="r-jours">Facture à plus de … jours de la date du bon</label><input id="r-jours" name="jours_max_facture" inputmode="numeric"></div>
+      <div class="champ"><label for="r-montant">Ligne de matériel de plus de … $</label><input id="r-montant" name="montant_max_ligne" inputmode="decimal"></div>
+      <div class="champ"><label for="r-heures">Technicien avec plus de … heures dans une journée</label><input id="r-heures" name="heures_max_jour" inputmode="decimal"></div>
+      <ul>
+        <li>Pièce jointe illisible ou classement incertain.</li>
+        <li>Description révisée contenant un nombre absent du texte du technicien.</li>
+        <li>Ligne de main-d'œuvre introuvable ou partagée entre techniciens.</li>
+      </ul>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Garde-fous : le bon est bloqué</p>
+      <ul>
+        <li>Même facture (fournisseur et numéro) déjà refacturée dans un autre bon, ou jointe deux fois au même bon.</li>
+        <li>Bon sans aucune heure.</li>
+      </ul>
+      <p class="note">Corriger dans Progression, puis réanalyser le bon.</p>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Sécurité</p>
+      <ul>
+        <li>Rien n'est écrit dans Progression sans approbation.</li>
+        <li>Avant d'écrire, l'outil vérifie que le bon n'a pas changé depuis l'analyse.</li>
+        <li>Chaque écriture est inscrite à l'historique, avec le texte original du technicien.</li>
+      </ul>
+    </section>
+  </form>
+  <div class="barre"><button type="button" class="principal" id="enregistrer-regles">Enregistrer les règles</button><p class="message" id="message-regles" role="status"></p></div>
+
+  <section class="carte" id="connexions">
+    <p class="surtitre">Connexions</p>
+    <p class="note">Les clés sont gardées dans votre profil Windows, jamais dans le dossier partagé. Laisser vide pour garder la clé actuelle.</p>
+    <div class="deux">
+      <div class="champ"><label for="cle-progression">Clé API Progression <span id="etat-progression"></span></label><input type="password" id="cle-progression" autocomplete="off"></div>
+      <div class="champ"><label for="cle-claude">Clé API Claude <span id="etat-claude"></span></label><input type="password" id="cle-claude" autocomplete="off"></div>
+    </div>
+    <div class="barre"><button type="button" id="enregistrer-cles">Enregistrer les clés</button><p class="message" id="message-cles" role="status"></p></div>
+  </section>
+</main>
+
+<!-- ===== Historique ===== -->
+<main class="page" id="vue-historique" hidden>
+  <section class="tableau-travail">
+    <div class="grille"><table>
+      <thead><tr><th>Quand</th><th>Qui</th><th>Bon</th><th>Événement</th><th>Détail</th></tr></thead>
+      <tbody id="historique-corps"></tbody>
+    </table><div class="vide" id="historique-vide">Aucun événement pour l'instant.</div></div>
+  </section>
+</main>
+
+<!-- ===== Fiche d'un bon ===== -->
+<dialog id="fiche" aria-labelledby="fiche-titre">
+  <div class="fiche">
+    <div class="fiche-tete"><h2 id="fiche-titre"></h2><span id="fiche-statut"></span><span class="note" id="fiche-client"></span></div>
+    <div class="fiche-corps">
+      <ul class="alertes" id="fiche-alertes"></ul>
+      <fieldset>
+        <legend>Description des travaux</legend>
+        <div class="deux">
+          <div class="champ"><label>Texte du technicien</label><div class="original" id="fiche-original"></div></div>
+          <div class="champ"><label for="fiche-description">Version proposée</label><textarea id="fiche-description"></textarea>
+            <small class="origine" id="fiche-description-origine"></small></div>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Lignes facturables</legend>
+        <p class="note" id="fiche-temps"></p>
+        <div class="grille lignes"><table>
+          <thead><tr><th>Ligne</th><th class="nombre">Qté actuelle</th><th class="nombre">Qté proposée</th><th class="nombre">Coût unit.</th><th class="nombre">Prix unit.</th><th>Origine</th></tr></thead>
+          <tbody id="fiche-lignes"></tbody>
+        </table></div>
+      </fieldset>
+      <fieldset>
+        <legend>Pièces jointes</legend>
+        <div class="pieces" id="fiche-pieces"></div>
+      </fieldset>
+    </div>
+    <div class="fiche-pied">
+      <p class="message" id="message-fiche" role="status"></p>
+      <button type="button" id="fermer-fiche">Fermer</button>
+      <button type="button" class="principal" id="approuver-fiche">Approuver ce bon</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const STATUTS = { a_analyser: "À analyser", pret: "Prêt", a_verifier: "À vérifier", bloque: "Bloqué", envoye: "Envoyé" };
+const RESULTATS = { simule: "Simulé", ecrit: "Écrit", deja_ecrit: "Déjà écrit", perime: "Modifié depuis l'analyse", echec: "Échec" };
+const EVENEMENTS = { approuve: "Approuvé", ecrit: "Écrit dans Progression", echec: "Échec d'écriture" };
+let bons = [], etat = {}, ficheId = null, ficheDetail = null;
+
+function echapper(t) { return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function argent(n) { return n == null ? "" : Number(n).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " $"; }
+function qte(n) { return n == null ? "" : Number(n).toLocaleString("fr-CA", { maximumFractionDigits: 4 }); }
+function pastille(statut) { return `<span class="pastille ${statut}">${STATUTS[statut] || statut}</span>`; }
+function message(id, texte, ok) { const m = $(id); m.textContent = texte || ""; m.className = "message " + (ok ? "ok" : "erreur"); }
+
+async function api(chemin, corps) {
+  const options = corps === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) };
+  const r = await fetch(chemin, options);
+  const donnees = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(donnees.erreur || `Erreur ${r.status}`);
+  return donnees;
+}
+
+// ---------- onglets ----------
+function montrer(vue) {
+  ["reviser", "regles", "historique"].forEach(v => $("vue-" + v).hidden = v !== vue);
+  document.querySelectorAll(".onglets button").forEach(b => b.setAttribute("aria-selected", b.dataset.vue === vue));
+  if (vue === "regles") chargerRegles();
+  if (vue === "historique") chargerHistorique();
+}
+document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => montrer(b.dataset.vue)));
+
+// ---------- liste ----------
+function afficherListe() {
+  $("vide").hidden = bons.length > 0;
+  $("corps").innerHTML = bons.map(b => `
+    <tr class="cliquable" data-id="${b.id}" tabindex="0">
+      <td><input type="checkbox" class="choix" data-id="${b.id}" ${b.statut === "bloque" || b.statut === "a_analyser" || b.statut === "envoye" ? "disabled" : ""} aria-label="Choisir ${echapper(b.code)}"></td>
+      <td class="code">${echapper(b.code)}</td><td>${echapper(b.client)}</td><td class="discret">${echapper(b.date)}</td>
+      <td>${pastille(b.statut)}</td>
+      <td>${echapper(b.raison)}${b.nb_alertes > 1 ? ` <span class="discret">(+${b.nb_alertes - 1})</span>` : ""}</td>
+      <td>${b.approuve ? '<span class="pastille oui">Approuvé</span>' : ""}</td>
+    </tr>`).join("");
+  const compte = {};
+  bons.forEach(b => compte[b.statut] = (compte[b.statut] || 0) + 1);
+  $("compteurs").innerHTML = Object.entries(compte).map(([s, n]) => `${pastille(s)} <b>${n}</b>`).join(" ");
+  $("analyser").disabled = !bons.length;
+  $("envoyer").disabled = !bons.some(b => b.approuve);
+  majSelection();
+}
+function majSelection() { $("approuver").disabled = !document.querySelectorAll(".choix:checked").length; }
+$("corps").addEventListener("change", e => { if (e.target.classList.contains("choix")) majSelection(); });
+$("corps").addEventListener("click", e => {
+  if (e.target.closest("input")) return;
+  const tr = e.target.closest("tr[data-id]"); if (tr) ouvrirFiche(Number(tr.dataset.id));
+});
+$("corps").addEventListener("keydown", e => {
+  const tr = e.target.closest("tr[data-id]"); if (tr && e.key === "Enter") ouvrirFiche(Number(tr.dataset.id));
+});
+$("tout-cocher").addEventListener("change", e => {
+  document.querySelectorAll(".choix").forEach(c => {
+    const b = bons.find(x => x.id === Number(c.dataset.id));
+    c.checked = e.target.checked && b && b.statut === "pret";
+  });
+  majSelection();
+});
+
+$("charger").addEventListener("click", async () => {
+  message("message-liste", "Chargement des bons…", true);
+  try {
+    bons = (await api("/charger", { debut: $("debut").value, fin: $("fin").value })).bons;
+    afficherListe();
+    message("message-liste", bons.length ? `${bons.length} bon(s) chargé(s). Cliquer « Analyser ».` : "Aucun bon terminé pour cette période.", true);
+  } catch (e) { message("message-liste", e.message); }
+});
+
+$("analyser").addEventListener("click", async () => {
+  const coches = [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id));
+  const ids = coches.length ? coches : bons.filter(b => b.statut !== "envoye").map(b => b.id);
+  try { await api("/analyser", { bon_ids: ids }); suivreAnalyse(); }
+  catch (e) { message("message-liste", e.message); }
+});
+
+async function suivreAnalyse() {
+  $("avancement").hidden = false; $("analyser").disabled = true; $("charger").disabled = true;
+  const p = await api("/progres");
+  $("barre").style.width = (p.total ? Math.round(100 * p.fait / p.total) : 0) + "%";
+  $("progres-texte").textContent = `${p.fait} / ${p.total}  ${p.message || ""}`;
+  if (p.en_cours) { setTimeout(suivreAnalyse, 700); return; }
+  $("charger").disabled = false;
+  bons = (await api("/bons")).bons; afficherListe();
+  message("message-liste", p.message, !p.message || p.message === "Analyse terminée.");
+  setTimeout(() => $("avancement").hidden = true, 1500);
+}
+
+$("approuver").addEventListener("click", async () => {
+  const ids = [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id));
+  try { bons = (await api("/approuver", { bon_ids: ids })).bons; afficherListe(); $("tout-cocher").checked = false;
+        message("message-liste", `${ids.length} bon(s) approuvé(s).`, true); }
+  catch (e) { message("message-liste", e.message); }
+});
+
+$("envoyer").addEventListener("click", async () => {
+  const mode = $("mode").value;
+  const nombre = bons.filter(b => b.approuve).length;
+  if (mode === "reel" && !confirm(`Écrire ${nombre} bon(s) dans Progression ?`)) return;
+  try {
+    const r = await api("/envoyer", { mode });
+    bons = r.bons; afficherListe();
+    $("resultats").hidden = false;
+    $("resultats-corps").innerHTML = r.resultats.map(x => `<tr><td class="code">${echapper(x.code)}</td>
+      <td>${echapper(RESULTATS[x.resultat] || x.resultat)}</td><td>${echapper(x.message)}</td></tr>`).join("");
+    message("message-liste", mode === "simulation" ? "Simulation terminée : rien n'a été écrit." : "Envoi terminé.", true);
+  } catch (e) { message("message-liste", e.message); }
+});
+
+// ---------- fiche ----------
+async function ouvrirFiche(id) {
+  const b = bons.find(x => x.id === id);
+  if (!b || b.statut === "a_analyser") { message("message-liste", "Analyser ce bon avant de l'ouvrir."); return; }
+  try { ficheDetail = await api(`/bon/${id}`); } catch (e) { message("message-liste", e.message); return; }
+  ficheId = id; afficherFiche(); message("message-fiche", "");
+  $("fiche").showModal();
+}
+
+function afficherFiche() {
+  const d = ficheDetail, p = d.proposition, l = d.liste;
+  $("fiche-titre").textContent = `Bon ${l.code}`;
+  $("fiche-statut").innerHTML = pastille(l.statut) + (l.approuve ? ' <span class="pastille oui">Approuvé</span>' : "");
+  $("fiche-client").textContent = `${l.client} · ${l.date}`;
+  $("fiche-alertes").innerHTML = p.alertes.map(a => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}</li>`).join("");
+  $("fiche-original").textContent = p.description_originale || "(vide)";
+  $("fiche-description").value = p.description;
+  $("fiche-description-origine").textContent = p.origine.description || "";
+  const minutes = {};
+  d.bon.entrees.forEach(e => minutes[e.technicien] = (minutes[e.technicien] || 0) + e.minutes);
+  $("fiche-temps").textContent = "Temps réel (feuilles de temps, non modifiées) : " +
+    (Object.entries(minutes).map(([t, m]) => `${t} ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`).join(" · ") || "aucun");
+  const actuelles = Object.fromEntries(d.bon.lignes.map(x => [x.id, x]));
+  $("fiche-lignes").innerHTML = p.lignes.map((x, i) => {
+    const avant = x.id != null ? actuelles[x.id] : null;
+    const cle = x.id != null ? String(x.id) : x.external_id;
+    const modifiee = avant && avant.quantite !== x.quantite;
+    return `<tr class="${avant ? (modifiee ? "modifiee" : "") : "ajoutee"}">
+      <td><input class="libelle" data-champ="ligne:${i}:libelle" value="${echapper(x.libelle)}" aria-label="Libellé">
+        <div class="discret">${echapper(x.description)}</div></td>
+      <td class="nombre">${avant ? qte(avant.quantite) : "nouvelle"}</td>
+      <td class="nombre qte"><input data-champ="ligne:${i}:quantite" value="${qte(x.quantite)}" aria-label="Quantité proposée"></td>
+      <td class="nombre">${argent(x.cout_unitaire)}</td>
+      <td class="nombre"><input data-champ="ligne:${i}:prix" value="${qte(x.prix)}" aria-label="Prix unitaire"></td>
+      <td class="origine">${echapper(p.origine[cle] || "")}</td></tr>`;
+  }).join("");
+  const analyses = Object.fromEntries(p.analyses.map(a => [a.piece_id, a]));
+  const GENRES = { facture: "Facture", photo: "Photo", incertain: "Incertain" };
+  $("fiche-pieces").innerHTML = d.pieces.map(pc => {
+    const a = analyses[pc.id] || {};
+    const apercu = pc.type === "application/pdf" ? `<iframe src="/piece/${pc.id}" title="${echapper(pc.nom)}"></iframe>`
+      : pc.type.startsWith("image/") && pc.type !== "image/heic" ? `<img src="/piece/${pc.id}" alt="${echapper(pc.nom)}" loading="lazy">`
+      : `<p class="note">Aperçu impossible pour ce format : ouvrir la pièce dans Progression.</p>`;
+    const f = a.facture;
+    const tableau = f ? `<table>${f.lignes.map(x => `<tr><td>${qte(x.quantite)} ×</td><td>${echapper(x.description)}</td><td class="nombre">${argent(x.prix_unitaire)}</td></tr>`).join("")}
+      <tr><td></td><td><b>Sous-total imprimé</b></td><td class="nombre"><b>${argent(f.sous_total)}</b></td></tr></table>` : "";
+    const classe = a.genre === "facture" ? "pret" : a.genre === "incertain" ? "a_verifier" : "a_analyser";
+    return `<div class="piece"><div class="piece-tete"><b title="${echapper(pc.nom)}">${echapper(pc.nom)}</b>
+        <span class="pastille ${classe}">${GENRES[a.genre] || "?"}</span>
+        <a class="lien-bouton" href="/piece/${pc.id}" target="_blank" rel="noopener">Ouvrir</a></div>
+      <div class="piece-corps">${apercu}<div class="note">${echapper(a.raison)}</div>
+        ${f ? `<div><b>${echapper(f.fournisseur)}</b> · facture ${echapper(f.numero)} · ${echapper(f.date || "date ?")}</div>${tableau}` : ""}</div></div>`;
+  }).join("") || '<p class="note">Aucune pièce jointe.</p>';
+  $("approuver-fiche").disabled = l.statut === "bloque" || l.statut === "envoye";
+}
+
+async function modifierChamp(champ, valeur) {
+  try {
+    ficheDetail = await api(`/bon/${ficheId}/modifier`, { champ, valeur });
+    afficherFiche(); message("message-fiche", "Modification enregistrée.", true);
+    bons = (await api("/bons")).bons; afficherListe();
+  } catch (e) { message("message-fiche", e.message); }
+}
+$("fiche-description").addEventListener("change", e => modifierChamp("description", e.target.value));
+$("fiche-lignes").addEventListener("change", e => { if (e.target.dataset.champ) modifierChamp(e.target.dataset.champ, e.target.value); });
+$("fermer-fiche").addEventListener("click", () => $("fiche").close());
+$("approuver-fiche").addEventListener("click", async () => {
+  try { bons = (await api("/approuver", { bon_ids: [ficheId] })).bons; afficherListe(); $("fiche").close();
+        message("message-liste", "Bon approuvé.", true); }
+  catch (e) { message("message-fiche", e.message); }
+});
+
+// ---------- règles ----------
+async function chargerRegles() {
+  try {
+    const r = await api("/regles");
+    $("r-pas").value = r.pas_minutes; $("r-marge").value = String(r.marge).replace(".", ",");
+    $("r-taxes").checked = r.refacturer_taxes; $("r-transports").value = r.regle_transports;
+    $("r-ecart").value = String(r.ecart_sous_total).replace(".", ","); $("r-jours").value = r.jours_max_facture;
+    $("r-montant").value = String(r.montant_max_ligne).replace(".", ","); $("r-heures").value = String(r.heures_max_jour).replace(".", ",");
+  } catch (e) { message("message-regles", e.message); }
+  afficherCles();
+}
+$("enregistrer-regles").addEventListener("click", async () => {
+  const valeurs = { pas_minutes: $("r-pas").value, marge: $("r-marge").value, refacturer_taxes: $("r-taxes").checked,
+    regle_transports: $("r-transports").value, ecart_sous_total: $("r-ecart").value, jours_max_facture: $("r-jours").value,
+    montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value };
+  try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
+  catch (e) { message("message-regles", e.message); }
+});
+function afficherCles() {
+  const c = etat.cles || {};
+  $("etat-progression").innerHTML = c.progression ? '<span class="pastille oui">configurée</span>' : '<span class="pastille non">manquante</span>';
+  $("etat-claude").innerHTML = c.claude ? '<span class="pastille oui">configurée</span>' : '<span class="pastille non">manquante</span>';
+}
+$("enregistrer-cles").addEventListener("click", async () => {
+  try {
+    etat = await api("/cles", { progression: $("cle-progression").value, claude: $("cle-claude").value });
+    $("cle-progression").value = ""; $("cle-claude").value = ""; afficherCles();
+    message("message-cles", "Clés enregistrées dans votre profil Windows.", true);
+  } catch (e) { message("message-cles", e.message); }
+});
+
+// ---------- historique ----------
+async function chargerHistorique() {
+  const h = (await api("/historique")).evenements;
+  $("historique-vide").hidden = h.length > 0;
+  $("historique-corps").innerHTML = h.map(e => {
+    const d = e.details || {};
+    const detail = e.evenement === "ecrit" ? `${(d.external_ids || []).length} ligne(s) de matériel ajoutée(s)` : (d.message || d.code || "");
+    return `<tr><td class="discret">${echapper((e.horodatage || "").slice(0, 16).replace("T", " "))}</td><td>${echapper(e.personne)}</td>
+      <td class="code">${echapper(d.code || e.bon_id)}</td><td>${echapper(EVENEMENTS[e.evenement] || e.evenement)}</td><td>${echapper(detail)}</td></tr>`;
+  }).join("");
+}
+
+// ---------- démarrage ----------
+(async function demarrer() {
+  const aujourdhui = new Date();
+  const debut = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  $("debut").value = iso(debut); $("fin").value = iso(aujourdhui);
+  try {
+    etat = await api("/etat");
+    $("bandeau-demo").hidden = !etat.demo;
+    $("qui").textContent = etat.personne;
+    if (!etat.mode_reel_permis) {
+      const option = $("mode").querySelector('option[value="reel"]');
+      option.disabled = true; option.textContent = "Écrire dans Progression (verrouillé jusqu'à l'essai sur un bon de test)";
+    }
+    if (!etat.demo && (!etat.cles.progression || !etat.cles.claude)) {
+      message("message-liste", "Clés API manquantes : les inscrire dans l'onglet Règles, section Connexions.");
+    }
+    bons = (await api("/bons")).bons; afficherListe();
+  } catch (e) { message("message-liste", e.message); }
+  setInterval(() => fetch("/signe-de-vie").catch(() => {}), 20000);
+})();
+</script>
+</body>
+</html>

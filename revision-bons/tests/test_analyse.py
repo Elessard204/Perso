@@ -65,7 +65,7 @@ def test_arrondi_applique_aux_lignes_pas_aux_entrees(tmp_path):
     assert mo.quantite == 2.25
     assert [e.minutes for e in bon.entrees] == [80, 45]
     assert next(l for l in bon.lignes if l.id == 501).quantite == 2.0833
-    assert "Arrondi" in p.origine["501"] and "Luc Tremblay" in p.origine["501"]
+    assert "Arrondi" in p.origine["501"] and "Luc Tremblay" in p.origine["501"] and "2,25 h" in p.origine["501"]
 
 
 def test_arrondi_ne_reduit_jamais(tmp_path):
