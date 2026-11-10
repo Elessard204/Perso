@@ -111,6 +111,26 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
     return alertes
 
 
+REPONSES_SANS_ACHAT = {"non", "no", "aucun", "aucune", "rien", "0", "-", "n/a", "na"}
+
+
+def garde_fou_achat(achat: str, nb_factures: int) -> list[Alerte]:
+    """Compare le champ « Achat » du technicien aux factures trouvées dans les pièces jointes."""
+    declare = (achat or "").strip()
+    if not declare:
+        return []  # champ non rempli : rien à comparer
+    sans_achat = declare.lower() in REPONSES_SANS_ACHAT
+    if not sans_achat and nb_factures == 0:
+        return [Alerte("achat_sans_facture",
+                       f"Le technicien déclare un achat (« {declare} »), mais aucune facture n'a été trouvée "
+                       "dans les pièces jointes.")]
+    if sans_achat and nb_factures > 0:
+        return [Alerte("facture_sans_achat",
+                       f"Le technicien a répondu « {declare} » au champ Achat, mais {nb_factures} facture(s) "
+                       "ont été trouvées dans les pièces jointes.")]
+    return []
+
+
 def garde_fous_temps(entrees: list[EntreeTemps], r: Regles) -> list[Alerte]:
     if not entrees:
         return [Alerte("sans_heures", "Aucune heure inscrite sur ce bon.", bloquante=True)]

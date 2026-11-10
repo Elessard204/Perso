@@ -96,3 +96,26 @@ def test_plus_12h():
 def test_sans_heures_bloquant():
     [a] = garde_fous_temps([], R)
     assert (a.code, a.bloquante) == ("sans_heures", True)
+
+
+from regles import garde_fou_achat
+
+
+def test_achat_declare_sans_facture():
+    [a] = garde_fou_achat("Robinet cuisine", nb_factures=0)
+    assert (a.code, a.bloquante) == ("achat_sans_facture", False) and "Robinet cuisine" in a.message
+
+
+def test_montant_declare_sans_facture():
+    assert [a.code for a in garde_fou_achat("61.13", 0)] == ["achat_sans_facture"]
+
+
+def test_facture_sans_achat_declare():
+    [a] = garde_fou_achat("Non", nb_factures=1)
+    assert (a.code, a.bloquante) == ("facture_sans_achat", False)
+
+
+def test_achat_coherent_ou_champ_vide():
+    assert garde_fou_achat("Robinet cuisine", 1) == []
+    assert garde_fou_achat("non ", 0) == []
+    assert garde_fou_achat("", 0) == [] and garde_fou_achat("", 2) == []   # champ non rempli : rien à comparer

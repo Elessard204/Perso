@@ -93,6 +93,7 @@ def bon_depuis_json(tache: dict, entrees: list[dict], cfg: dict) -> Bon:
             PieceJointe(id=a["id"], nom=a.get("name") or "", type_mime=a.get("contentType") or "")
             for a in tache.get("attachments") or []
         ],
+        achat=lire_champ(tache, cfg["champ_achat"]) if cfg.get("champ_achat") else "",
     )
 
 

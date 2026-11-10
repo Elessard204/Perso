@@ -77,6 +77,7 @@ class Bon:
     entrees: list[EntreeTemps] = field(default_factory=list)
     lignes: list[Ligne] = field(default_factory=list)
     pieces: list[PieceJointe] = field(default_factory=list)
+    achat: str = ""  # champ « Achat » rempli par le technicien (ex. « Non », « Robinet cuisine », « 61.13 »)
 
 
 @dataclass

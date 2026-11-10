@@ -4,7 +4,8 @@
 base = "https://progim.progressionlive.com/server/rest"   # adresse propre à Progim
 logic_ids_a_facturer = "600" # « Terminé » (inspection du 2026-11-10)
 type_tache = ""               # type des bons de service (spec 9.1)
-champ_description = "description"   # ou "properties.<nom>" (spec 9.2)
+champ_description = "description"   # ou "properties.<nom>" (spec 9.2) — probablement "properties.info.notes", à confirmer par Hugo
+champ_achat = "properties.info.achat" # champ « Achat » rempli par le technicien (inspection du 2026-11-10)
 produit_transport = ""        # code du produit transport (spec 9.4)
 produit_materiel = ""         # « Matériel acheté » existe : à confirmer (spec 9.6)
 ecriture_validee = false      # passe à true seulement après l'essai sur un bon de test

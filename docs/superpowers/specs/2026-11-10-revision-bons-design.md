@@ -118,6 +118,9 @@ Passent le bon en `À vérifier` (seuils modifiables dans Règles) :
 - technicien avec plus de 12 h dans une même journée;
 - règle des transports non définie;
 - la réécriture contient un nombre ou une unité absents du texte original.
+- le technicien déclare un achat (champ « Achat ») mais aucune facture n'est trouvée
+  dans les pièces jointes, ou il répond « Non » alors qu'une facture est trouvée
+  (champ vide : aucune comparaison).
 
 Bloquent le bon :
 

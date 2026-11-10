@@ -74,6 +74,9 @@ DESCRIPTIONS = {
 }
 
 
+ACHATS = {3: "Silicone", 6: "Non", 1: "Robinet cuisine"}   # champ « Achat » du technicien
+
+
 def _tache(n: int, description: str, pieces: list[tuple[int, str, str]], heures: list[tuple[str, int, str]],
            items_mo: list[tuple[int, str, float]]) -> tuple[dict, list[dict]]:
     tache = {
@@ -81,6 +84,7 @@ def _tache(n: int, description: str, pieces: list[tuple[int, str, str]], heures:
         "rv": f"2026-11-{n + 2:02d}T08:00:00-05:00", "updated": f"2026-11-{n + 2:02d}T17:00:00-05:00",
         "description": description, "client": {"label": CLIENTS[n % len(CLIENTS)]},
         "currentState": {"label": "Complété", "logicId": 600},
+        "properties": {"info": {"achat": ACHATS.get(n, "")}},
         "itemList": {"items": [
             *({"id": i, "label": "Main-d'œuvre", "description": tech, "quantity": q, "price": 95.0, "unitCost": 40.0,
                "product": {"code": "MO"}} for i, tech, q in items_mo),

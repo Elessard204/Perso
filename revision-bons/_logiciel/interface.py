@@ -230,7 +230,7 @@ class Application:
             bon, p = b["bon"], b["proposition"]
             return {
                 "liste": self._ligne_liste(bon_id),
-                "bon": {"description": bon.description, "lignes": [asdict(l) for l in bon.lignes],
+                "bon": {"description": bon.description, "achat": bon.achat, "lignes": [asdict(l) for l in bon.lignes],
                         "entrees": [{"technicien": e.technicien, "jour": str(e.jour or ""), "minutes": e.minutes}
                                     for e in bon.entrees]},
                 "proposition": proposition_vers_dict(p),

@@ -14,7 +14,8 @@ from modele import Alerte, AnalysePiece, Bon, Facture, Ligne, LigneFacture, Prop
 from pieces_jointes import analyser_piece
 from progression import ErreurProgression
 from redaction import rediger
-from regles import Regles, garde_fous_facture, garde_fous_temps, heures_facturees, heures_fr, lignes_materiel
+from regles import (Regles, garde_fou_achat, garde_fous_facture, garde_fous_temps, heures_facturees, heures_fr,
+                    lignes_materiel)
 
 
 def ajuster_main_oeuvre(bon: Bon, heures: dict[str, float]) -> tuple[list[Ligne], dict[str, str]]:
@@ -117,6 +118,8 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
         for ligne in lignes_materiel(f, r.marge):
             lignes.append(ligne)
             origine[ligne.external_id] = f"Facture {nom}, coût + {r.marge * 100:g} %".replace(".", ",")
+
+    alertes += garde_fou_achat(bon.achat, sum(1 for a in analyses if a.genre == "facture"))
 
     description, alertes_texte = rediger(bon.description, client, cfg["claude"])
     alertes += alertes_texte

@@ -224,6 +224,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
         <li>Pièce jointe illisible ou classement incertain.</li>
         <li>Description révisée contenant un nombre absent du texte du technicien.</li>
         <li>Ligne de main-d'œuvre introuvable ou partagée entre techniciens.</li>
+        <li>Achat déclaré par le technicien sans facture trouvée, ou facture trouvée alors qu'il a répondu « Non ».</li>
       </ul>
     </section>
     <section class="carte">
@@ -290,6 +291,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       </fieldset>
       <fieldset>
         <legend>Pièces jointes</legend>
+        <p class="note" id="fiche-achat"></p>
         <div class="pieces" id="fiche-pieces"></div>
       </fieldset>
     </div>
@@ -437,6 +439,7 @@ function afficherFiche() {
   $("fiche-client").textContent = `${l.client} · ${l.date}`;
   $("fiche-alertes").innerHTML = p.alertes.map(a => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}</li>`).join("");
   $("fiche-original").textContent = p.description_originale || "(vide)";
+  $("fiche-achat").textContent = d.bon.achat ? `Achat déclaré par le technicien : « ${d.bon.achat} »` : "Achat déclaré par le technicien : champ non rempli";
   $("fiche-description").value = p.description;
   $("fiche-description-origine").textContent = p.origine.description || "";
   const minutes = {};

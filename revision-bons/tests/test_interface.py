@@ -234,3 +234,12 @@ def attendre(appel):
         if not appel("/progres")[1]["en_cours"]:
             return
         time.sleep(0.05)
+
+
+def test_garde_fou_achat_en_demo(site):
+    bons = charger_et_analyser(site)
+    _, detail = site(f"/bon/{bons['BS-2003']['id']}")
+    assert detail["bon"]["achat"] == "Silicone"
+    assert "achat_sans_facture" in [a["code"] for a in detail["proposition"]["alertes"]]
+    _, detail = site(f"/bon/{bons['BS-2006']['id']}")
+    assert "facture_sans_achat" in [a["code"] for a in detail["proposition"]["alertes"]]

@@ -190,3 +190,17 @@ def test_statut(tmp_path):
     assert p.statut == "a_verifier"   # transport à définir
     p.alertes = []
     assert p.statut == "pret"
+
+
+def test_achat_declare_sans_facture_signale(tmp_path):
+    bon = nouveau_bon()
+    bon.achat = "Robinet cuisine"
+    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert "achat_sans_facture" in codes(p) and p.statut == "a_verifier"
+
+
+def test_achat_coherent_sans_alerte(tmp_path):
+    bon = nouveau_bon()
+    bon.achat = "Robinet cuisine"
+    p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
+    assert "achat_sans_facture" not in codes(p) and "facture_sans_achat" not in codes(p)

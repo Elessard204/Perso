@@ -160,3 +160,10 @@ def test_429_abandon_apres_plusieurs_essais():
     http = FauxHttp([_erreur_429() for _ in range(6)])
     with pytest.raises(ErreurProgression, match="trop de demandes"):
         Progression("c", ouvrir=http, dormir=lambda s: None).tache_brute(1001)
+
+
+def test_champ_achat_lu():
+    tache = {**TACHE, "properties": {"info": {"achat": "Robinet cuisine"}}}
+    bon = bon_depuis_json(tache, ENTREES, {"champ_achat": "properties.info.achat"})
+    assert bon.achat == "Robinet cuisine"
+    assert bon_depuis_json(TACHE, ENTREES, CFG).achat == ""
