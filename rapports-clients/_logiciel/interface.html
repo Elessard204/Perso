@@ -39,6 +39,7 @@ body { margin: 0; background: var(--fond); color: var(--marine); font: 15px/22px
 .onglets button[aria-selected="true"] { color: var(--marine); border-bottom-color: var(--orange); }
 .onglets button:hover { background: none; color: var(--marine); }
 
+.coupure { background: var(--bloque); color: #FFFFFF; padding: 12px 24px; font-size: 14px; position: sticky; top: 0; z-index: 20; }
 .page { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; display: grid; gap: 16px; }
 .page.large { max-width: none; }
 .note { color: var(--discret); margin: 0; font-size: 12px; line-height: 18px; }
@@ -218,6 +219,9 @@ textarea { resize: vertical; }
 <div class="bandeau"><div class="bandeau-contenu">
   <img src="/logo.png" alt="Progim">
   <div class="bandeau-titre"><b>Rapports clients</b><span>Finance</span></div>
+</div></div>
+<div id="coupure" class="coupure" role="alert" hidden><div class="entete-contenu">
+  <span><b>Le logiciel s'est arrêté.</b> Ce que vous cochez maintenant n'est pas enregistré. Fermez cette page et relancez « Rapports clients ».</span>
 </div></div>
 <div class="entete"><div class="entete-contenu">
   <nav class="onglets" aria-label="Sections">
@@ -448,11 +452,22 @@ let aRegler = [];            // dossiers bloqués de la dernière vérification
 // Chaque champ affiche le chemin court; l'outil reçoit le chemin complet propre à ce poste.
 function remplir(id, chemin) { $(id).value = chemin.court || ""; $(id).dataset.plein = chemin.plein || ""; }
 
+// Si le logiciel ne répond plus (fenêtre noire fermée), on le dit tout de suite : rien n'est enregistré.
+const COUPURE = "Le logiciel ne répond plus : cette modification n'a PAS été enregistrée. Fermez cette page, relancez « Rapports clients » et refaites-la.";
 async function appeler(chemin, donnees) {
-  const reponse = await fetch(chemin, donnees === undefined ? {} : {
-    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(donnees)
-  });
-  return reponse.json();
+  try {
+    const reponse = await fetch(chemin, donnees === undefined ? {} : {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(donnees)
+    });
+    return await reponse.json();
+  } catch (e) {
+    signalerCoupure();
+    return {erreur: COUPURE};
+  }
+}
+function signalerCoupure() {
+  const bandeau = $("coupure");
+  if (bandeau) bandeau.hidden = false;
 }
 
 const echap = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -717,7 +732,7 @@ for (const champ of ["conciliation", "ef_verifies"]) {
     afficherSuivi();   // la case reprend son état tant que ce n'est pas confirmé
     toutEnAttente = {champ, valeur, codes: visibles.map(l => l.code)};
     $("t-titre").textContent = valeur ? "Cocher toutes les entités" : "Décocher toutes les entités";
-    $("t-texte").textContent = `${valeur ? "Cocher" : "Décocher"} ${libelle} pour les ${visibles.length} entités affichées? Le changement est enregistré tout de suite dans l'Excel.`;
+    $("t-texte").textContent = `${valeur ? "Cocher" : "Décocher"} ${libelle} pour les ${visibles.length} entités affichées? Le changement est enregistré tout de suite.`;
     $("t-confirmer").textContent = valeur ? "Cocher les " + visibles.length : "Décocher les " + visibles.length;
     message("t-message", "");
     $("dialogue-tout").showModal();
@@ -768,7 +783,7 @@ $("suivi-corps").addEventListener("change", async (ev) => {
   if (!champ || !tr) return;
   const valeur = ev.target.type === "checkbox" ? ev.target.checked : ev.target.value;
   const r = await appeler("/suivi", {excel: $("excel").dataset.plein, mois: suivi.mois, code: tr.dataset.code, valeurs: {[champ]: valeur}});
-  if (r.erreur) { message("suivi-message", r.erreur, "erreur"); return; }
+  if (r.erreur) { message("suivi-message", r.erreur, "erreur"); afficherSuivi(); return; }
   suivi.lignes.find(l => l.code === tr.dataset.code)[champ] = valeur;
   if (champ === "particularite") donnees = null;   // l'onglet Clients relira la note à jour
   message("suivi-message", `${tr.dataset.code} : enregistré.`, "ok");
@@ -1057,7 +1072,9 @@ new MutationObserver(() => requestAnimationFrame(ajusterGrilles))
   .observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"]});
 
 // Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
-setInterval(() => fetch("/signe-de-vie").catch(() => {}), 15000);
+setInterval(() => fetch("/signe-de-vie").catch(signalerCoupure), 15000);
+// Fermeture de la page : le logiciel s'arrête quelques secondes plus tard (pas s'il s'agit d'un simple rechargement).
+window.addEventListener("pagehide", () => { try { navigator.sendBeacon("/fermeture"); } catch (e) { /* rien */ } });
 charger();
 </script>
 </body>

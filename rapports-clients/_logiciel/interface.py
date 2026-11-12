@@ -31,6 +31,10 @@ SORTIE = ICI / "sortie"
 # Le code est rangé dans « _logiciel »; l'équipe ne voit que le dossier de l'outil, juste au-dessus.
 DOSSIER_OUTIL = ICI.parent if ICI.name == "_logiciel" else ICI
 dernier_signe_de_vie = time.monotonic()
+# Le serveur ne s'arrête plus parce que la page est en arrière-plan (le navigateur ralentit alors ses minuteries) :
+# seulement quand la page se ferme (signal « fermeture »), ou après de très longues heures sans aucune activité.
+fermeture_demandee: float | None = None
+INACTIVITE_MAX = 12 * 3600
 
 
 def lire_parametres() -> dict:
@@ -206,8 +210,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self.envoyer(code, json.dumps(valeur, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
     def do_GET(self) -> None:
-        global dernier_signe_de_vie
+        global dernier_signe_de_vie, fermeture_demandee
         dernier_signe_de_vie = time.monotonic()
+        fermeture_demandee = None
         url = urlparse(self.path)
         params = {k: v[0] for k, v in parse_qs(url.query).items()}
 
@@ -236,6 +241,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 self.json({"erreur": f"Impossible de lire le suivi ({erreur})."})
         elif url.path == "/signe-de-vie":
             self.json({"ok": True})
+        elif url.path == "/fermeture":
+            # La page vient de se fermer (ou de se recharger) : on attend quelques secondes avant de s'arrêter.
+            fermeture_demandee = time.monotonic()
+            self.json({"ok": True})
         elif url.path == "/rapport":
             # Sert seulement les rapports du dossier « sortie » de l'outil.
             fichier = (SORTIE / params.get("chemin", "")).resolve()
@@ -247,13 +256,17 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self.envoyer(404, b"", "text/plain")
 
     def do_POST(self) -> None:
-        global dernier_signe_de_vie
+        global dernier_signe_de_vie, fermeture_demandee
         dernier_signe_de_vie = time.monotonic()
+        fermeture_demandee = None
         longueur = int(self.headers.get("Content-Length") or 0)
         donnees = json.loads(self.rfile.read(longueur) or b"{}")
         url = urlparse(self.path)
 
-        if url.path == "/choisir-dossier":
+        if url.path == "/fermeture":
+            fermeture_demandee = time.monotonic()
+            self.json({"ok": True})
+        elif url.path == "/choisir-dossier":
             parametres = lire_parametres()
             dossier = choisir_dossier(donnees.get("depart") or racine_clients(parametres))
             if dossier:
@@ -371,13 +384,19 @@ def lancer(donnees: dict) -> dict:
 
 
 def surveiller(serveur: ThreadingHTTPServer) -> None:
-    """Arrête le serveur quand la page ne donne plus signe de vie depuis une minute."""
+    """Arrête le serveur 15 secondes après la fermeture de la page, ou après 12 heures sans aucune activité.
+
+    Avant, il s'arrêtait après une minute sans « signe de vie » : une page laissée en arrière-plan (navigateur qui
+    ralentit ses minuteries) faisait fermer la fenêtre noire, et les cases cochées ensuite n'étaient plus enregistrées."""
     while True:
-        time.sleep(10)
-        if time.monotonic() - dernier_signe_de_vie > 60:
+        time.sleep(5)
+        maintenant = time.monotonic()
+        if fermeture_demandee is not None and maintenant - fermeture_demandee > 15:
             serveur.shutdown()
             return
-
+        if maintenant - dernier_signe_de_vie > INACTIVITE_MAX:
+            serveur.shutdown()
+            return
 
 class Serveur(ThreadingHTTPServer):
     def handle_error(self, request, client_address) -> None:
@@ -394,5 +413,5 @@ if __name__ == "__main__":
     if "--sans-navigateur" not in sys.argv:
         webbrowser.open(adresse)
     print(f"Rapports clients ouvert dans le navigateur : {adresse}")
-    print("Cette fenêtre se ferme toute seule une minute après la fermeture de la page.")
+    print("Laissez cette fenêtre ouverte : elle se ferme toute seule quand vous fermez la page du logiciel.")
     serveur.serve_forever()
