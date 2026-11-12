@@ -455,14 +455,14 @@ def fin_de_periode(mois: str, decalage: int) -> tuple[int, int, int]:
 def paragraphe_fin_annee(client: Client, mois: str, langue: str) -> str:
     """Paragraphe du courriel pour les entités dont c'est le rapport de fin d'exercice (vide sinon).
 
-    Le client a jusqu'à la fin de la période 6 de l'exercice suivant pour nous faire parvenir ses questions ou
+    Le client a jusqu'à la fin de la période 7 de l'exercice suivant pour nous faire parvenir ses questions ou
     ses écritures de régularisation; ensuite, l'exercice est fermé tel quel."""
     entites = client.a_envoyer(mois)
     finissantes = [e for e in entites if e.fin_annee]
     if not finissantes:
         return ""
     _, numero, jour = fin_de_periode(mois, 0)
-    annee_limite, mois_limite, jour_limite = fin_de_periode(mois, 6)
+    annee_limite, mois_limite, jour_limite = fin_de_periode(mois, 7)
     noms = " et ".join(html.escape(e.nom_affiche) for e in finissantes) if len(finissantes) < len(entites) else ""
     if langue == "en":
         noms = " and ".join(html.escape(e.nom_affiche) for e in finissantes) if len(finissantes) < len(entites) else ""
@@ -486,7 +486,10 @@ def paragraphe_fin_annee(client: Client, mois: str, langue: str) -> str:
 def rediger(client: Client, mois: str, config: dict) -> None:
     langue, entites = client.langue, client.a_envoyer(mois)
     gestionnaires = list(dict.fromkeys(e.gestionnaire_nom for e in entites if e.gestionnaires))
-    titres = list(dict.fromkeys(item["libelle"] for e in entites for item in config["contenu"] if item["cle"] in e.contenu))
+    # Les documents joints à la main (« manuel », ex. factures payées) ne sont pas annoncés au client :
+    # on ne les fournit pas d'emblée.
+    titres = list(dict.fromkeys(item["libelle"] for e in entites for item in config["contenu"]
+                                if item["cle"] in e.contenu and "manuel" not in item))
     # Fin d'exercice : les rapports de fin d'année s'ajoutent à la liste des documents.
     rapports_fin = ([item["libelle_en" if langue == "en" else "libelle"] for item in config.get("fin_exercice", [])]
                     if any(e.fin_annee for e in entites) else [])
