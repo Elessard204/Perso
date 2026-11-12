@@ -1,8 +1,8 @@
 """Interface de l'outil d'envoi des rapports clients, ouverte dans le navigateur par « Rapports clients.bat ».
 
 Petit serveur local (127.0.0.1 seulement) : le Python portable de Progim n'a pas de quoi afficher
-une fenêtre Windows, comme pour l'outil de facturation. Le serveur s'arrête tout seul quand la page
-est fermée depuis une minute.
+une fenêtre Windows, comme pour l'outil de facturation. Il roule sans fenêtre (pythonw) et s'arrête
+tout seul une minute après la fermeture de la page.
 """
 
 import json
@@ -12,11 +12,35 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+# Réglages propres à chaque personne (pas dans le dossier partagé) : les chemins OneDrive
+# diffèrent d'un poste à l'autre, par exemple C:\Users\<nom>\OneDrive - Progim\...
+DOSSIER_POSTE = Path(os.environ.get("APPDATA") or Path.home()) / "Progim Rapports clients"
+PARAMETRES = DOSSIER_POSTE / "parametres.json"
+INSTANCE = DOSSIER_POSTE / "instance.json"     # port du logiciel déjà ouvert sur ce poste
+JOURNAL = DOSSIER_POSTE / "journal.txt"        # ce qui s'affichait avant dans la fenêtre noire
+
+# Sans fenêtre (pythonw), il n'y a nulle part où écrire : les messages et les erreurs vont dans le journal.
+if sys.stdout is None or sys.stderr is None:
+    try:
+        DOSSIER_POSTE.mkdir(parents=True, exist_ok=True)
+        if JOURNAL.exists() and JOURNAL.stat().st_size > 1_000_000:
+            JOURNAL.replace(JOURNAL.with_suffix(".ancien.txt"))
+        _journal = open(JOURNAL, "a", encoding="utf-8", buffering=1)
+    except OSError:
+        _journal = open(os.devnull, "w", encoding="utf-8")
+    sys.stdout = sys.stdout or _journal
+    sys.stderr = sys.stderr or _journal
+    print(f"\n--- Démarrage {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+
+# Les commandes PowerShell ne doivent pas ouvrir de fenêtre noire non plus.
+SANS_FENETRE = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # Le Python portable n'ajoute pas le dossier du script au chemin des modules.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -24,9 +48,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import edition_excel  # noqa: E402
 from envoi_rapports import ICI, MOIS_FR, outlook_configure, preparer  # noqa: E402
 
-# Réglages propres à chaque personne (pas dans le dossier partagé) : les chemins OneDrive
-# diffèrent d'un poste à l'autre, par exemple C:\Users\<nom>\OneDrive - Progim\...
-PARAMETRES = Path(os.environ.get("APPDATA") or Path.home()) / "Progim Rapports clients" / "parametres.json"
 SORTIE = ICI / "sortie"
 # Le code est rangé dans « _logiciel »; l'équipe ne voit que le dossier de l'outil, juste au-dessus.
 DOSSIER_OUTIL = ICI.parent if ICI.name == "_logiciel" else ICI
@@ -113,7 +134,7 @@ def choisir_dossier(depart: str) -> str:
         "if ($d.ShowDialog() -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; $d.SelectedPath }"
     )
     resultat = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", script],
-                              capture_output=True, text=True, encoding="utf-8", check=False)
+                              capture_output=True, text=True, encoding="utf-8", check=False, creationflags=SANS_FENETRE)
     return resultat.stdout.strip()
 
 
@@ -240,7 +261,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             except Exception as erreur:  # affiché dans la page
                 self.json({"erreur": f"Impossible de lire le suivi ({erreur})."})
         elif url.path == "/signe-de-vie":
-            self.json({"ok": True})
+            self.json({"ok": True, "logiciel": "rapports-clients"})
         elif url.path == "/fermeture":
             # La page vient de se fermer (ou de se recharger) : on attend quelques secondes avant de s'arrêter.
             fermeture_demandee = time.monotonic()
@@ -384,19 +405,33 @@ def lancer(donnees: dict) -> dict:
 
 
 def surveiller(serveur: ThreadingHTTPServer) -> None:
-    """Arrête le serveur 15 secondes après la fermeture de la page, ou après 12 heures sans aucune activité.
+    """Arrête le serveur une minute après la fermeture de la page, ou après 12 heures sans aucune activité.
 
     Avant, il s'arrêtait après une minute sans « signe de vie » : une page laissée en arrière-plan (navigateur qui
     ralentit ses minuteries) faisait fermer la fenêtre noire, et les cases cochées ensuite n'étaient plus enregistrées."""
     while True:
         time.sleep(5)
         maintenant = time.monotonic()
-        if fermeture_demandee is not None and maintenant - fermeture_demandee > 15:
+        if fermeture_demandee is not None and maintenant - fermeture_demandee > 60:
             serveur.shutdown()
             return
         if maintenant - dernier_signe_de_vie > INACTIVITE_MAX:
             serveur.shutdown()
             return
+
+def logiciel_deja_ouvert() -> str:
+    """Adresse du logiciel déjà ouvert sur ce poste, s'il répond; sinon "".
+    Un deuxième clic sur « Rapports clients » rouvre alors la page au lieu de lancer une deuxième copie."""
+    try:
+        port = int(json.loads(INSTANCE.read_text(encoding="utf-8"))["port"])
+        adresse = f"http://127.0.0.1:{port}/"
+        with urllib.request.urlopen(adresse + "signe-de-vie", timeout=3) as reponse:
+            if json.loads(reponse.read()).get("logiciel") == "rapports-clients":
+                return adresse
+    except Exception:
+        pass
+    return ""
+
 
 class Serveur(ThreadingHTTPServer):
     def handle_error(self, request, client_address) -> None:
@@ -407,11 +442,29 @@ class Serveur(ThreadingHTTPServer):
 
 
 if __name__ == "__main__":
+    deja = logiciel_deja_ouvert()
+    if deja:
+        if "--sans-navigateur" not in sys.argv:
+            webbrowser.open(deja)
+        print(f"Rapports clients était déjà ouvert : {deja}")
+        sys.exit(0)
     serveur = Serveur(("127.0.0.1", 0), Gestionnaire)
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"
+    try:
+        DOSSIER_POSTE.mkdir(parents=True, exist_ok=True)
+        INSTANCE.write_text(json.dumps({"port": serveur.server_address[1], "pid": os.getpid()}), encoding="utf-8")
+    except OSError:
+        pass
     threading.Thread(target=surveiller, args=(serveur,), daemon=True).start()
     if "--sans-navigateur" not in sys.argv:
         webbrowser.open(adresse)
     print(f"Rapports clients ouvert dans le navigateur : {adresse}")
-    print("Laissez cette fenêtre ouverte : elle se ferme toute seule quand vous fermez la page du logiciel.")
-    serveur.serve_forever()
+    try:
+        serveur.serve_forever()
+    finally:
+        try:
+            if json.loads(INSTANCE.read_text(encoding="utf-8")).get("pid") == os.getpid():
+                INSTANCE.unlink()
+        except (OSError, ValueError):
+            pass
+        print(f"Arrêt {time.strftime('%Y-%m-%d %H:%M:%S')}")

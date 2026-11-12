@@ -537,7 +537,8 @@ def creer_brouillons(clients: list[Client], mois: str, sortie: Path, config: dic
                                         ensure_ascii=False), encoding="utf-8")
         resultat = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                                    str(SCRIPT_OUTLOOK), "-Manifeste", str(manifeste)],
-                                  capture_output=True, text=True, encoding="utf-8", errors="replace")
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))   # pas de fenêtre noire
         lignes = [l for l in (resultat.stdout or "").splitlines() if l.strip()]
         if resultat.returncode != 0 and resultat.stderr:
             lignes.append("ERREUR|" + resultat.stderr.strip()[:800])

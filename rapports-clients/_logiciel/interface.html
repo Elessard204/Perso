@@ -1071,9 +1071,11 @@ window.addEventListener("resize", ajusterGrilles);
 new MutationObserver(() => requestAnimationFrame(ajusterGrilles))
   .observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"]});
 
-// Signe de vie : le serveur local s'arrête une minute après la fermeture de la page.
-setInterval(() => fetch("/signe-de-vie").catch(signalerCoupure), 15000);
-// Fermeture de la page : le logiciel s'arrête quelques secondes plus tard (pas s'il s'agit d'un simple rechargement).
+// Signe de vie : dit au logiciel (sans fenêtre) que la page est encore ouverte; avertit s'il ne répond plus.
+const signeDeVie = () => fetch("/signe-de-vie").catch(signalerCoupure);
+setInterval(signeDeVie, 15000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) signeDeVie(); });
+// Fermeture de la page : le logiciel s'arrête une minute plus tard (pas s'il s'agit d'un simple rechargement).
 window.addEventListener("pagehide", () => { try { navigator.sendBeacon("/fermeture"); } catch (e) { /* rien */ } });
 charger();
 </script>
