@@ -35,7 +35,8 @@ ANCIENS = "Anciens clients"
 # l'outil combine les fichiers de tout le monde et garde, pour chaque case, la modification la plus récente.
 # Les particularités (permanentes) vont dans _logiciel/suivi/notes/.
 DOSSIER_SUIVI = ICI / "suivi"
-CHAMPS_SUIVI = ("conciliation", "conciliation_note", "ef_verifies", "date_envoi")
+CHAMPS_SUIVI = ("conciliation", "conciliation_note", "ef_verifies", "rapport_hopem", "date_envoi")
+CASES_SUIVI = ("conciliation", "ef_verifies", "rapport_hopem")
 NOTES = "notes"
 
 
@@ -384,12 +385,13 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
                          "conciliation": normaliser(s.get("conciliation", "")) in {"oui", "o", "x", "1"},
                          "conciliation_note": s.get("conciliation_note", ""),
                          "ef_verifies": normaliser(s.get("ef_verifies", "")) in {"oui", "o", "x", "1"},
+                         "rapport_hopem": normaliser(s.get("rapport_hopem", "")) in {"oui", "o", "x", "1"},
                          "date_envoi": s.get("date_envoi", "")[:10]})
         ligne = resultat[-1]
         for champ in CHAMPS_SUIVI:
             if (code, champ) in journal:
                 valeur = journal[(code, champ)]
-                ligne[champ] = bool(valeur) if champ in ("conciliation", "ef_verifies") else str(valeur or "")[:10 if champ == "date_envoi" else None]
+                ligne[champ] = bool(valeur) if champ in CASES_SUIVI else str(valeur or "")[:10 if champ == "date_envoi" else None]
         if (code, "particularite") in notes:
             ligne["particularite"] = str(notes[(code, "particularite")] or "")
     return {"mois": mois, "lignes": resultat}
@@ -415,5 +417,5 @@ def marquer_envoi(chemin: Path, mois: str, codes: list[str], date: str) -> None:
 
 
 def etat_suivi(chemin: Path, mois: str) -> dict[str, dict]:
-    """Conciliation et états financiers vérifiés de chaque entité pour le mois : {code: {...}}."""
+    """Conciliation, états financiers vérifiés et rapport Hopem de chaque entité pour le mois : {code: {...}}."""
     return {l["code"]: l for l in lire_suivi(chemin, mois)["lignes"]}

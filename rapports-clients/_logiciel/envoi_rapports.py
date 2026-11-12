@@ -814,7 +814,7 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
     alertes += associer_fichiers(exports, clients, mois, config)
     valider(clients, mois, config)
     if suivi is not None:
-        # Onglet Suivi : pas d'envoi sans conciliation bancaire faite et états financiers vérifiés.
+        # Onglet Suivi : pas d'envoi sans conciliation bancaire, états financiers vérifiés et rapport importé de Hopem.
         for client in clients.values():
             for entite in client.a_envoyer(mois):
                 etat = suivi.get(entite.code, {})
@@ -824,6 +824,8 @@ def preparer(mois: str, chemin_clients: Path, exports: Path | None = None, mode:
                     entite.problemes.append("Conciliation bancaire pas cochée dans l'onglet Suivi.")
                 if not etat.get("ef_verifies"):
                     entite.problemes.append("États financiers pas cochés « vérifiés » dans l'onglet Suivi.")
+                if not etat.get("rapport_hopem"):
+                    entite.problemes.append("Rapport importé de Hopem pas coché dans l'onglet Suivi.")
     complete = completer_excel(chemin_clients, clients, mois) if completer else None
 
     prets = []

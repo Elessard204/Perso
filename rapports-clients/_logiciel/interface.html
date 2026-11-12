@@ -93,7 +93,7 @@ button:disabled { color: var(--pale); cursor: default; background: var(--surface
 .bande .rassurance { margin: 0; font-size: 12px; color: var(--texte-sur-marine); }
 
 .processus-contenu { max-width: 1180px; margin: -60px auto 0; padding: 0 24px 48px; display: grid; gap: 20px; }
-.cartes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.cartes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .carte-progres { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-dialogue); padding: 16px 18px; display: grid; gap: 6px; }
 .carte-progres span { font-size: 13px; color: var(--discret); }
 .carte-progres b { font-size: 30px; line-height: 36px; font-variant-numeric: tabular-nums; }
@@ -261,6 +261,7 @@ textarea { resize: vertical; }
     <div class="cartes">
       <div class="carte-progres"><span>Conciliations bancaires faites</span><b id="c-conciliation">— / —</b><div class="mince"><div id="b-conciliation"></div></div></div>
       <div class="carte-progres"><span>États financiers vérifiés</span><b id="c-ef">— / —</b><div class="mince"><div id="b-ef"></div></div></div>
+      <div class="carte-progres"><span>Rapports importés de Hopem</span><b id="c-hopem">— / —</b><div class="mince"><div id="b-hopem"></div></div></div>
       <div class="carte-progres"><span>Rapports envoyés</span><b id="c-envoi">— / —</b><div class="mince"><div id="b-envoi"></div></div></div>
     </div>
 
@@ -312,12 +313,13 @@ textarea { resize: vertical; }
         <th><label class="case-seule tout"><input type="checkbox" id="tout-conciliation"> Conciliation bancaire</label></th>
         <th title="Usage interne seulement : la même note que « Notes / consignes » dans la fiche du client">Particularité (interne)</th>
         <th><label class="case-seule tout"><input type="checkbox" id="tout-ef_verifies"> États financiers vérifiés</label></th>
+        <th><label class="case-seule tout"><input type="checkbox" id="tout-rapport_hopem"> Rapport importé de Hopem</label></th>
         <th>Date d'envoi</th></tr></thead>
       <tbody id="suivi-corps"></tbody>
     </table></div>
     <div class="statut" id="suivi-statut"></div>
   </div>
-  <p class="note">Plusieurs personnes peuvent travailler ici en même temps : chaque case est enregistrée tout de suite, sans toucher au travail des autres, et les cases cochées par vos collègues apparaissent d'elles-mêmes en moins d'une minute. Les cases d'en-tête cochent ou décochent toutes les entités affichées. La particularité est une note interne permanente (la même que « Notes / consignes » dans la fiche du client); elle n'est jamais envoyée au client. Une entité n'est envoyée que si sa conciliation bancaire et ses états financiers sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé; elle peut être corrigée à la main.</p>
+  <p class="note">Plusieurs personnes peuvent travailler ici en même temps : chaque case est enregistrée tout de suite, sans toucher au travail des autres, et les cases cochées par vos collègues apparaissent d'elles-mêmes en moins d'une minute. Les cases d'en-tête cochent ou décochent toutes les entités affichées. La particularité est une note interne permanente (la même que « Notes / consignes » dans la fiche du client); elle n'est jamais envoyée au client. Une entité n'est envoyée que si sa conciliation bancaire, ses états financiers et son rapport importé de Hopem sont cochés. La date d'envoi se remplit toute seule quand le brouillon est créé; elle peut être corrigée à la main.</p>
 </div>
 
 <!-- ===== Clients : modèle Tableau de travail ===== -->
@@ -494,7 +496,7 @@ async function charger() {
 function compteSuivi() {
   const lignes = suivi && suivi.mois === moisChoisi() ? suivi.lignes.filter(l => l.actif && l.du_mois !== false) : [];
   const n = (f) => lignes.filter(f).length;
-  return {total: lignes.length, conciliation: n(l => l.conciliation), ef: n(l => l.ef_verifies), envoi: n(l => l.date_envoi)};
+  return {total: lignes.length, conciliation: n(l => l.conciliation), ef: n(l => l.ef_verifies), hopem: n(l => l.rapport_hopem), envoi: n(l => l.date_envoi)};
 }
 function carte(cle, fait, total) {
   $("c-" + cle).textContent = total ? `${fait} / ${total}` : "— / —";
@@ -504,19 +506,20 @@ function afficherProcessus() {
   const c = compteSuivi();
   const l = libelleMois().toLowerCase();
   $("titre-mois").textContent = l ? `Rapports ${/^[aeiouyéèê]/.test(l) ? "d'" : "de "}${l}` : "Rapports du mois";
-  carte("conciliation", c.conciliation, c.total); carte("ef", c.ef, c.total); carte("envoi", c.envoi, c.total);
+  carte("conciliation", c.conciliation, c.total); carte("ef", c.ef, c.total); carte("hopem", c.hopem, c.total); carte("envoi", c.envoi, c.total);
   const pct = c.total ? Math.round(100 * c.envoi / c.total) : 0;
   $("barre-avancement").style.width = pct + "%";
   $("pourcent").textContent = pct + " %";
 
   const suiviFait = c.total > 0 && c.conciliation === c.total && c.ef === c.total;
+  const hopemFait = c.total > 0 && c.hopem === c.total;
   const dossierChoisi = !!$("dossier").dataset.plein;
   const verifieCeMois = verifie === moisChoisi();
   const prets = courrielsPrets.filter(x => !x.deja).length;
   const toutEnvoye = c.total > 0 && c.envoi === c.total;
   const etapes = [
     {titre: "Cocher le suivi du mois", detail: `Conciliations ${c.conciliation} / ${c.total} · états financiers ${c.ef} / ${c.total}`, faite: suiviFait},
-    {titre: "Extraire les rapports de Hopem", detail: dossierChoisi ? "Dossier du mois choisi." : "Voir les périodes, puis choisir le dossier où les PDF sont enregistrés.", faite: dossierChoisi},
+    {titre: "Extraire les rapports de Hopem", detail: `Rapports importés ${c.hopem} / ${c.total}` + (dossierChoisi ? " · dossier du mois choisi." : " · choisir le dossier où les PDF sont enregistrés."), faite: hopemFait && dossierChoisi},
     {titre: "Vérifier les rapports", detail: verifieCeMois ? `${pluriel(courrielsPrets.length, "courriel prêt", "courriels prêts")} · ${pluriel(aRegler.length, "à régler", "à régler")}` : "Lire les PDF et préparer les courriels.", faite: verifieCeMois && !aRegler.length},
     {titre: "Créer les brouillons dans Outlook", detail: `${c.envoi} / ${c.total} rapports dans un brouillon.`, faite: toutEnvoye},
     {titre: "Joindre les factures payées et envoyer", detail: "Dans Outlook, boîte Finance > Brouillons.", faite: false},
@@ -536,8 +539,9 @@ function afficherProcessus() {
     const reste = [];
     if (c.conciliation < c.total) reste.push(pluriel(c.total - c.conciliation, "conciliation bancaire", "conciliations bancaires"));
     if (c.ef < c.total) reste.push(pluriel(c.total - c.ef, "vérification d'états financiers", "vérifications d'états financiers"));
+    if (c.hopem < c.total) reste.push(pluriel(c.total - c.hopem, "rapport Hopem", "rapports Hopem"));
     phrase = `${c.envoi} rapport${c.envoi > 1 ? "s" : ""} sur ${c.total} dans un brouillon.`
-      + (reste.length ? ` Il reste ${reste.join(" et ")} à cocher dans le suivi.` : " Le suivi est complet.")
+      + (reste.length ? ` Il reste ${reste.length > 1 ? reste.slice(0, -1).join(", ") + " et " + reste[reste.length - 1] : reste[0]} à cocher dans le suivi.` : " Le suivi est complet.")
       + (verifieCeMois && prets ? ` ${pluriel(prets, "courriel est prêt", "courriels sont prêts")} à créer dans Outlook.` : "");
   }
   $("phrase-etat").textContent = phrase;
@@ -706,8 +710,8 @@ async function chargerSuivi(mois) {
 }
 const FILTRES_SUIVI = {
   tous: ["Toutes", () => true],
-  afaire: ["À faire", l => !l.conciliation || !l.ef_verifies],
-  prets: ["Prêtes à envoyer", l => l.conciliation && l.ef_verifies && !l.date_envoi],
+  afaire: ["À faire", l => !l.conciliation || !l.ef_verifies || !l.rapport_hopem],
+  prets: ["Prêtes à envoyer", l => l.conciliation && l.ef_verifies && l.rapport_hopem && !l.date_envoi],
   envoyes: ["Envoyées", l => !!l.date_envoi],
 };
 function lignesSuiviBase() {
@@ -725,10 +729,11 @@ $("suivi-filtre-codes").addEventListener("click", (ev) => { if (ev.target.closes
 
 // « Tout cocher » : applique la case à toutes les entités affichées, après confirmation dans un dialogue.
 let toutEnAttente = null;
-for (const champ of ["conciliation", "ef_verifies"]) {
+for (const champ of ["conciliation", "ef_verifies", "rapport_hopem"]) {
   $("tout-" + champ).addEventListener("change", (ev) => {
     const valeur = ev.target.checked, visibles = lignesSuiviVisibles();
-    const libelle = champ === "conciliation" ? "la conciliation bancaire" : "les états financiers vérifiés";
+    const libelle = {conciliation: "la conciliation bancaire", ef_verifies: "les états financiers vérifiés",
+      rapport_hopem: "le rapport importé de Hopem"}[champ];
     afficherSuivi();   // la case reprend son état tant que ce n'est pas confirmé
     toutEnAttente = {champ, valeur, codes: visibles.map(l => l.code)};
     $("t-titre").textContent = valeur ? "Cocher toutes les entités" : "Décocher toutes les entités";
@@ -757,24 +762,26 @@ function afficherSuivi() {
   $("suivi-filtre-codes").hidden = !filtreCodes.length;
   $("suivi-filtre-codes").innerHTML = `Seulement ${echap(filtreCodes.join(", "))}<button type="button" aria-label="Retirer le filtre">Retirer</button>`;
   const visibles = lignesSuiviVisibles();
-  for (const champ of ["conciliation", "ef_verifies"]) {
+  for (const champ of ["conciliation", "ef_verifies", "rapport_hopem"]) {
     const coches = visibles.filter(l => l[champ]).length;
     $("tout-" + champ).checked = visibles.length > 0 && coches === visibles.length;
     $("tout-" + champ).indeterminate = coches > 0 && coches < visibles.length;
   }
   $("suivi-corps").innerHTML = visibles.length ? visibles
-    .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.conciliation && l.ef_verifies && l.date_envoi ? "fait" : ""}">
+    .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.conciliation && l.ef_verifies && l.rapport_hopem && l.date_envoi ? "fait" : ""}">
       <td class="code">${echap(l.code)}</td><td>${echap(l.nom) || '<span class="discret">À compléter</span>'}${l.du_mois === false ? ' <span class="discret">(pas de rapport ce mois-ci)</span>' : ""}</td>
       <td><span class="pastille ${l.actif ? "oui" : "non"}">${l.actif ? "Oui" : "Non"}</span></td>
       <td><div class="suivi-cellule"><input type="checkbox" data-champ="conciliation" aria-label="Conciliation faite" ${l.conciliation ? "checked" : ""}>
         <input type="text" data-champ="conciliation_note" placeholder="Commentaire" value="${echap(l.conciliation_note)}" aria-label="Commentaire sur la conciliation"></div></td>
       <td><div class="suivi-cellule"><input type="text" class="particularite" data-champ="particularite" placeholder="Ex. joindre la preuve de paiement des taxes" value="${echap(l.particularite)}" aria-label="Particularité du client (usage interne)"></div></td>
       <td><div class="suivi-cellule"><input type="checkbox" data-champ="ef_verifies" aria-label="États financiers vérifiés" ${l.ef_verifies ? "checked" : ""}></div></td>
+      <td><div class="suivi-cellule"><input type="checkbox" data-champ="rapport_hopem" aria-label="Rapport importé de Hopem" ${l.rapport_hopem ? "checked" : ""}></div></td>
       <td><div class="suivi-cellule"><input type="date" data-champ="date_envoi" value="${echap(l.date_envoi)}" aria-label="Date d'envoi"></div></td></tr>`).join("")
-    : '<tr><td colspan="7" class="discret">Aucune entité pour ce filtre.</td></tr>';
+    : '<tr><td colspan="8" class="discret">Aucune entité pour ce filtre.</td></tr>';
   const actives = suivi.lignes.filter(l => l.actif && l.du_mois !== false), n = (f) => actives.filter(f).length;
   $("suivi-statut").innerHTML = `<span>Conciliations <b>${n(l => l.conciliation)} / ${actives.length}</b></span>`
     + `<span>États financiers vérifiés <b>${n(l => l.ef_verifies)} / ${actives.length}</b></span>`
+    + `<span>Rapports importés de Hopem <b>${n(l => l.rapport_hopem)} / ${actives.length}</b></span>`
     + `<span>Envoyés <b>${n(l => l.date_envoi)} / ${actives.length}</b></span>`
     + `<span class="source">Mis à jour pour toute l'équipe aux 30 secondes</span>`;
 }
