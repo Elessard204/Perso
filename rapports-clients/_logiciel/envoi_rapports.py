@@ -347,9 +347,13 @@ def verifier_elements(entite: Entite, config: dict) -> None:
     for annexe in set(entite.annexes) - set(annexes_attendues(entite, config)):
         entite.avertissements.append(f"{annexe.name} : pas jointe automatiquement (à joindre à la main au besoin).")
     if entite.fin_annee:
-        jointes = ", ".join(a.name for a in sorted(entite.annexes)) or "aucune pièce additionnelle"
-        entite.avertissements.append(f"Fin d'exercice : vérifier que les rapports de fin d'année sont complets. "
-                                     f"Pièces jointes en plus du rapport Hopem : {jointes}.")
+        # Les rapports de fin d'exercice sont des PDF séparés : chacun doit être dans le dossier du mois.
+        for item in config.get("fin_exercice", []):
+            if not any(contient(a.stem, item["annexe"]) for a in entite.annexes):
+                entite.problemes.append(f"Fin d'exercice : rapport manquant dans le dossier, {item['libelle']} "
+                                        f"(fichier se terminant par _{code_fichier(entite.code)}.pdf).")
+        jointes = ", ".join(a.name for a in sorted(entite.annexes)) or "aucune"
+        entite.avertissements.append(f"Fin d'exercice : pièces jointes en plus du rapport mensuel Hopem : {jointes}.")
 
 
 def noms_proches(a: str, b: str) -> bool:
@@ -483,6 +487,9 @@ def rediger(client: Client, mois: str, config: dict) -> None:
     langue, entites = client.langue, client.a_envoyer(mois)
     gestionnaires = list(dict.fromkeys(e.gestionnaire_nom for e in entites if e.gestionnaires))
     titres = list(dict.fromkeys(item["libelle"] for e in entites for item in config["contenu"] if item["cle"] in e.contenu))
+    # Fin d'exercice : les rapports de fin d'année s'ajoutent à la liste des documents.
+    rapports_fin = ([item["libelle_en" if langue == "en" else "libelle"] for item in config.get("fin_exercice", [])]
+                    if any(e.fin_annee for e in entites) else [])
     valeurs = {
         "nom_client": client.nom_affiche(mois),
         "nom_contact": f" {html.escape(client.nom_contact)}" if client.nom_contact else "",
@@ -493,9 +500,7 @@ def rediger(client: Client, mois: str, config: dict) -> None:
             f"<li>{html.escape(e.nom_affiche)}{f' ({html.escape(e.immeubles)})' if e.immeubles and e.nom_affiche != e.immeubles else ''}"
             f" <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
             for e in entites) + "</ul>",
-        "liste_documents": html.escape(", ".join(t[0].lower() + t[1:] for t in titres)
-                                       + ((", year-end reports" if langue == "en" else ", rapports de fin d'exercice")
-                                          if any(e.fin_annee for e in entites) else "")),
+        "liste_documents": html.escape(", ".join(t[0].lower() + t[1:] for t in titres + rapports_fin)),
         "paragraphe_fin_annee": paragraphe_fin_annee(client, mois, langue),
     }
     client.objet = config["envoi"][f"objet_{langue}"].format(**valeurs)

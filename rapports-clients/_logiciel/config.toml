@@ -72,3 +72,32 @@ titre = ["comptes a recevoir", "compte a recevoir"]
 cle = "factures"
 libelle = "Factures payées"
 manuel = "joindre les factures payées au brouillon avant l'envoi"
+
+# Rapports de fin d'exercice : PDF séparés que Sabrina ajoute au dossier du mois, en plus du PDF mensuel habituel
+# (les états financiers mensuels), pour les entités dont c'est le dernier mois de l'exercice (période 12).
+# Chaque fichier se termine par le numéro de l'entité, ex. « Balance de vérification Oct 2026_01002.pdf ».
+# « annexe » : mots reconnus dans le nom du fichier. Un rapport absent bloque l'envoi de l'entité.
+[[fin_exercice]]
+libelle = "Balance de vérification"
+libelle_en = "Trial balance"
+annexe = ["balance de verification", "balance verification"]
+
+[[fin_exercice]]
+libelle = "Auxiliaire des comptes à payer"
+libelle_en = "Accounts payable subledger"
+annexe = ["a payer", "payable"]
+
+[[fin_exercice]]
+libelle = "Auxiliaire des comptes à recevoir"
+libelle_en = "Accounts receivable subledger"
+annexe = ["a recevoir", "recevable"]
+
+[[fin_exercice]]
+libelle = "État des frais engagés"
+libelle_en = "Statement of accrued expenses"
+annexe = ["frais engage"]
+
+[[fin_exercice]]
+libelle = "Grand livre"
+libelle_en = "General ledger"
+annexe = ["grand livre"]
