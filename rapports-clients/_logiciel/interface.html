@@ -183,6 +183,9 @@ iframe { width: 100%; height: 70vh; border: 1px solid var(--ligne); border-radiu
 .grille tr.fait td { background: var(--fait); }
 .grille th .tout { font-size: 12px; font-weight: 700; color: var(--discret); white-space: nowrap; }
 .grille th .tout input { width: 16px; height: 16px; }
+/* Fin d'exercice : rapport de fin d'année, plus complet (pastille orange foncé et trait à gauche de la ligne). */
+.pastille.fin { color: #FFFFFF; background: var(--orange-texte); margin-left: 6px; }
+.grille tr.fin-annee td:first-child { box-shadow: inset 3px 0 0 var(--orange); }
 
 /* Dialogues */
 dialog { border: 0; border-radius: var(--rayon-dialogue); padding: 0; width: min(860px, 96vw); max-height: 92vh; box-shadow: var(--ombre-dialogue); color: var(--marine); }
@@ -496,7 +499,7 @@ async function charger() {
 function compteSuivi() {
   const lignes = suivi && suivi.mois === moisChoisi() ? suivi.lignes.filter(l => l.actif && l.du_mois !== false) : [];
   const n = (f) => lignes.filter(f).length;
-  return {total: lignes.length, conciliation: n(l => l.conciliation), ef: n(l => l.ef_verifies), hopem: n(l => l.rapport_hopem), envoi: n(l => l.date_envoi)};
+  return {total: lignes.length, conciliation: n(l => l.conciliation), ef: n(l => l.ef_verifies), hopem: n(l => l.rapport_hopem), fin: n(l => l.fin_exercice), envoi: n(l => l.date_envoi)};
 }
 function carte(cle, fait, total) {
   $("c-" + cle).textContent = total ? `${fait} / ${total}` : "— / —";
@@ -544,6 +547,7 @@ function afficherProcessus() {
       + (reste.length ? ` Il reste ${reste.length > 1 ? reste.slice(0, -1).join(", ") + " et " + reste[reste.length - 1] : reste[0]} à cocher dans le suivi.` : " Le suivi est complet.")
       + (verifieCeMois && prets ? ` ${pluriel(prets, "courriel est prêt", "courriels sont prêts")} à créer dans Outlook.` : "");
   }
+  if (c.fin) phrase += ` ${pluriel(c.fin, "entité est", "entités sont")} en fin d'exercice ce mois-ci : rapports de fin d'année à ajouter (filtre « Fin d'exercice » du suivi).`;
   $("phrase-etat").textContent = phrase;
 }
 
@@ -593,7 +597,7 @@ function afficherARegler(fichiers) {
     const ou = ["fiche", "suivi", "fichier"].find(o => d.problemes.some(p => p.ou === o));
     const action = {suivi: "Cocher dans le suivi", fiche: "Ouvrir la fiche", fichier: "Ouvrir le dossier"}[ou];
     const problemes = d.problemes.map(p => `<li>${d.entites.length > 1 && d.entites.includes(p.code) ? `<b>${echap(p.code)}</b> : ` : ""}${echap(p.texte)}</li>`).join("");
-    return `<div class="dossier-bloque"><div class="titre"><b>${echap(d.entites.join(", "))}</b>${echap(d.nom)}</div>
+    return `<div class="dossier-bloque"><div class="titre"><b>${echap(d.entites.join(", "))}</b>${echap(d.nom)}${(d.fin_annee || []).length ? '<span class="pastille fin">Fin d\'exercice</span>' : ""}</div>
       <ul>${problemes}</ul><div class="resp">Gestionnaire : ${echap(d.gestionnaire || "aucun")}</div>
       <button type="button" data-regler="${i}" data-ou="${ou}">${action}</button></div>`;
   }).concat((fichiers || []).map(f => `<div class="dossier-bloque"><div class="titre"><b>Fichier</b>non reconnu</div>
@@ -713,6 +717,7 @@ const FILTRES_SUIVI = {
   afaire: ["À faire", l => !l.conciliation || !l.ef_verifies || !l.rapport_hopem],
   prets: ["Prêtes à envoyer", l => l.conciliation && l.ef_verifies && l.rapport_hopem && !l.date_envoi],
   envoyes: ["Envoyées", l => !!l.date_envoi],
+  fin: ["Fin d'exercice", l => !!l.fin_exercice],
 };
 function lignesSuiviBase() {
   const filtre = $("suivi-recherche").value.trim().toLowerCase();
@@ -768,8 +773,8 @@ function afficherSuivi() {
     $("tout-" + champ).indeterminate = coches > 0 && coches < visibles.length;
   }
   $("suivi-corps").innerHTML = visibles.length ? visibles
-    .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.conciliation && l.ef_verifies && l.rapport_hopem && l.date_envoi ? "fait" : ""}">
-      <td class="code">${echap(l.code)}</td><td>${echap(l.nom) || '<span class="discret">À compléter</span>'}${l.du_mois === false ? ' <span class="discret">(pas de rapport ce mois-ci)</span>' : ""}</td>
+    .map(l => `<tr data-code="${echap(l.code)}" class="${l.actif ? "" : "inactif"} ${l.fin_exercice ? "fin-annee" : ""} ${l.conciliation && l.ef_verifies && l.rapport_hopem && l.date_envoi ? "fait" : ""}">
+      <td class="code">${echap(l.code)}</td><td>${echap(l.nom) || '<span class="discret">À compléter</span>'}${l.fin_exercice ? '<span class="pastille fin" title="Rapport de fin d\'exercice (période 12) : rapports de fin d\'année à ajouter">Fin d\'exercice</span>' : ""}${l.du_mois === false ? ' <span class="discret">(pas de rapport ce mois-ci)</span>' : ""}</td>
       <td><span class="pastille ${l.actif ? "oui" : "non"}">${l.actif ? "Oui" : "Non"}</span></td>
       <td><div class="suivi-cellule"><input type="checkbox" data-champ="conciliation" aria-label="Conciliation faite" ${l.conciliation ? "checked" : ""}>
         <input type="text" data-champ="conciliation_note" placeholder="Commentaire" value="${echap(l.conciliation_note)}" aria-label="Commentaire sur la conciliation"></div></td>

@@ -381,7 +381,7 @@ def lire_suivi(chemin: Path, mois: str) -> dict:
         du_mois = numero in MOIS_PAR_FREQUENCE.get(normaliser(v.get("frequence") or "mensuel"), {fin})
         resultat.append({"code": code, "nom": v.get("nom_entite", ""), "particularite": v.get("notes", ""),
                          "actif": normaliser(v.get("actif", "oui")) in {"oui", "o", "x", "1", ""},
-                         "du_mois": du_mois,
+                         "du_mois": du_mois, "fin_exercice": du_mois and fin == numero,
                          "conciliation": normaliser(s.get("conciliation", "")) in {"oui", "o", "x", "1"},
                          "conciliation_note": s.get("conciliation_note", ""),
                          "ef_verifies": normaliser(s.get("ef_verifies", "")) in {"oui", "o", "x", "1"},

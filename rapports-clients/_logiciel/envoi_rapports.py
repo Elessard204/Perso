@@ -112,6 +112,7 @@ class Entite:
     nom_pdf: str = ""
     problemes: list[str] = field(default_factory=list)
     avertissements: list[str] = field(default_factory=list)
+    fin_annee: bool = False   # le mois envoyé est le dernier de son exercice (période 12)
 
     def periode(self, mois: str) -> int:
         """Numéro de période Hopem du mois civil, selon la fin de l'exercice."""
@@ -318,6 +319,10 @@ def contient(texte_: str, mots: list[str]) -> bool:
 
 
 def annexes_attendues(entite: Entite, config: dict) -> list[Path]:
+    if entite.fin_annee:
+        # Fin d'exercice : les rapports et documents de fin d'année ajoutés au dossier (même numéro d'entité)
+        # sont tous joints au courriel.
+        return list(entite.annexes)
     mots = [m for item in config["contenu"] if item["cle"] in entite.contenu and "annexe" in item for m in item["annexe"]]
     return [a for a in entite.annexes if contient(a.stem, mots)]
 
@@ -337,10 +342,14 @@ def verifier_elements(entite: Entite, config: dict) -> None:
         if coche and not present:
             ou = "dans le PDF Hopem" if "titre" in item else f"dans le dossier (fichier se terminant par _{code_fichier(entite.code)}.pdf)"
             entite.problemes.append(f"{item['libelle']} : coché dans l'Excel mais absent {ou}.")
-        elif present and not coche and "titre" in item:
+        elif present and not coche and "titre" in item and not entite.fin_annee:
             entite.avertissements.append(f"{item['libelle']} présent dans le PDF mais non coché dans l'Excel.")
     for annexe in set(entite.annexes) - set(annexes_attendues(entite, config)):
         entite.avertissements.append(f"{annexe.name} : pas jointe automatiquement (à joindre à la main au besoin).")
+    if entite.fin_annee:
+        jointes = ", ".join(a.name for a in sorted(entite.annexes)) or "aucune pièce additionnelle"
+        entite.avertissements.append(f"Fin d'exercice : vérifier que les rapports de fin d'année sont complets. "
+                                     f"Pièces jointes en plus du rapport Hopem : {jointes}.")
 
 
 def noms_proches(a: str, b: str) -> bool:
@@ -406,6 +415,7 @@ def valider(clients: dict[str, Client], mois: str, config: dict) -> None:
             if not COURRIEL_VALIDE.match(adresse):
                 client.problemes.append(f"Adresse courriel invalide : {adresse}")
         for entite in a_envoyer:
+            entite.fin_annee = int(mois[5:]) == entite.fin_exercice
             if entite.fichier:
                 verifier_contenu(entite, mois, config)
             elif not entite.problemes:
@@ -431,6 +441,44 @@ def ligne_periode(entite: Entite, mois: str, langue: str) -> str:
     return f"période {entite.periode(mois)} de l'exercice se terminant le {jour} {MOIS_FR[entite.fin_exercice - 1]} {annee_fin}"
 
 
+def fin_de_periode(mois: str, decalage: int) -> tuple[int, int, int]:
+    """Dernier jour du mois situé « decalage » mois après « mois » : (année, mois, jour)."""
+    total = int(mois[:4]) * 12 + int(mois[5:]) - 1 + decalage
+    annee, numero = divmod(total, 12)
+    return annee, numero + 1, calendar.monthrange(annee, numero + 1)[1]
+
+
+def paragraphe_fin_annee(client: Client, mois: str, langue: str) -> str:
+    """Paragraphe du courriel pour les entités dont c'est le rapport de fin d'exercice (vide sinon).
+
+    Le client a jusqu'à la fin de la période 6 de l'exercice suivant pour nous faire parvenir ses questions ou
+    ses écritures de régularisation; ensuite, l'exercice est fermé tel quel."""
+    entites = client.a_envoyer(mois)
+    finissantes = [e for e in entites if e.fin_annee]
+    if not finissantes:
+        return ""
+    _, numero, jour = fin_de_periode(mois, 0)
+    annee_limite, mois_limite, jour_limite = fin_de_periode(mois, 6)
+    noms = " et ".join(html.escape(e.nom_affiche) for e in finissantes) if len(finissantes) < len(entites) else ""
+    if langue == "en":
+        noms = " and ".join(html.escape(e.nom_affiche) for e in finissantes) if len(finissantes) < len(entites) else ""
+        sujet = f"The reports for {noms} are" if noms else "These reports are"
+        return (f"<p><strong>Fiscal year-end.</strong> {sujet} for the end of the fiscal year "
+                f"(period 12, as at {MOIS_EN[numero - 1]} {jour}, {mois[:4]}). Please forward them to your accountant "
+                f"for the preparation of your tax return. If you or your accountant have any questions or adjusting "
+                f"entries you would like us to record in your books, please send them to us by "
+                f"<strong>{MOIS_EN[mois_limite - 1]} {jour_limite}, {annee_limite}</strong>. After that date, "
+                f"we will close the fiscal year as is.</p>")
+    sujet = f"Les rapports de {noms} sont" if noms else "Ces rapports sont"
+    return (f"<p><strong>Fin d'exercice financier.</strong> {sujet} ceux de la fin de l'exercice "
+            f"(période 12, au {jour} {MOIS_FR[numero - 1]} {mois[:4]}). Nous vous invitons à les transmettre à votre "
+            f"comptable pour la préparation de votre déclaration de revenus. Si vous ou votre comptable avez des "
+            f"questions, ou des écritures de régularisation que vous souhaitez que nous inscrivions à votre "
+            f"comptabilité, veuillez nous les faire parvenir au plus tard le "
+            f"<strong>{jour_limite} {MOIS_FR[mois_limite - 1]} {annee_limite}</strong>. Passé ce délai, "
+            f"nous procéderons à la fermeture de l'exercice tel quel.</p>")
+
+
 def rediger(client: Client, mois: str, config: dict) -> None:
     langue, entites = client.langue, client.a_envoyer(mois)
     gestionnaires = list(dict.fromkeys(e.gestionnaire_nom for e in entites if e.gestionnaires))
@@ -445,9 +493,14 @@ def rediger(client: Client, mois: str, config: dict) -> None:
             f"<li>{html.escape(e.nom_affiche)}{f' ({html.escape(e.immeubles)})' if e.immeubles and e.nom_affiche != e.immeubles else ''}"
             f" <span style=\"color:#5d6b66\">· {ligne_periode(e, mois, langue)}</span></li>"
             for e in entites) + "</ul>",
-        "liste_documents": html.escape(", ".join(t[0].lower() + t[1:] for t in titres)),
+        "liste_documents": html.escape(", ".join(t[0].lower() + t[1:] for t in titres)
+                                       + ((", year-end reports" if langue == "en" else ", rapports de fin d'exercice")
+                                          if any(e.fin_annee for e in entites) else "")),
+        "paragraphe_fin_annee": paragraphe_fin_annee(client, mois, langue),
     }
     client.objet = config["envoi"][f"objet_{langue}"].format(**valeurs)
+    if any(e.fin_annee for e in entites):
+        client.objet += " – Year-end" if langue == "en" else " – Fin d'exercice"
     modele = (ICI / "modeles" / f"courriel_{langue}.html").read_text(encoding="utf-8")
     client.corps = modele.format(**valeurs)
 
@@ -575,6 +628,7 @@ def ecrire_rapport(clients: dict[str, Client], alertes: list[str], mois: str, mo
         libelles = {item["cle"]: item["libelle"] for item in config["contenu"]}
         details.append("à inclure : " + ", ".join(libelles[c] for c in x.contenu))
         return (f'<li><span class="code">{e(x.code)}</span> {e(x.nom_affiche)} <span class="periode">P{x.periode(mois)}</span>'
+                + (' <span class="pastille fin">Fin d&#39;exercice</span>' if x.fin_annee else "")
                 + (f' <span class="discret">· {e(" · ".join(details))}</span>' if details else "")
                 + (f'<div class="discret">Immeubles : {e(x.immeubles)}</div>' if x.immeubles else "")
                 + (f'<div class="consigne">Consigne : {e(x.notes)}</div>' if x.notes else "")
@@ -684,6 +738,7 @@ h2 {{ margin: 0 0 12px; font-size: 18px; }}
 .pastille {{ display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; white-space: nowrap; }}
 .pastille.ok {{ color: var(--ok); background: var(--ok-fond); }}
 .pastille.bloque {{ color: var(--bloque); background: var(--bloque-fond); }}
+.pastille.fin {{ color: #FFFFFF; background: var(--orange-texte); }}
 .entites {{ list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }}
 .probleme {{ color: var(--bloque); font-size: 13px; }}
 .probleme::before {{ content: "→ "; }}
@@ -794,6 +849,7 @@ def dossiers_a_regler(clients: dict[str, Client], mois: str) -> list[dict]:
                       for e in a_envoyer for p in e.problemes]
         dossiers.append({"code": client.code, "nom": client.nom_affiche(mois), "problemes": problemes,
                          "entites": [e.code for e in a_envoyer],
+                         "fin_annee": [e.code for e in a_envoyer if e.fin_annee],
                          "gestionnaire": ", ".join(dict.fromkeys(e.gestionnaire_nom for e in a_envoyer if e.gestionnaire_nom))})
     return dossiers
 
