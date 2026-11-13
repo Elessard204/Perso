@@ -59,15 +59,38 @@ def test_aucun_none():
     assert None not in list(valeurs(corps_mise_a_jour(proposition(), CFG, TACHE)))
 
 
-def test_liste_complete_avec_ids():
+# Progression REMPLACE toutes les lignes par la liste reçue (confirmé par Progression le 2026-11-11) :
+# chaque ligne existante doit donc être renvoyée au complet, sans ses champs en lecture seule.
+
+def test_liste_complete_sans_ids():
     items = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"]
-    assert [i.get("id") for i in items] == [501, 502, None]
+    assert len(items) == 3 and not any("id" in i for i in items)
 
 
-def test_lignes_existantes_seulement_les_champs_modifies():
+def test_ligne_existante_renvoyee_au_complet_avec_nos_changements():
     items = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"]
-    assert items[0] == {"id": 501, "description": "Luc", "quantity": 2.25}   # libellé, prix et coût inchangés
-    assert items[1] == {"id": 502}
+    assert items[0] == {"label": "Main-d'œuvre", "description": "Luc", "quantity": 2.25, "price": 95.0,
+                        "unitCost": 40.0, "product": {"id": 9, "label": "MO-PLOMB", "code": "MO-PLOMB"}}
+    assert items[1] == {"label": "Transport", "description": "", "quantity": 1, "price": 45.0,
+                        "product": {"id": 10, "label": "TRANSPORT", "code": "TRANSPORT"}}
+
+
+def test_champs_inconnus_de_l_outil_conserves():
+    tache = copy.deepcopy(TACHE)
+    tache["itemList"]["items"][1].update({"taxable": False, "rebate": 5, "type": {"id": 3}, "externalId": "erp-77",
+                                          "taxConfig": {"id": 2}, "properties": {"x": 1}, "quantityConfirmed": 1})
+    item = corps_mise_a_jour(proposition(), CFG, tache)["itemList"]["items"][1]
+    assert (item["taxable"], item["rebate"], item["type"], item["externalId"], item["taxConfig"],
+            item["properties"], item["quantityConfirmed"]) == (False, 5, {"id": 3}, "erp-77", {"id": 2}, {"x": 1}, 1)
+
+
+def test_champs_en_lecture_seule_retires():
+    tache = copy.deepcopy(TACHE)
+    tache["itemList"]["items"][0].update({"total": 1, "cost": 2, "margin": 3, "profit": 4, "unitProfit": 5,
+                                          "url": "u", "uid": "x", "created": "c", "updated": "m", "removed": None})
+    item = corps_mise_a_jour(proposition(), CFG, tache)["itemList"]["items"][0]
+    assert not {"id", "total", "cost", "margin", "profit", "unitProfit", "url", "uid", "created", "updated",
+                "removed"} & set(item)
 
 
 def test_prix_nul_dans_progression_jamais_renvoye_a_zero():
@@ -75,8 +98,16 @@ def test_prix_nul_dans_progression_jamais_renvoye_a_zero():
     tache["itemList"]["items"][1]["price"] = None
     p = proposition()
     p.lignes[1].prix = 0.0   # valeur lue comme 0 faute de prix
-    items = corps_mise_a_jour(p, CFG, tache)["itemList"]["items"]
-    assert items[1] == {"id": 502}
+    item = corps_mise_a_jour(p, CFG, tache)["itemList"]["items"][1]
+    assert "price" not in item
+
+
+def test_ligne_supprimee_par_l_outil_jamais():
+    # Une ligne existante absente de la proposition serait effacée par le remplacement : refusé.
+    p = proposition()
+    p.lignes = p.lignes[1:]
+    with pytest.raises(ValueError, match="501"):
+        corps_mise_a_jour(p, CFG, TACHE)
 
 
 def test_external_id_sur_nouvelles_lignes():
@@ -189,4 +220,4 @@ def test_date_apres_ecriture_journalisee(tmp_path):
 def test_simulation_avec_lignes_originales(tmp_path):
     originaux = {1001: proposition().lignes[:2]}
     [r] = envoyer([proposition()], FauxProgression(), Journal(tmp_path, "hugo"), CFG, "simulation", originaux)
-    assert r["corps"]["itemList"]["items"][1] == {"id": 502}
+    assert r["corps"]["itemList"]["items"][1]["label"] == "Transport" and "id" not in r["corps"]["itemList"]["items"][1]

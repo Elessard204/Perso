@@ -150,9 +150,14 @@ vrais bons déjà facturés pour confirmer :
 3. comment les heures facturées apparaissent dans `itemList` (une ligne par
    technicien ou une seule ligne, `type` de la ligne, produit « main-d'œuvre »);
 4. comment les transports apparaissent (produit, quantité);
-5. le comportement de `POST /task/{id}/update` sur `itemList` : la liste
-   fournie remplace-t-elle toute la liste, ou s'ajoute-t-elle? À tester sur un
-   bon de test créé exprès, jamais sur un vrai bon;
+5. ~~le comportement de `POST /task/{id}/update` sur `itemList`~~ **Réponse de
+   Progression (2026-11-11) : la liste reçue REMPLACE toutes les lignes.** Le système
+   supprime les lignes et recrée la facture (nouveaux ids, totaux et taxes recalculés);
+   aucune méthode pour modifier une seule ligne. Conséquence dans l'outil : chaque ligne
+   existante est renvoyée au complet (tous ses champs sauf ceux en lecture seule), et une
+   ligne existante absente de la proposition bloque l'écriture. Reste à vérifier dans la
+   sandbox : qu'une ligne générée à partir d'une entrée de temps garde son lien
+   (`TimeEntry.item`) une fois recréée;
 6. s'il existe un produit générique « Matériel » à utiliser pour les lignes
    refacturées, et la configuration de taxes à leur appliquer;
 7. que l'ajout d'une pièce jointe ou d'une entrée de temps change bien le champ

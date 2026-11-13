@@ -21,29 +21,61 @@ def _sans_none(objet):
     return objet
 
 
-def _item(ligne: Ligne, avant: Ligne | None, cfg: dict) -> dict:
-    if ligne.id is not None and avant is not None:
-        # Ligne existante : seulement son id et ce qui a changé, pour ne rien réécrire d'autre.
-        item = {"id": ligne.id}
-        for attribut, nom in CHAMPS:
-            if getattr(ligne, attribut) != getattr(avant, attribut):
-                item[nom] = getattr(ligne, attribut)
-        return item
-    item = {"id": ligne.id, **{nom: getattr(ligne, attribut) for attribut, nom in CHAMPS}}
-    if ligne.id is None:
-        item["externalId"] = ligne.external_id
-        if cfg.get("produit_materiel"):
-            item["product"] = {"code": cfg["produit_materiel"]}
+# Champs d'une ligne que Progression calcule ou attribue : jamais renvoyés.
+LECTURE_SEULE = {"id", "uid", "url", "total", "cost", "margin", "profit", "unitProfit", "created", "updated", "removed"}
+
+
+def _nouvelle_ligne(ligne: Ligne, cfg: dict) -> dict:
+    item = {nom: getattr(ligne, attribut) for attribut, nom in CHAMPS}
+    item["externalId"] = ligne.external_id
+    if cfg.get("produit_materiel"):
+        item["product"] = {"code": cfg["produit_materiel"]}
+    return item
+
+
+def _ligne_existante(ligne: Ligne, brute: dict, cfg: dict) -> dict:
+    """La ligne telle que Progression l'a renvoyée (tous ses champs), avec seulement nos changements par-dessus."""
+    item = {k: v for k, v in brute.items() if k not in LECTURE_SEULE}
+    lue = bon_depuis_json({"id": 0, "itemList": {"items": [brute]}}, [], cfg).lignes[0]
+    for attribut, nom in CHAMPS:
+        if getattr(ligne, attribut) != getattr(lue, attribut):
+            item[nom] = getattr(ligne, attribut)
     return item
 
 
 def corps_mise_a_jour(p: Proposition, cfg: dict, tache: dict | None,
                       lignes_avant: list[Ligne] | None = None) -> dict:
-    """Description révisée + liste COMPLÈTE des lignes (existantes avec leur id, nouvelles sans id)."""
-    if lignes_avant is None and tache is not None:
-        lignes_avant = bon_depuis_json(tache, [], cfg).lignes
-    avant = {l.id: l for l in lignes_avant or [] if l.id is not None}
-    corps: dict = {"itemList": {"items": [_item(l, avant.get(l.id), cfg) for l in p.lignes]}}
+    """Description révisée + liste COMPLÈTE des lignes.
+
+    Progression supprime toutes les lignes du bon et les recrée à partir de la liste reçue
+    (confirmé par Progression le 2026-11-11). Chaque ligne existante est donc renvoyée au complet,
+    et une ligne existante absente de la proposition est refusée : elle serait effacée.
+    """
+    if tache is not None:
+        brutes = {i.get("id"): i for i in (tache.get("itemList") or {}).get("items") or [] if i.get("id") is not None}
+        manquantes = [i for i in brutes if i not in {l.id for l in p.lignes}]
+        if manquantes:
+            raise ValueError(f"Ligne(s) {', '.join(map(str, manquantes))} du bon absente(s) de la proposition : "
+                             "l'écriture les effacerait.")
+        items = []
+        for l in p.lignes:
+            if l.id is None:
+                items.append(_nouvelle_ligne(l, cfg))
+            elif l.id in brutes:
+                items.append(_ligne_existante(l, brutes[l.id], cfg))
+            else:
+                raise ValueError(f"Ligne {l.id} introuvable dans le bon actuel : réanalyser le bon.")
+    else:
+        # Simulation sans réseau : on montre ce qu'on connaît des lignes.
+        items = []
+        for l in p.lignes:
+            item = _nouvelle_ligne(l, cfg) if l.id is None else {nom: getattr(l, a) for a, nom in CHAMPS}
+            if l.id is not None and l.produit:
+                item["product"] = {"code": l.produit}
+            if l.id is not None and l.external_id:
+                item["externalId"] = l.external_id
+            items.append(item)
+    corps: dict = {"itemList": {"items": items}}
     champ = cfg.get("champ_description") or "description"
     if champ.startswith("properties."):
         # On renvoie tous les champs personnalisés existants pour ne rien écraser.
@@ -114,7 +146,7 @@ def envoyer(propositions: list[Proposition], progression, journal, cfg: dict,
                 continue
             corps = corps_mise_a_jour(p, cfg, tache)
             progression.mettre_a_jour(p.bon_id, corps)
-        except ErreurProgression as e:
+        except (ErreurProgression, ValueError) as e:
             journal.inscrire("echec", p.bon_id, p.maj, {"message": str(e)})
             resultats.append({"bon_id": p.bon_id, "resultat": "echec", "message": str(e)})
             continue

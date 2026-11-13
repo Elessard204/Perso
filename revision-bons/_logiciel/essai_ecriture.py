@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import sys
 import tomllib
-from collections import Counter
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +24,7 @@ from progression import ErreurProgression, Progression, bon_depuis_json
 ICI = Path(__file__).resolve().parent
 
 
-CALCULES = {"total", "cost", "margin", "profit", "unitProfit", "created", "updated", "url"}
+CALCULES = {"total", "cost", "margin", "profit", "unitProfit", "created", "updated", "url", "removed"}
 
 
 def _items(tache: dict) -> list[dict]:
@@ -48,22 +47,28 @@ def essai_ecriture(prog, bon_id: int, client_test: str, cfg: dict) -> dict:
     prog.mettre_a_jour(bon_id, corps_mise_a_jour(p, cfg, avant))
     apres = prog.tache_brute(bon_id)
 
+    # Progression recrée toutes les lignes (nouveaux ids) : on compare le contenu, pas les ids.
     items_avant, items_apres = _items(avant), _items(apres)
-    ids = [i.get("id") for i in items_apres]
+    net = lambda i: {k: v for k, v in i.items() if k not in CALCULES | {"id", "uid"}}
+    attendus = [net(i) for i in items_avant]
+    if attendus:
+        attendus[0]["quantity"] = lignes[0].quantite
+    restants = [net(i) for i in items_apres]
     problemes = []
-    if [i for i, n in Counter(ids).items() if n > 1] or len(items_apres) > len(items_avant) + 1:
+    if len(items_apres) > len(items_avant) + 1:
         problemes.append("des lignes ont été mises en double")
-    par_id = {i.get("id"): i for i in items_apres}
-    for n, original in enumerate(items_avant):
-        actuel = par_id.get(original.get("id"))
-        if actuel is None:
-            problemes.append(f"la ligne {original.get('id')} a disparu")
+    for original, attendu in zip(items_avant, attendus):
+        if attendu in restants:
+            restants.remove(attendu)
             continue
-        attendu = dict(original, quantity=lignes[0].quantite) if n == 0 else original
-        differents = sorted(k for k in set(attendu) | set(actuel)
-                            if k not in CALCULES and attendu.get(k) != actuel.get(k))
-        if differents:
-            problemes.append(f"la ligne {original.get('id')} a été modifié au-delà de la demande ({', '.join(differents)})")
+        proche = next((r for r in restants if r.get("label") == attendu.get("label")), None)
+        if proche is None:
+            problemes.append(f"la ligne « {original.get('label')} » a disparu")
+        else:
+            differents = sorted(k for k in set(attendu) | set(proche) if attendu.get(k) != proche.get(k))
+            problemes.append(f"la ligne « {original.get('label')} » a été modifié au-delà de la demande "
+                             f"({', '.join(differents)})")
+            restants.remove(proche)
     if not any(i.get("externalId") == essai.external_id for i in items_apres):
         problemes.append("l'externalId de la nouvelle ligne n'a pas été conservé")
     champ = cfg.get("champ_description") or "description"
