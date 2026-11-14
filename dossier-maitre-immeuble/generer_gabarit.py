@@ -55,6 +55,15 @@ LISTES = {
     "L_Couverture": ["Biens", "Responsabilité civile", "Pertes de revenus", "Bris d'équipement",
                      "Responsabilité des administrateurs", "Excédentaire (umbrella)", "Autre"],
     "L_TypeTaxe": ["Municipale", "Scolaire", "Droits de mutation", "Autre"],
+    "L_Source": ["Propriétaire", "Gestionnaire sortant", "Propriétaire et gestionnaire", "Visite", "Progim (interne)"],
+    "L_Priorite": ["1 - Avant la prise en charge", "2 - 30 premiers jours", "3 - 90 premiers jours"],
+    "L_StatutInt": ["À demander", "Demandé", "Reçu", "Intégré", "Non disponible"],
+    "L_StatutDossier": ["En intégration", "Actif", "En passation", "Terminé"],
+    "L_TypeJournal": ["Intégration", "Mise à jour", "Révision trimestrielle", "Passation", "Autre"],
+    "L_Mois": ["01 - Janvier", "02 - Février", "03 - Mars", "04 - Avril", "05 - Mai", "06 - Juin", "07 - Juillet",
+               "08 - Août", "09 - Septembre", "10 - Octobre", "11 - Novembre", "12 - Décembre", "Chaque mois"],
+    "L_Onglet": ["Fiche", "Connaissances", "Calendrier", "Unités", "Assurances", "Taxes", "Contrats", "Entretien",
+                 "Équipements", "Travaux", "Contacts", "Documents", "Journal", "Hopem", "SharePoint"],
 }
 
 def entete_feuille(ws, titre, ligne_immeuble=True, largeur=12):
@@ -77,19 +86,23 @@ entete_feuille(p, "Paramètres", ligne_immeuble=False, largeur=3 + len(LISTES))
 p["B4"], p["C4"] = "Date du jour", "=TODAY()"
 p["B5"], p["C5"] = "Seuil urgent (jours)", 30
 p["B6"], p["C6"] = "Seuil d'alerte (jours)", 90
+p["B7"], p["C7"] = "Délai de relance (jours)", 10
+p["B8"], p["C8"] = "Révision du dossier (jours)", 90
 p["C4"].number_format = FMT["date"]
-for r in (4, 5, 6):
+for r in (4, 5, 6, 7, 8):
     p[f"B{r}"].font = f(bold=True)
     p[f"C{r}"].border = BORD
 p["C4"].fill = CALC_FILL
-for r in (5, 6):
+for r in (5, 6, 7, 8):
     p[f"C{r}"].font = f(color="0000FF")
 p["D5"] = "Échéance dans ce nombre de jours ou moins : affichée en orange."
 p["D6"] = "Échéance dans ce nombre de jours ou moins : affichée en jaune."
-for r in (5, 6):
+p["D7"] = "Intégration : une demande sans réponse depuis ce nombre de jours est à relancer."
+p["D8"] = "Le dossier doit être révisé (inscription au journal) au moins à cet intervalle."
+for r in (5, 6, 7, 8):
     p[f"D{r}"].font = f(size=9, italic=True, color=DISCRET)
-p["B8"] = "LISTES DÉROULANTES (ajouter des valeurs au bas d'une liste au besoin, elles apparaîtront dans les menus)"
-p["B8"].font = f(bold=True, color=ORANGE_TXT)
+p["B9"] = "LISTES DÉROULANTES (ajouter des valeurs au bas d'une liste au besoin, elles apparaîtront dans les menus)"
+p["B9"].font = f(bold=True, color=ORANGE_TXT)
 p.column_dimensions["B"].width = 24
 p.column_dimensions["C"].width = 14
 for i, (nom, valeurs) in enumerate(LISTES.items()):
@@ -104,6 +117,8 @@ for i, (nom, valeurs) in enumerate(LISTES.items()):
 wb.defined_names["Aujourdhui"] = DefinedName("Aujourdhui", attr_text="'Paramètres'!$C$4")
 wb.defined_names["SeuilUrgent"] = DefinedName("SeuilUrgent", attr_text="'Paramètres'!$C$5")
 wb.defined_names["SeuilAlerte"] = DefinedName("SeuilAlerte", attr_text="'Paramètres'!$C$6")
+wb.defined_names["DelaiRelance"] = DefinedName("DelaiRelance", attr_text="'Paramètres'!$C$7")
+wb.defined_names["DelaiRevision"] = DefinedName("DelaiRevision", attr_text="'Paramètres'!$C$8")
 
 def liste(ws, nom, plage):
     dv = DataValidation(type="list", formula1=f"={nom}", allow_blank=True, showErrorMessage=False)
@@ -420,12 +435,244 @@ table("Documents", "Documents au dossier", [
 ], 40, prerempli=[(d,) for d in DOCS], note="Coller le lien SharePoint de chaque document. Statut Manquant = à obtenir.")
 doc = wb["Documents"]
 
+# ---------------------------------------------------------------- Intégration d'un nouveau client
+P1, P2, P3 = "1 - Avant la prise en charge", "2 - 30 premiers jours", "3 - 90 premiers jours"
+PR, GS, PG, VI, PI = "Propriétaire", "Gestionnaire sortant", "Propriétaire et gestionnaire", "Visite", "Progim (interne)"
+INTEG = [
+    ("Mandat et propriétaire", "Contrat de gestion signé et date de prise en charge", PR, P1, "Fiche"),
+    ("Mandat et propriétaire", "Nom légal, NEQ, structure de propriété et signataires autorisés", PR, P1, "Fiche"),
+    ("Mandat et propriétaire", "Personnes autorisées à donner des instructions à Progim, et leurs coordonnées", PR, P1, "Fiche"),
+    ("Mandat et propriétaire", "Seuil d'approbation des dépenses et décisions que le propriétaire veut prendre lui-même", PR, P1, "Fiche"),
+    ("Mandat et propriétaire", "Mode et fréquence de communication souhaités; format et destinataires des rapports", PR, P1, "Connaissances"),
+    ("Mandat et propriétaire", "Fin d'exercice et coordonnées du comptable externe", PR, P1, "Fiche"),
+    ("Mandat et propriétaire", "Objectifs pour l'immeuble (conservation, revente, repositionnement, rénovations prévues)", PR, P2, "Connaissances"),
+    ("Mandat et propriétaire", "Budget d'exploitation de l'année et budget de dépenses en capital", PG, P2, "SharePoint"),
+    ("Finances", "États financiers des deux dernières années", PR, P2, "SharePoint"),
+    ("Finances", "Balance de vérification et grand livre à la date du transfert", GS, P1, "Hopem"),
+    ("Finances", "Comptes à payer ouverts et factures en suspens", GS, P1, "Hopem"),
+    ("Finances", "Arrérages par locataire et ententes de paiement en cours", GS, P1, "Hopem"),
+    ("Finances", "Dépôts et avances détenus (locaux commerciaux)", GS, P1, "Hopem"),
+    ("Finances", "Compte bancaire d'exploitation et procédure de changement des signataires", PR, P1, "Fiche"),
+    ("Finances", "Paiements préautorisés en place (locataires et fournisseurs)", GS, P1, "Hopem"),
+    ("Finances", "Prêt hypothécaire : prêteur, échéance, rapports exigés par le prêteur", PR, P2, "Fiche"),
+    ("Finances", "Comptes de services publics (Hydro-Québec, Énergir, eau) et numéros de compte", GS, P1, "Contrats"),
+    ("Finances", "Derniers comptes de taxes municipales et scolaires, versements et solde", PR, P1, "Taxes"),
+    ("Finances", "Inscription aux fichiers de la TPS et de la TVQ (immeuble commercial ou mixte)", PR, P2, "Fiche"),
+    ("Finances", "Fonds de prévoyance ou réserves (copropriété, exigence du prêteur)", PR, P2, "Fiche"),
+    ("Location", "Copies des baux en vigueur et des renouvellements", GS, P1, "Unités"),
+    ("Location", "Liste des loyers à jour (unité, locataire, loyer, échéance, inclusions)", GS, P1, "Unités"),
+    ("Location", "Avis de modification envoyés et réponses reçues pour la prochaine période", GS, P1, "Unités"),
+    ("Location", "Unités vacantes, avis de départ et annonces de location en cours", GS, P1, "Unités"),
+    ("Location", "Dossiers au Tribunal administratif du logement (en cours, jugements, ententes)", GS, P1, "Connaissances"),
+    ("Location", "Coordonnées des locataires (téléphone, courriel)", GS, P1, "Unités"),
+    ("Location", "Baux commerciaux : renouvellement, indexation, frais d'exploitation refacturés, options", GS, P1, "Unités"),
+    ("Location", "Règlements d'immeuble remis aux locataires", GS, P2, "Documents"),
+    ("Location", "Registre des loyers (loyer le plus bas des 12 derniers mois, section G du bail)", GS, P2, "Documents"),
+    ("Location", "Attribution des stationnements et des rangements", GS, P2, "Unités"),
+    ("Location", "Électroménagers fournis et inclusions particulières par unité", GS, P3, "Unités"),
+    ("Bâtiment", "Problèmes récurrents connus (infiltrations, refoulements, chauffage, vermine)", GS, P1, "Connaissances"),
+    ("Bâtiment", "Particularités techniques (valve difficile, pompe à surveiller, réglages, bruits normaux)", GS, P1, "Connaissances"),
+    ("Bâtiment", "Emplacement des entrées d'eau, d'électricité et de gaz, des panneaux et des valves", GS, P1, "Fiche"),
+    ("Bâtiment", "Travaux en cours ou prévus (soumissions, contrats signés, permis)", PG, P1, "Travaux"),
+    ("Bâtiment", "Bons de travail ouverts et demandes de locataires non réglées", GS, P1, "Travaux"),
+    ("Bâtiment", "Plans du bâtiment et certificat de localisation", PR, P2, "Documents"),
+    ("Bâtiment", "Rapports d'inspection (préachat, façade, structure, toiture)", PR, P2, "Documents"),
+    ("Bâtiment", "Équipements : âge, marque, garanties", GS, P2, "Équipements"),
+    ("Bâtiment", "Travaux majeurs des cinq dernières années, avec les coûts", PG, P2, "Travaux"),
+    ("Bâtiment", "Rapports de protection incendie, d'ascenseur et d'antirefoulement", GS, P2, "Entretien"),
+    ("Bâtiment", "Calendrier d'entretien préventif actuel", GS, P2, "Entretien"),
+    ("Bâtiment", "Registre amiante (immeuble construit avant 1999)", PR, P2, "Documents"),
+    ("Contrats et fournisseurs", "Copies des contrats de service en vigueur", GS, P1, "Contrats"),
+    ("Contrats et fournisseurs", "Dates de renouvellement et préavis de résiliation des contrats", GS, P1, "Contrats"),
+    ("Contrats et fournisseurs", "Fournisseurs habituels, surtout ceux qui connaissent bien l'immeuble", GS, P1, "Contacts"),
+    ("Contrats et fournisseurs", "Ententes verbales ou tarifs particuliers avec des fournisseurs", GS, P2, "Connaissances"),
+    ("Contrats et fournisseurs", "Concierge : employeur, horaire, tâches, rémunération, logement fourni", PG, P1, "Connaissances"),
+    ("Assurances et risques", "Polices d'assurance en vigueur, courtier et franchises", PR, P1, "Assurances"),
+    ("Assurances et risques", "Ajout de Progim comme assuré additionnel (responsabilité civile)", PR, P1, "Assurances"),
+    ("Assurances et risques", "Réclamations d'assurance des cinq dernières années et réclamations en cours", PR, P2, "Connaissances"),
+    ("Assurances et risques", "Mises en demeure, poursuites, avis d'infraction de la ville", PG, P1, "Connaissances"),
+    ("Accès et sécurité", "Remise et inventaire des clés (maîtresses, logements, locaux techniques)", GS, P1, "Fiche"),
+    ("Accès et sécurité", "Cartes et télécommandes d'accès, interphone", GS, P1, "Fiche"),
+    ("Accès et sécurité", "Système d'alarme : fournisseur, centrale, transfert des codes (jamais dans ce fichier)", GS, P1, "Contacts"),
+    ("Accès et sécurité", "Caméras : fournisseur, accès aux enregistrements, affichage", GS, P2, "Contacts"),
+    ("Accès et sécurité", "Plan des mesures d'urgence et personnes-ressources", GS, P2, "Documents"),
+    ("Visite", "Visite complète avec le gestionnaire sortant ou le concierge, y compris les locaux techniques", VI, P1, "Connaissances"),
+    ("Visite", "Photos de l'état des aires communes et des équipements à la prise en charge", VI, P1, "SharePoint"),
+    ("Visite", "Relevés des compteurs (si refacturation)", VI, P1, "SharePoint"),
+    ("Visite", "Inspection d'un échantillon de logements", VI, P2, "Travaux"),
+    ("Mise en place Progim", "Création de l'entité et de l'immeuble dans Hopem", PI, P1, "Hopem"),
+    ("Mise en place Progim", "Dossier SharePoint de l'immeuble créé et documents déposés", PI, P1, "SharePoint"),
+    ("Mise en place Progim", "Avis aux locataires : nouveau gestionnaire, coordonnées, paiement du loyer", PI, P1, "Documents"),
+    ("Mise en place Progim", "Avis aux fournisseurs : facturation et coordonnées", PI, P1, "Contrats"),
+    ("Mise en place Progim", "Transfert des comptes de services publics et des paiements préautorisés", PI, P1, "Hopem"),
+    ("Mise en place Progim", "Ajout aux processus Progim (rapports mensuels, fin d'exercice)", PI, P1, "Hopem"),
+    ("Mise en place Progim", "Rencontre de démarrage avec le propriétaire (attentes, premier rapport)", PI, P1, "Connaissances"),
+    ("Mise en place Progim", "Bilan des 90 jours avec le propriétaire", PI, P3, "Journal"),
+]
+N_INT = 120
+integ = table("Intégration", "Intégration d'un nouveau client", [
+    dict(nom="No", larg=5, fmt="int"),
+    dict(nom="Section", larg=20),
+    dict(nom="Information ou document à obtenir", larg=58),
+    dict(nom="Source", larg=25, liste="L_Source"),
+    dict(nom="Priorité", larg=25, liste="L_Priorite"),
+    dict(nom="Applicable", larg=9, liste="L_OuiNon", aide="Mettre Non si l'élément ne s'applique pas à cet immeuble : il sort du calcul d'avancement."),
+    dict(nom="Statut", larg=12, liste="L_StatutInt"),
+    dict(nom="Demandé le", larg=11, fmt="date"),
+    dict(nom="Reçu le", larg=11, fmt="date"),
+    dict(nom="Responsable Progim", larg=14),
+    dict(nom="Consigné dans", larg=13, liste="L_Onglet", aide="Onglet ou système où l'information est inscrite une fois reçue."),
+    dict(nom="Notes", larg=30),
+    dict(nom="Jours en attente", larg=9, fmt="int",
+         calc='IF(AND(H{r}="Demandé",ISNUMBER(I{r})),Aujourdhui-I{r},"")',
+         aide="Jours depuis la demande, tant que le statut est Demandé. Orange au délai de relance, rouge au double."),
+], N_INT,
+    note="Filtrer Source sur Propriétaire ou Gestionnaire sortant pour obtenir la liste à envoyer. Statut : À demander › Demandé › Reçu › Intégré.",
+    prerempli=[(i + 1, a, b, c, d, None, "À demander", None, None, None, e) for i, (a, b, c, d, e) in enumerate(INTEG)])
+for col in "DM":
+    for rr in range(DEB, DEB + N_INT):
+        integ[f"{col}{rr}"].alignment = Alignment(wrap_text=True, vertical="top")
+tl = f"N{DEB}"
+integ.conditional_formatting.add(f"N{DEB}:N{DEB + N_INT - 1}", FormulaRule(formula=[f"AND(ISNUMBER({tl}),{tl}>=2*DelaiRelance)"],
+    fill=fill(BLOQUE_PALE), font=Font(color=BLOQUE, bold=True), stopIfTrue=True))
+integ.conditional_formatting.add(f"N{DEB}:N{DEB + N_INT - 1}", FormulaRule(formula=[f"AND(ISNUMBER({tl}),{tl}>=DelaiRelance)"],
+    fill=fill(SPECIAL), font=Font(color=ORANGE_TXT, bold=True), stopIfTrue=True))
+integ.conditional_formatting.add(f"H{DEB}:H{DEB + N_INT - 1}", FormulaRule(formula=[f'OR(H{DEB}="Reçu",H{DEB}="Intégré")'],
+    fill=fill(OK_PALE), font=Font(color=OK)))
+integ.conditional_formatting.add(f"B{DEB}:M{DEB + N_INT - 1}", FormulaRule(formula=[f'$G{DEB}="Non"'], font=Font(color="AEB6C8")))
+# Exemple sur la première ligne
+for c_, v in (("G5", "Oui"), ("H5", "Reçu"), ("I5", date(2026, 10, 20)), ("J5", date(2026, 10, 24)), ("K5", "Initiales")):
+    integ[c_] = v
+    integ[c_].font = f(italic=True, color="0000FF")
+integ["B5"].comment = Comment("Ligne d'exemple (texte bleu italique) pour les colonnes de suivi.", "Progim")
+
+# ---------------------------------------------------------------- Connaissances
+CONN = [
+    ("Historique", "Depuis quand le propriétaire détient-il l'immeuble, et pourquoi change-t-il de gestionnaire?"),
+    ("Historique", "Quels événements ont marqué l'immeuble (sinistres, gros travaux, litiges, changements d'usage)?"),
+    ("Propriétaire", "Quelles décisions le propriétaire veut-il prendre lui-même? Que peut-on faire sans lui demander?"),
+    ("Propriétaire", "Comment et quand préfère-t-il être joint? Qui d'autre faut-il mettre en copie?"),
+    ("Propriétaire", "Quels sujets sont sensibles pour lui (hausses de loyer, dépenses, locataires de longue date)?"),
+    ("Propriétaire", "Quels sont ses objectifs et son horizon pour l'immeuble?"),
+    ("Bâtiment", "Quels problèmes reviennent, et qu'est-ce qui a déjà été essayé pour les régler?"),
+    ("Bâtiment", "Quels équipements demandent une attention particulière (réglages, bruits normaux ou anormaux)?"),
+    ("Bâtiment", "Où sont les valves, entrées et panneaux? Y a-t-il des pièges (valve difficile, accès encombré)?"),
+    ("Bâtiment", "Que faire dans cet immeuble en cas de dégât d'eau, de panne de chauffage ou d'électricité?"),
+    ("Bâtiment", "Quels travaux devraient être faits dans les un à trois prochaines années?"),
+    ("Locataires", "Quelles situations faut-il connaître (ententes de paiement, besoins d'accès, plaintes récurrentes)? Faits seulement."),
+    ("Locataires", "Quels dossiers de non-paiement, de bruit ou de troubles de jouissance sont en cours?"),
+    ("Locataires", "Y a-t-il des ententes particulières avec certains locataires (travaux, stationnement, animaux)?"),
+    ("Fournisseurs", "Quels fournisseurs connaissent bien l'immeuble? Lesquels éviter, et pourquoi?"),
+    ("Fournisseurs", "Y a-t-il des ententes verbales ou des tarifs particuliers?"),
+    ("Concierge", "Qui est le concierge, quelles sont ses tâches réelles, ses forces et ses limites?"),
+    ("Opérations", "Collecte des déchets, du recyclage et du compost : jours, bacs, particularités"),
+    ("Opérations", "Déneigement : zones, consignes, bacs de sel, points de friction"),
+    ("Opérations", "Quelles règles de l'immeuble posent problème ou sont mal respectées?"),
+    ("Ville et voisinage", "Relations avec les voisins et la ville; plaintes ou avis reçus"),
+    ("Ville et voisinage", "Droits acquis, usages particuliers, unités ou travaux non conformes connus"),
+    ("Litiges et réclamations", "Dossiers au TAL, réclamations d'assurance, mises en demeure : état et prochaines étapes"),
+]
+N_CONN = 100
+conn = table("Connaissances", "Connaissances de l'immeuble", [
+    dict(nom="Thème", larg=18),
+    dict(nom="Question guide", larg=48),
+    dict(nom="Ce qu'il faut savoir (réponse)", larg=70),
+    dict(nom="Source (qui l'a dit)", larg=18),
+    dict(nom="Date", larg=11, fmt="date"),
+    dict(nom="Mis à jour par", larg=14),
+], N_CONN,
+    note="Ce que l'équipe sait sans l'avoir écrit. À remplir en rencontre avec le gestionnaire sortant, puis à enrichir au fil de l'eau. Faits professionnels seulement.",
+    prerempli=CONN)
+for rr in range(DEB, DEB + N_CONN):
+    for col in "CD":
+        conn[f"{col}{rr}"].alignment = Alignment(wrap_text=True, vertical="top")
+conn["D5"] = "Exemple : propriétaire depuis 2012, change de gestionnaire à cause de délais de réponse aux locataires."
+conn["E5"], conn["F5"], conn["G5"] = "Propriétaire", date(2026, 10, 20), "Initiales"
+for c_ in ("D5", "E5", "F5", "G5"):
+    conn[c_].font = f(italic=True, color="0000FF")
+
+# ---------------------------------------------------------------- Calendrier annuel
+CAL = [
+    ("01 - Janvier", "Inscrire les versements du compte de taxes municipales (onglet Taxes)"),
+    ("01 - Janvier", "Début de la période d'envoi des avis de modification pour les baux se terminant le 30 juin"),
+    ("02 - Février", "Remettre le relevé 31 aux locataires et le transmettre à Revenu Québec (au plus tard le dernier jour de février)"),
+    ("03 - Mars", "Date limite d'envoi des avis de modification pour les baux se terminant le 30 juin (31 mars)"),
+    ("03 - Mars", "Rappel aux locataires : vérifier les avertisseurs de fumée au changement d'heure"),
+    ("04 - Avril", "Suivi des réponses des locataires aux avis de modification (délai d'un mois)"),
+    ("04 - Avril", "Fin du déneigement : nettoyage du terrain et du stationnement, constat des dommages"),
+    ("04 - Avril", "Inspection de la toiture et des drains après l'hiver"),
+    ("05 - Mai", "Ouvrir les robinets extérieurs; aménagement paysager"),
+    ("05 - Mai", "Annonces de location des logements libres au 1er juillet"),
+    ("06 - Juin", "Planifier les déménagements du 1er juillet (ascenseur, conteneurs, stationnement)"),
+    ("07 - Juillet", "Inspection et état des logements libérés; travaux de remise en état"),
+    ("07 - Juillet", "Inscrire le compte de taxes scolaires (onglet Taxes)"),
+    ("08 - Août", "Planifier les travaux d'automne; soumissions de déneigement si le contrat est à renouveler"),
+    ("09 - Septembre", "Entretien du système de chauffage avant la saison"),
+    ("10 - Octobre", "Fermer et purger les robinets extérieurs"),
+    ("10 - Octobre", "Installation des balises; contrat de déneigement en vigueur"),
+    ("11 - Novembre", "Nettoyage des gouttières après la chute des feuilles"),
+    ("11 - Novembre", "Préparer le budget de l'année suivante et le présenter au propriétaire"),
+    ("12 - Décembre", "Bilan annuel au propriétaire et priorités de travaux"),
+    ("12 - Décembre", "Révision complète du dossier maître (inscrire au journal)"),
+    ("Chaque mois", "Rapport mensuel au propriétaire"),
+    ("Chaque mois", "Tournée de l'immeuble : aires communes et locaux techniques"),
+]
+cal = table("Calendrier", "Calendrier annuel de l'immeuble", [
+    dict(nom="Mois", larg=15, liste="L_Mois"),
+    dict(nom="Tâche", larg=80),
+    dict(nom="Responsable", larg=18),
+    dict(nom="Applicable", larg=9, liste="L_OuiNon"),
+    dict(nom="Notes propres à l'immeuble", larg=40),
+], 60, note="Ce qui revient chaque année. Ajouter les particularités de l'immeuble; trier par mois avec le filtre.",
+    prerempli=CAL)
+
+# ---------------------------------------------------------------- Journal et passation
+N_JOU = 300
+jou = table("Journal", "Journal des mises à jour", [
+    dict(nom="Date", larg=11, fmt="date"),
+    dict(nom="Type", larg=18, liste="L_TypeJournal"),
+    dict(nom="Par", larg=14),
+    dict(nom="Onglets touchés", larg=20),
+    dict(nom="Description", larg=60),
+], N_JOU, note="Une ligne par mise à jour importante, révision ou passation. La date la plus récente s'affiche dans la Fiche.",
+    exemple=[date(2026, 11, 14), "Intégration", "Initiales", "Fiche, Intégration", "Ouverture du dossier"])
+PASS = [
+    "Dossier maître révisé et à jour par le gestionnaire sortant",
+    "Rencontre de passation : revue de chaque onglet, surtout Connaissances",
+    "Visite de l'immeuble ensemble (y compris les locaux techniques)",
+    "Points ouverts listés : bons de travail, arrérages, TAL, travaux, réclamations",
+    "Échéances des 90 prochains jours revues (tableau de bord de la Fiche)",
+    "Clés et accès remis et inventoriés",
+    "Présentation au propriétaire et au concierge",
+    "Locataires et fournisseurs avisés au besoin",
+    "Gestionnaire responsable changé dans la Fiche et dans Hopem",
+    "Passation inscrite au journal; statut du dossier remis à Actif",
+]
+jou.column_dimensions["H"].width = 3
+jou.column_dimensions["I"].width = 62
+jou.column_dimensions["J"].width = 8
+jou.column_dimensions["K"].width = 22
+jou["I4"] = "LISTE DE PASSATION (vider les colonnes Fait et Notes à chaque nouvelle passation)"
+jou["I4"].font = f(bold=True, color=ORANGE_TXT)
+jou["I4"].alignment = Alignment(wrap_text=True, vertical="center")
+for k, h in enumerate(("Étape", "Fait", "Date et notes")):
+    c = jou.cell(row=5, column=9 + k, value=h)
+    c.font, c.fill, c.border = f(bold=True, color="FFFFFF", size=9), fill(MARINE), BORD
+for k, t in enumerate(PASS):
+    rr = 6 + k
+    jou.cell(row=rr, column=9, value=f"{k + 1}. {t}").font = f()
+    for col in (9, 10, 11):
+        jou.cell(row=rr, column=col).border = BORD
+liste(jou, "L_OuiNon", f"J6:J{5 + len(PASS)}")
+jou.conditional_formatting.add(f"J6:J{5 + len(PASS)}", FormulaRule(formula=['J6="Oui"'], fill=fill(OK_PALE), font=Font(color=OK, bold=True)))
+jou.cell(row=7 + len(PASS), column=9, value=f'="Étapes faites : "&COUNTIF(J6:J{5 + len(PASS)},"Oui")&" sur {len(PASS)}"').font = f(bold=True)
+
 # ---------------------------------------------------------------- Fiche (avec tableau de bord)
 fi = wb.create_sheet("Fiche", 0)
 entete_feuille(fi, "Dossier maître de l'immeuble", ligne_immeuble=False, largeur=10)
-fi["B2"] = '="Mis à jour le : "&IF(Fiche!$C$4="","—",TEXT(Fiche!$C$4,"yyyy-mm-dd"))'
+fi["B2"] = '="Dernière mise à jour : "&IF(N(Fiche!$C$4)=0,"aucune inscription au journal",TEXT(Fiche!$C$4,"yyyy-mm-dd"))'
 fi["B2"].font = f(size=10, italic=True, color=DISCRET)
-fi.column_dimensions["B"].width = 34
+fi.column_dimensions["B"].width = 40
 fi.column_dimensions["C"].width = 38
 fi.column_dimensions["D"].width = 3
 for L, w in zip("EFGHI", (40, 12, 15, 15, 13)):
@@ -456,7 +703,8 @@ def champ(r, lib, ex=None, fmt=None, calc=None, aide=None, lst=None):
     return r + 1
 
 r = 4
-r = champ(r, "Fiche mise à jour le", date(2026, 11, 14), "date")
+r = champ(r, "Dernière mise à jour (journal)", calc=f"=MAX({plage('Journal','B',N_JOU)})", fmt="nextdate",
+          aide="Date de la plus récente inscription dans l'onglet Journal.")
 r = section(r, 2, "IDENTIFICATION")
 r = champ(r, "Code d'entité (Hopem)", "99.1", "text")              # C6
 r = champ(r, "Nom de l'immeuble", "Immeuble Exemple")               # C7
@@ -484,13 +732,17 @@ r = champ(r, "Adresse de correspondance", "Adresse")
 r = champ(r, "Début du mandat de gestion", date(2024, 1, 1), "date")
 r = champ(r, "Fin ou renouvellement du mandat", date(2026, 12, 31), "date")
 r = champ(r, "Préavis de résiliation (jours)", 90, "int")
+r = champ(r, "Seuil d'approbation des dépenses ($)", 2500, "money0",
+          aide="Montant au-delà duquel le propriétaire doit approuver une dépense avant engagement.")
 r = champ(r, "Honoraires de gestion (% des revenus)", 0.05, "pct")
 r = champ(r, "Fin d'exercice (mois, 1 à 12)", 12, "int")
 r = champ(r, "Fréquence des rapports", "Mensuel", lst="L_Frequence")
 r = champ(r, "Prêteur hypothécaire", "Prêteur Exemple")
 r = champ(r, "Échéance hypothécaire", date(2028, 5, 1), "date")
+r = champ(r, "Gestionnaire précédent (firme et contact)", "Firme Exemple, nom, 819 555-0105")
 r += 1
 r = section(r, 2, "ÉQUIPE")
+r = champ(r, "Statut du dossier", "En intégration", lst="L_StatutDossier")
 r = champ(r, "Gestionnaire responsable", "Nom")
 r = champ(r, "Coordonnateur technique", "Nom")
 r = champ(r, "Comptable responsable", "Nom")
@@ -571,6 +823,32 @@ rb += 1
 fi.cell(row=rb, column=5, value='="Calculé au "&TEXT(Aujourdhui,"yyyy-mm-dd")&" — seuils : "&SeuilUrgent&" et "&SeuilAlerte&" jours (onglet Paramètres)."').font = f(size=9, italic=True, color=DISCRET)
 rb += 1
 fi.cell(row=rb, column=5, value="Le seuil d'alerte inclut les échéances du seuil urgent. Détail dans chaque onglet (filtre sur la colonne des jours).").font = f(size=9, italic=True, color=DISCRET)
+rb += 2
+fi.cell(row=rb, column=5, value="INTÉGRATION ET SUIVI DU DOSSIER").font = f(bold=True, color=ORANGE_TXT)
+rb += 1
+I = lambda col: plage("Intégration", col, N_INT)
+ouvert = f'{I("D")},"<>",{I("G")},"<>Non",{I("H")},"<>Reçu",{I("H")},"<>Intégré",{I("H")},"<>Non disponible"'
+suivi = [
+    ("Éléments d'intégration applicables", f'=COUNTIFS({I("D")},"<>",{I("G")},"<>Non")', '0;-0;"—"'),
+    ("Éléments encore ouverts", f"=COUNTIFS({ouvert})", '0;-0;"—"'),
+    ("Avancement de l'intégration", "=IFERROR(1-F{o}/F{a},0)", FMT["pct"]),
+    ("Priorité 1 encore ouverts", f'=COUNTIFS({ouvert},{I("F")},"1*")', '0;-0;"—"'),
+    ("Demandes à relancer", f'=COUNTIF({I("N")},">="&DelaiRelance)', '0;-0;"—"'),
+    ("Jours depuis la dernière mise à jour", '=IF(N(C4)=0,"",Aujourdhui-C4)', '0'),
+]
+deb_suivi = rb
+for k, (lib, form, fm) in enumerate(suivi):
+    fi.cell(row=rb, column=5, value=lib).font = f(bold=True)
+    c = fi.cell(row=rb, column=6, value=form.format(a=deb_suivi, o=deb_suivi + 1) if "{" in form and "F{" in form else form)
+    c.number_format, c.fill, c.border, c.font = fm, CALC_FILL, BORD, f(bold=True)
+    fi.merge_cells(start_row=rb, start_column=6, end_row=rb, end_column=7)
+    rb += 1
+for off in (3, 4):
+    fi.conditional_formatting.add(f"F{deb_suivi + off}", FormulaRule(formula=[f"F{deb_suivi + off}>0"],
+                                  fill=fill(BLOQUE_PALE), font=Font(color=BLOQUE, bold=True)))
+fi.conditional_formatting.add(f"F{deb_suivi + 5}", FormulaRule(
+    formula=[f"AND(ISNUMBER(F{deb_suivi + 5}),F{deb_suivi + 5}>DelaiRevision)"], fill=fill(BLOQUE_PALE), font=Font(color=BLOQUE, bold=True)))
+fi.cell(row=rb, column=5, value='="Révision attendue aux "&DelaiRevision&" jours; relance après "&DelaiRelance&" jours sans réponse."').font = f(size=9, italic=True, color=DISCRET)
 fi.freeze_panes = "A4"
 fi.page_setup.orientation = "landscape"
 fi.page_setup.fitToWidth, fi.page_setup.fitToHeight = 1, 1
@@ -583,53 +861,72 @@ me.column_dimensions["B"].width = 26
 me.column_dimensions["C"].width = 100
 TXT = [
     ("À QUOI ÇA SERT", None),
-    ("", "Un seul fichier par immeuble géré qui réunit tout ce qu'il faut savoir pour le gérer : identification, propriétaire et mandat, "
-         "unités et baux, assurances, taxes, contrats, entretien, équipements, travaux, contacts et documents."),
-    ("", "L'onglet Fiche donne un tableau de bord : occupation, revenus et toutes les échéances à venir ou dépassées."),
-    ("DÉMARRER UN DOSSIER", None),
-    ("1.", "Copier ce gabarit et le renommer : « Dossier maître - [code d'entité] - [adresse].xlsx » (ex. Dossier maître - 99.1 - 450 des Érables.xlsx)."),
-    ("2.", "Le déposer dans le dossier SharePoint de l'immeuble."),
-    ("3.", "Remplir l'onglet Fiche, puis les autres onglets. Remplacer ou supprimer les lignes d'exemple."),
-    ("4.", "Dans l'onglet Entretien, mettre Non dans « Applicable » pour ce qui ne s'applique pas à l'immeuble, puis inscrire les dernières dates."),
+    ("", "Un seul fichier par immeuble géré, qui réunit tout ce qu'il faut savoir pour le gérer. C'est la référence de toute l'équipe Progim. "
+         "Il sert à trois moments : l'intégration d'un nouveau client, la gestion au quotidien et la passation d'un gestionnaire à un autre."),
+    ("", "L'onglet Fiche donne le tableau de bord : occupation, revenus, échéances, avancement de l'intégration et date de la dernière mise à jour."),
+    ("1. INTÉGRATION", None),
+    ("Ouvrir le dossier", "Copier ce gabarit, le renommer « Dossier maître - [code d'entité] - [adresse].xlsx » et le déposer dans le dossier SharePoint "
+                          "de l'immeuble. Dans la Fiche, mettre le statut du dossier à En intégration."),
+    ("Préparer les demandes", "Onglet Intégration : mettre Non dans Applicable pour ce qui ne s'applique pas, puis nommer un responsable Progim par élément. "
+                              "Filtrer la colonne Source sur Propriétaire, puis sur Gestionnaire sortant : chaque liste filtrée devient la demande "
+                              "à envoyer. Inscrire la date dans Demandé le et passer le statut à Demandé."),
+    ("Commencer par la priorité 1", "Tout ce qu'il faut avoir avant la prise en charge. Les demandes sans réponse passent en orange, puis en rouge : relancer."),
+    ("Rencontre de transfert", "Avec le gestionnaire sortant et le concierge, parcourir l'onglet Connaissances question par question et écrire les réponses. "
+                               "C'est là qu'on récupère ce que l'équipe sait sans l'avoir écrit. Faire la visite complète le même jour si possible."),
+    ("Consigner", "À la réception, inscrire l'information dans l'onglet indiqué (Consigné dans), puis passer le statut à Intégré."),
+    ("Terminer", "Quand la priorité 1 est complète, mettre le statut du dossier à Actif. Faire le bilan des 90 jours avec le propriétaire."),
+    ("2. TENUE À JOUR", None),
+    ("Responsable", "Le gestionnaire responsable est le gardien du dossier; toute l'équipe peut et doit le mettre à jour."),
+    ("Journal", "Chaque changement important = une ligne dans l'onglet Journal (date, qui, quoi). La Fiche affiche la date de la dernière mise à jour."),
+    ("Révision", "Revoir tout le dossier au moins une fois par trimestre. Après 90 jours sans inscription au journal, le compteur de la Fiche passe en rouge."),
+    ("Au fil de l'eau", "Ce qu'on apprend sur le terrain va dans Connaissances au moment où on l'apprend : c'est ce qui rend la passation facile."),
+    ("3. PASSATION", None),
+    ("Étapes", "Mettre le statut du dossier à En passation et suivre la liste de passation dans l'onglet Journal. À la fin, changer le gestionnaire "
+               "responsable dans la Fiche et dans Hopem, inscrire la passation au journal et remettre le statut à Actif."),
     ("LÉGENDE", None),
     ("Cellule blanche", "À remplir. Plusieurs colonnes ont une liste déroulante."),
     ("Cellule grise", "Calculée automatiquement. Ne pas modifier."),
-    ("Texte bleu italique", "Ligne d'exemple fictive : montre le format attendu. À remplacer ou supprimer."),
+    ("Texte bleu italique", "Exemple fictif : montre le format attendu. À remplacer ou supprimer."),
     ("En-tête marine", "Colonne à remplir. En-tête gris : colonne calculée."),
-    ("Rouge", "Échéance dépassée."),
-    ("Orange", "Échéance dans le seuil urgent (30 jours par défaut)."),
-    ("Jaune", "Échéance dans le seuil d'alerte (90 jours par défaut). Les seuils se changent dans l'onglet Paramètres."),
+    ("Rouge", "Échéance dépassée, ou demande à relancer depuis longtemps."),
+    ("Orange", "Échéance dans le seuil urgent (30 jours par défaut), ou demande à relancer."),
+    ("Jaune", "Échéance dans le seuil d'alerte (90 jours par défaut). Les seuils et délais se changent dans l'onglet Paramètres."),
     ("RÈGLES", None),
+    ("Un seul fichier", "Ouvrir le fichier depuis SharePoint, dans Excel : plusieurs personnes peuvent y travailler en même temps. Pas de copie sur un poste."),
     ("Confidentialité", "Ne jamais inscrire de code d'alarme, de mot de passe, de combinaison ni de numéro de compte complet."),
-    ("Mise à jour", "Changer la date « Fiche mise à jour le » à chaque révision. Revoir le dossier au moins une fois par trimestre et à chaque renouvellement de bail."),
-    ("Ajouter des lignes", "Les tableaux ont de la place (200 unités, 200 travaux, 40 contrats…). Pour en ajouter, insérer des lignes AU MILIEU d'un tableau pour que les totaux et le tableau de bord les comptent."),
-    ("Avis de modification de bail", "Calculés selon l'art. 1942 C.c.Q. (bail de 12 mois ou plus : 3 à 6 mois avant la fin; moins de 12 mois : 1 à 2 mois). Logement résidentiel seulement; ne s'applique pas au bail à durée indéterminée."),
-    ("Entretien et inspections", "La liste de départ est indicative. Valider les fréquences et les exigences réglementaires avec les fournisseurs pour chaque immeuble."),
+    ("Renseignements personnels", "Loi 25 : sur les locataires, seulement ce qui est nécessaire à la gestion, des faits et non des opinions. Le dossier SharePoint "
+                                  "est réservé à l'équipe Progim. Ne pas transmettre le fichier complet au propriétaire ni à des tiers : extraire l'onglet utile."),
+    ("Ajouter des lignes", "Les tableaux ont de la place (120 éléments d'intégration, 200 unités, 300 inscriptions au journal…). Pour en ajouter, insérer des "
+                           "lignes au milieu d'un tableau pour que les totaux et le tableau de bord les comptent."),
+    ("Avis de modification", "Calculés selon l'art. 1942 C.c.Q. (bail de 12 mois ou plus : 3 à 6 mois avant la fin; moins de 12 mois : 1 à 2 mois). "
+                             "Logement résidentiel seulement; ne s'applique pas au bail à durée indéterminée."),
+    ("Listes de départ", "Les listes d'entretien, du calendrier et les numéros d'urgence sont indicatifs : les valider pour chaque immeuble."),
 ]
+LEGENDE = {"Cellule blanche": (fill("FFFFFF"), f()), "Cellule grise": (CALC_FILL, f()),
+           "Texte bleu italique": (None, f(italic=True, color="0000FF")), "En-tête marine": (fill(MARINE), f(bold=True, color="FFFFFF")),
+           "Rouge": (fill(BLOQUE_PALE), f(bold=True, color=BLOQUE)), "Orange": (fill(SPECIAL), f(bold=True, color=ORANGE_TXT)),
+           "Jaune": (fill(LIGNE_SURVOL), f(color=AVERT))}
 r = 3
 for a, b in TXT:
     if b is None:
         r += 1
         me.cell(row=r, column=2, value=a).font = f(bold=True, color=ORANGE_TXT)
     else:
-        me.cell(row=r, column=2, value=a).font = f(bold=True)
+        lab = me.cell(row=r, column=2, value=a)
+        lab.font, lab.alignment = f(bold=True), Alignment(vertical="top", wrap_text=True)
         c = me.cell(row=r, column=3, value=b)
         c.font, c.alignment = f(), Alignment(wrap_text=True, vertical="top")
-        me.cell(row=r, column=2).alignment = Alignment(vertical="top")
+        if a in LEGENDE:
+            fl, fo = LEGENDE[a]
+            lab.border, lab.font = BORD, fo
+            if fl:
+                lab.fill = fl
     r += 1
-# échantillons de légende
-for row_, (fl, fo) in {15: (fill("FFFFFF"), f()), 16: (CALC_FILL, f()), 17: (None, f(italic=True, color="0000FF")),
-                       18: (fill(MARINE), f(bold=True, color="FFFFFF")), 19: (fill(BLOQUE_PALE), f(bold=True, color=BLOQUE)),
-                       20: (fill(SPECIAL), f(bold=True, color=ORANGE_TXT)), 21: (fill(LIGNE_SURVOL), f(color=AVERT))}.items():
-    c = me.cell(row=row_, column=2)
-    c.border = BORD
-    if fl:
-        c.fill = fl
-    c.font = fo
-
-me.page_setup.fitToWidth, me.page_setup.fitToHeight = 1, 1
+me.page_setup.fitToWidth, me.page_setup.fitToHeight = 1, 0
 me.sheet_properties.pageSetUpPr.fitToPage = True
-wb.move_sheet("Paramètres", offset=len(wb.sheetnames))
+ORDRE = ["Mode d'emploi", "Fiche", "Intégration", "Connaissances", "Calendrier", "Unités", "Assurances", "Taxes",
+         "Contrats", "Entretien", "Équipements", "Travaux", "Contacts", "Documents", "Journal", "Paramètres"]
+wb._sheets.sort(key=lambda w: ORDRE.index(w.title))
 wb.active = 1
 wb.save(SORTIE)
 print("Écrit :", SORTIE)
