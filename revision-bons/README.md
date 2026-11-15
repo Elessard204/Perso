@@ -27,10 +27,10 @@ après l'essai sur un bon de test (tâche 10 du plan).
    tâche, champ de la description, produits transport et matériel).
 3. Essai d'écriture sur un bon de test, puis `ecriture_validee = true`.
 
-Le Python portable de Progim n'a pas pip. Les modules du SDK de Claude (Windows 64 bits, Python 3.12) sont
-donc livrés en fichiers `.whl` dans `_logiciel/roues`, et `dependances.py` les décompresse au premier lancement
-dans `%LOCALAPPDATA%\ProgimRevisionBons\modules-…`. Pour changer de version : `pip download "anthropic==X"
---platform win_amd64 --python-version 3.12 --implementation cp --abi cp312 --only-binary=:all: -d _logiciel/roues`.
+Le Python portable de Progim n'a pas pip. Au premier lancement, `dependances.py` télécharge depuis PyPI les
+modules du SDK de Claude pour Windows 64 bits / Python 3.12 listés dans `_logiciel/roues.toml`, vérifie
+l'empreinte sha256 de chacun, puis les décompresse dans `%LOCALAPPDATA%\ProgimRevisionBons`. Un dossier
+`_logiciel/roues` contenant des `.whl` est utilisé à la place s'il existe (poste sans Internet).
 
 ## Organisation
 
