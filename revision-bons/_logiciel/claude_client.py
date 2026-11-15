@@ -11,8 +11,8 @@ def creer_client(cle: str):
     try:
         import anthropic  # importé ici : les tests et le mode démo n'en ont pas besoin
     except ImportError as e:
-        raise RuntimeError("Le module de l'IA (anthropic) est introuvable : vérifier que le dossier "
-                           "_logiciel/roues est complet.") from e
+        raise RuntimeError("Le module de l'IA (anthropic) n'a pas pu être installé : vérifier la connexion "
+                           "Internet, puis fermer et relancer l'outil.") from e
     return anthropic.Anthropic(api_key=cle)
 
 

@@ -1,8 +1,8 @@
-"""Modules Python livrés avec l'outil (dossier « roues ») et décompressés au premier lancement.
+"""Modules Python du SDK de Claude, installés au premier lancement sans pip.
 
-Le Python portable de Progim n'a pas pip : les modules du SDK de Claude, compilés pour Windows 64 bits et
-Python 3.12, sont fournis en fichiers .whl (des archives zip) et décompressés avec la bibliothèque standard
-dans le profil Windows de la personne. Une nouvelle série de roues crée un nouveau dossier.
+Le Python portable de Progim n'a pas pip. Les modules (Windows 64 bits, Python 3.12) sont téléchargés depuis PyPI
+selon roues.toml, leur empreinte sha256 est vérifiée, puis ils sont décompressés avec la bibliothèque standard dans
+le profil Windows de la personne. Un dossier « roues » contenant des .whl est utilisé à la place s'il existe.
 """
 
 from __future__ import annotations
