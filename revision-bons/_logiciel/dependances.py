@@ -58,15 +58,15 @@ def preparer(roues: Path, profil: Path | None = None, manifeste: Path | None = N
     empreinte = hashlib.sha1("|".join(f"{f.name}:{f.stat().st_size}" for f in fichiers).encode()).hexdigest()[:10]
     cible = profil / f"modules-{empreinte}"
     if not (cible / ".complet").exists():
-        temporaire = cible.with_name(cible.name + ".tmp")
-        shutil.rmtree(temporaire, ignore_errors=True)
-        temporaire.mkdir(parents=True)
+        # Décompression sur place, sans renommer de dossier : un antivirus qui analyse les fichiers fraîchement
+        # décompressés fait refuser le renommage par Windows (WinError 5). Le témoin « .complet » est écrit en
+        # dernier : une installation coupée est simplement refaite au lancement suivant.
+        cible.mkdir(parents=True, exist_ok=True)
         for f in fichiers:
             with zipfile.ZipFile(f) as z:
-                z.extractall(temporaire)
-        (temporaire / ".complet").write_text("ok", encoding="utf-8")
-        shutil.rmtree(cible, ignore_errors=True)
-        temporaire.rename(cible)
+                z.extractall(cible)
+        (cible / ".complet").write_text("ok", encoding="utf-8")
+        shutil.rmtree(cible.with_name(cible.name + ".tmp"), ignore_errors=True)  # reste d'une ancienne version
     if str(cible) not in sys.path:
         sys.path.insert(0, str(cible))
     return cible

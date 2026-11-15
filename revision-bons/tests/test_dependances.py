@@ -114,3 +114,29 @@ def test_manifeste_reel_coherent():
     assert len(roues) == 16 and all(r["url"].startswith("https://files.pythonhosted.org/") for r in roues)
     assert all(len(r["sha256"]) == 64 for r in roues)
     assert any(r["nom"].startswith("anthropic-2.8.0") for r in roues)
+
+
+def test_renommage_refuse_par_windows_sans_effet(tmp_path, monkeypatch):
+    # Un antivirus garde les fichiers décompressés ouverts : renommer le dossier échoue (WinError 5).
+    from pathlib import Path
+    roues, profil = tmp_path / "roues", tmp_path / "profil"
+    roues.mkdir()
+    roue(roues, "z_mod-1.0-py3-none-any.whl", {"z_mod/__init__.py": "OK = 1\n"})
+    monkeypatch.setattr(sys, "path", list(sys.path))
+
+    def refuse(self, cible):
+        raise PermissionError(5, "Accès refusé")
+    monkeypatch.setattr(Path, "rename", refuse)
+    cible = preparer(roues, profil)
+    assert (cible / "z_mod" / "__init__.py").exists() and (cible / ".complet").exists()
+
+
+def test_installation_interrompue_reprise(tmp_path, monkeypatch):
+    roues, profil = tmp_path / "roues", tmp_path / "profil"
+    roues.mkdir()
+    roue(roues, "w_mod-1.0-py3-none-any.whl", {"w_mod/__init__.py": "OK = 1\n"})
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    cible = preparer(roues, profil)
+    (cible / ".complet").unlink()               # comme si l'installation avait été coupée
+    (cible / "w_mod" / "__init__.py").unlink()
+    assert (preparer(roues, profil) / "w_mod" / "__init__.py").exists()
