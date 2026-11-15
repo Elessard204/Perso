@@ -3,7 +3,7 @@
 [progression]
 base = "https://progim.progressionlive.com/server/rest"   # adresse propre à Progim
 logic_ids_a_facturer = "600" # « Terminé » (inspection du 2026-11-10)
-type_tache = ""               # type des bons de service (spec 9.1)
+type_tache = ""               # vide = tous les types (Maintenance et Appel de service passent par Hugo)
 champ_description = "properties.info.notes"   # « Note technicien » (confirmé par Hugo, questionnaire du 2026-11-14)
 champ_achat = "properties.info.achat" # champ « Achat » rempli par le technicien (inspection du 2026-11-10)
 produit_transport = ""        # code du produit transport (spec 9.4)

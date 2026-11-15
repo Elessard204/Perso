@@ -83,6 +83,11 @@ def toml_texte(donnees: dict) -> str:
     return "\n".join(lignes) + "\n"
 
 
+def nom_personne(brut: str) -> str:
+    """Nom du fichier de journal de la personne : lettres (accents compris), chiffres, point, tiret."""
+    return re.sub(r"[^\w.-]", "_", brut) or "poste"
+
+
 class ErreurDemande(Exception):
     """Demande refusée, avec un message à afficher dans la page."""
 
@@ -91,7 +96,7 @@ def _nombre(valeur) -> float:
     if isinstance(valeur, bool):
         raise ValueError
     n = float(valeur) if isinstance(valeur, (int, float)) else float(
-        str(valeur).replace(",", ".").replace(" ", "").replace("\u00a0", ""))
+        str(valeur).replace(",", ".").replace(" ", "").replace(chr(0xA0), ""))
     if not math.isfinite(n):
         raise ValueError
     return n
@@ -167,8 +172,8 @@ class Application:
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", debut or "") or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fin or ""):
             raise ErreurDemande("Choisir une date de début et une date de fin.")
         p = self.cfg["progression"]
-        if not self.demo and not (p.get("logic_ids_a_facturer") and p.get("type_tache")):
-            raise ErreurDemande("Configuration incomplète : remplir logic_ids_a_facturer et type_tache dans "
+        if not self.demo and not p.get("logic_ids_a_facturer"):
+            raise ErreurDemande("Configuration incomplète : remplir logic_ids_a_facturer dans "
                                 "_logiciel/config.toml (voir l'inspection des vrais bons).")
         with self.verrou:
             if self.progres["en_cours"] or self.envoi_en_cours:
@@ -540,7 +545,7 @@ def surveiller(serveur: ThreadingHTTPServer, app: Application) -> None:
 
 if __name__ == "__main__":
     demo = "--demo" in sys.argv
-    personne = re.sub(r"[^0-9A-Za-z._-]", "_", os.environ.get("USERNAME") or os.environ.get("USER") or "poste")
+    personne = nom_personne(os.environ.get("USERNAME") or os.environ.get("USER") or "poste")
     app = Application(ICI, demo=demo, personne=personne)
     serveur = Serveur(("127.0.0.1", 0), creer_gestionnaire(app))
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"

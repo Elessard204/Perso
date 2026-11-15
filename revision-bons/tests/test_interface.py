@@ -225,11 +225,31 @@ def test_arret_automatique_jamais_pendant_le_travail(tmp_path):
 
 
 def test_configuration_vide_refusee_hors_demo(tmp_path, monkeypatch):
+    import shutil
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    app = Application(LOGICIEL, demo=False, personne="hugo", donnees=tmp_path)
+    logiciel = tmp_path / "logiciel"
+    shutil.copytree(LOGICIEL, logiciel, ignore=shutil.ignore_patterns("demo", "cache", "journal", "__pycache__"))
+    cfg = (logiciel / "config.toml").read_text(encoding="utf-8")
+    (logiciel / "config.toml").write_text(cfg.replace('logic_ids_a_facturer = "600"', 'logic_ids_a_facturer = ""'),
+                                          encoding="utf-8")
+    app = Application(logiciel, demo=False, personne="hugo", donnees=tmp_path)
     with pytest.raises(ErreurDemande, match="config.toml"):
         app.charger("2026-11-01", "2026-11-30")
 
+
+def test_type_de_bon_facultatif(tmp_path, monkeypatch):
+    # Hugo traite les deux types (Maintenance et Appel de service) : sans type, on charge tous les bons terminés.
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    app = Application(LOGICIEL, demo=False, personne="hugo", donnees=tmp_path)
+    with pytest.raises(ErreurDemande, match="Clés manquantes"):   # passe la vérification de configuration
+        app.charger("2026-11-01", "2026-11-30")
+
+
+def test_nom_de_la_personne_garde_ses_accents():
+    from interface import nom_personne
+    assert nom_personne("ÉricLessard") == "ÉricLessard"
+    assert nom_personne("hugo.b") == "hugo.b"
+    assert nom_personne("a/b:c") == "a_b_c"
 
 def attendre(appel):
     for _ in range(200):
