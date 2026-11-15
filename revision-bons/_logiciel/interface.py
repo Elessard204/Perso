@@ -26,6 +26,11 @@ from urllib.parse import parse_qs, urlparse
 ICI = Path(__file__).resolve().parent
 sys.path.insert(0, str(ICI))
 
+if os.name == "nt":
+    # Modules du SDK de Claude livrés avec l'outil (Python portable sans pip) : décompressés au 1er lancement.
+    import dependances  # noqa: E402
+    dependances.preparer(ICI / "roues")
+
 import cles  # noqa: E402
 from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
                      proposition_vers_dict, transports_en_double)

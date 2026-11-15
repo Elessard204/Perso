@@ -8,7 +8,11 @@ BETAS = ["server-side-fallback-2026-07-01"]
 
 
 def creer_client(cle: str):
-    import anthropic  # importé ici : les tests et le mode démo n'en ont pas besoin
+    try:
+        import anthropic  # importé ici : les tests et le mode démo n'en ont pas besoin
+    except ImportError as e:
+        raise RuntimeError("Le module de l'IA (anthropic) est introuvable : vérifier que le dossier "
+                           "_logiciel/roues est complet.") from e
     return anthropic.Anthropic(api_key=cle)
 
 
