@@ -110,6 +110,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 .lignes input.libelle { width: 100%; text-align: left; }
 .lignes tr.ajoutee td { background: var(--fait); }
 .lignes tr.modifiee td.qte { background: var(--special); }
+.lignes tr.retiree td { color: var(--pale); text-decoration: line-through; }
 .origine { color: var(--info); font-size: 12px; }
 .pieces { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .piece { border: 1px solid var(--ligne); border-radius: var(--rayon-carte); overflow: hidden; display: grid; grid-template-rows: auto 1fr; }
@@ -198,21 +199,26 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
   <p class="note">Ces règles s'appliquent à chaque analyse. Une modification vaut pour les prochaines analyses; les bons déjà analysés gardent leur proposition.</p>
   <form id="form-regles" class="cartes">
     <section class="carte">
-      <p class="surtitre">Heures facturées</p>
-      <div class="champ"><label for="r-pas">Arrondi au … supérieur (minutes)</label><input id="r-pas" name="pas_minutes" inputmode="numeric">
-        <small>Par technicien, sur son temps total dans le bon. Les feuilles de temps (paie) ne sont jamais modifiées. Une ligne déjà plus haute n'est jamais réduite.</small></div>
+      <p class="surtitre">Heures et transport</p>
+      <p class="note">S'appliquent aux lignes créées par le bouton « Facturer » de la feuille de temps. Les feuilles de temps (paie) ne sont jamais modifiées.</p>
+      <div class="champ"><label for="r-pas">Chaque ligne de main-d'œuvre arrondie au … supérieur (minutes)</label><input id="r-pas" name="pas_minutes" inputmode="numeric">
+        <small>15 minutes = 0,25 h, aussi le minimum facturable. Une ligne n'est jamais réduite.</small></div>
+      <div class="champ"><label for="r-transport-max">Transport facturé jusqu'à … minutes</label><input id="r-transport-max" name="transport_max_minutes" inputmode="numeric">
+        <small>Au-delà, l'excédent passe en main-d'œuvre et le bon est signalé (possible oubli de changer le statut).</small></div>
+      <div class="champ"><label for="r-transports">Nombre de transports</label>
+        <select id="r-transports" name="regle_transports"><option value="un_par_visite">Quantité 1 par entrée de transport</option></select></div>
     </section>
     <section class="carte">
-      <p class="surtitre">Matériel refacturé</p>
-      <div class="champ"><label for="r-marge">Marge sur le coût d'achat (ex. 0,10 = 10 %)</label><input id="r-marge" name="marge" inputmode="decimal">
-        <small>Appliquée au prix unitaire avant taxes de chaque ligne de facture.</small></div>
-      <p class="note">Les taxes, écofrais et consignes des factures fournisseurs ne sont pas refacturés.</p>
+      <p class="surtitre">Matériel acheté</p>
+      <div class="champ"><label for="r-marge">Marge sur le coût d'achat (ex. 0,15 = 15 %)</label><input id="r-marge" name="marge" inputmode="decimal">
+        <small>Une ligne « Matériel acheté » par facture, quantité 1, articles en description, prix = sous-total avant taxes + marge.</small></div>
+      <p class="note">Les écofrais, consignes et frais de livraison sont refacturés; la TPS et la TVQ ne le sont pas.</p>
     </section>
     <section class="carte">
-      <p class="surtitre">Transports</p>
-      <div class="champ"><label for="r-transports">Règle</label>
-        <select id="r-transports" name="regle_transports"><option value="conserver">À définir : garder le nombre inscrit et signaler le bon</option></select>
-        <small>La règle de calcul des transports sera ajoutée quand Hugo l'aura définie.</small></div>
+      <p class="surtitre">Tarifs selon le type de bon</p>
+      <div class="grille"><table><thead><tr><th>Type de bon</th><th>Service</th><th class="nombre">Heure</th><th class="nombre">Transport</th></tr></thead>
+        <tbody id="r-tarifs"></tbody></table></div>
+      <small class="note">Un taux d'un autre type est corrigé automatiquement; un taux hors grille (ex. SRP) est gardé et le bon est signalé. Ces tarifs se modifient dans regles.toml.</small>
     </section>
     <section class="carte">
       <p class="surtitre">Garde-fous : le bon passe « À vérifier »</p>
@@ -220,18 +226,22 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <div class="champ"><label for="r-jours">Facture à plus de … jours de la date du bon</label><input id="r-jours" name="jours_max_facture" inputmode="numeric"></div>
       <div class="champ"><label for="r-montant">Ligne de matériel de plus de … $</label><input id="r-montant" name="montant_max_ligne" inputmode="decimal"></div>
       <div class="champ"><label for="r-heures">Technicien avec plus de … heures dans une journée</label><input id="r-heures" name="heures_max_jour" inputmode="decimal"></div>
+      <div class="champ"><label for="r-marge-min">Marge minimale par bon (ex. 0,20 = 20 %; 0 = seulement les bons à perte)</label><input id="r-marge-min" name="marge_minimum" inputmode="decimal"></div>
       <ul>
+        <li>Transport de plus de la durée permise, transport manquant une journée de travail, ou transport possiblement en double (même technicien, même immeuble, même jour).</li>
+        <li>Taux qui ne correspond pas au type de bon, ou type de bon sans tarif.</li>
+        <li>Matériel en inventaire à 0 $.</li>
+        <li>Bon à perte, sous la marge minimale, ou sans aucun montant facturé.</li>
         <li>Pièce jointe illisible ou classement incertain.</li>
-        <li>Description révisée contenant un nombre absent du texte du technicien.</li>
-        <li>Ligne de main-d'œuvre introuvable ou partagée entre techniciens.</li>
         <li>Achat déclaré par le technicien sans facture trouvée, ou facture trouvée alors qu'il a répondu « Non ».</li>
+        <li>Description enrichie d'après les photos, créée faute de note, ou contenant un nombre absent du texte du technicien.</li>
       </ul>
     </section>
     <section class="carte">
       <p class="surtitre">Garde-fous : le bon est bloqué</p>
       <ul>
         <li>Même facture (fournisseur et numéro) déjà refacturée dans un autre bon, ou jointe deux fois au même bon.</li>
-        <li>Bon sans aucune heure.</li>
+        <li>Bon sans aucune heure, ou heures pas encore envoyées à la facture (cliquer « Facturer » dans la feuille de temps).</li>
       </ul>
       <p class="note">Corriger dans Progression, puis réanalyser le bon.</p>
     </section>
@@ -276,7 +286,8 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <fieldset>
         <legend>Description des travaux</legend>
         <div class="deux">
-          <div class="champ"><label>Texte du technicien</label><div class="original" id="fiche-original"></div></div>
+          <div class="champ"><label>Note du technicien</label><div class="original" id="fiche-original"></div>
+            <small class="note" id="fiche-demande"></small></div>
           <div class="champ"><label for="fiche-description">Version proposée</label><textarea id="fiche-description"></textarea>
             <small class="origine" id="fiche-description-origine"></small></div>
         </div>
@@ -284,6 +295,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <fieldset>
         <legend>Lignes facturables</legend>
         <p class="note" id="fiche-temps"></p>
+        <p class="note" id="fiche-marge"></p>
         <div class="grille lignes"><table>
           <thead><tr><th>Ligne</th><th class="nombre">Qté actuelle</th><th class="nombre">Qté proposée</th><th class="nombre">Coût unit.</th><th class="nombre">Prix unit.</th><th>Origine</th></tr></thead>
           <tbody id="fiche-lignes"></tbody>
@@ -438,20 +450,27 @@ function afficherFiche() {
   $("fiche-statut").innerHTML = pastille(l.statut) + (l.approuve ? ' <span class="pastille oui">Approuvé</span>' : "");
   $("fiche-client").textContent = `${l.client} · ${l.date}`;
   $("fiche-alertes").innerHTML = p.alertes.map(a => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}</li>`).join("");
-  $("fiche-original").textContent = p.description_originale || "(vide)";
+  $("fiche-original").textContent = p.description_originale || "(vide : le technicien n'a rien écrit)";
+  $("fiche-demande").textContent = d.bon.demande ? `Demande de départ : ${d.bon.demande}` : "";
   $("fiche-achat").textContent = d.bon.achat ? `Achat déclaré par le technicien : « ${d.bon.achat} »` : "Achat déclaré par le technicien : champ non rempli";
   $("fiche-description").value = p.description;
   $("fiche-description-origine").textContent = p.origine.description || "";
+  const m = p.marge || {};
+  $("fiche-marge").innerHTML = m.revenu === undefined ? "" :
+    `Rentabilité estimée : <b>${argent(m.revenu)}</b> facturés, coût ${argent(m.cout)}` +
+    (m.marge === null || m.marge === undefined ? "" : ` · marge <b>${Math.round(m.marge * 100)} %</b>`) +
+    (m.cout_complet ? "" : " (coût horaire manquant pour un technicien : coût sous-estimé)");
   const minutes = {};
-  d.bon.entrees.forEach(e => minutes[e.technicien] = (minutes[e.technicien] || 0) + e.minutes);
+  d.bon.entrees.forEach(e => minutes[e.technicien] = (minutes[e.technicien] || 0) + Math.round(e.minutes));
   $("fiche-temps").textContent = "Temps réel (feuilles de temps, non modifiées) : " +
     (Object.entries(minutes).map(([t, m]) => `${t} ${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`).join(" · ") || "aucun");
   const actuelles = Object.fromEntries(d.bon.lignes.map(x => [x.id, x]));
   $("fiche-lignes").innerHTML = p.lignes.map((x, i) => {
     const avant = x.id != null ? actuelles[x.id] : null;
     const cle = x.id != null ? String(x.id) : x.external_id;
-    const modifiee = avant && avant.quantite !== x.quantite;
-    return `<tr class="${avant ? (modifiee ? "modifiee" : "") : "ajoutee"}">
+    const modifiee = avant && (avant.quantite !== x.quantite || avant.prix !== x.prix);
+    const retiree = x.id != null && (p.lignes_retirees || []).includes(x.id);
+    return `<tr class="${retiree ? "retiree" : avant ? (modifiee ? "modifiee" : "") : "ajoutee"}">
       <td><input class="libelle" data-champ="ligne:${i}:libelle" value="${echapper(x.libelle)}" aria-label="Libellé">
         <div class="discret">${echapper(x.description)}</div></td>
       <td class="nombre">${avant ? qte(avant.quantite) : "nouvelle"}</td>
@@ -501,6 +520,10 @@ async function chargerRegles() {
   try {
     const r = await api("/regles");
     $("r-pas").value = r.pas_minutes; $("r-marge").value = String(r.marge).replace(".", ",");
+    $("r-transport-max").value = r.transport_max_minutes; $("r-marge-min").value = String(r.marge_minimum).replace(".", ",");
+    $("r-tarifs").innerHTML = [...Object.entries(r.tarifs).map(([type, t]) => [type, t]),
+      ...Object.entries(r.tarifs_autres).map(([nom, t]) => ["(jamais automatique)", { ...t, service: nom }])]
+      .map(([type, t]) => `<tr><td>${echapper(type)}</td><td>${echapper(t.service || "")}</td><td class="nombre">${argent(t.heure)}</td><td class="nombre">${argent(t.transport)}</td></tr>`).join("");
     $("r-transports").value = r.regle_transports;
     $("r-ecart").value = String(r.ecart_sous_total).replace(".", ","); $("r-jours").value = r.jours_max_facture;
     $("r-montant").value = String(r.montant_max_ligne).replace(".", ","); $("r-heures").value = String(r.heures_max_jour).replace(".", ",");
@@ -510,7 +533,8 @@ async function chargerRegles() {
 $("enregistrer-regles").addEventListener("click", async () => {
   const valeurs = { pas_minutes: $("r-pas").value, marge: $("r-marge").value,
     regle_transports: $("r-transports").value, ecart_sous_total: $("r-ecart").value, jours_max_facture: $("r-jours").value,
-    montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value };
+    montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value,
+    transport_max_minutes: $("r-transport-max").value, marge_minimum: $("r-marge-min").value };
   try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
   catch (e) { message("message-regles", e.message); }
 });

@@ -5,8 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import defaultdict
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 
@@ -14,52 +13,8 @@ from modele import Alerte, AnalysePiece, Bon, Facture, Ligne, LigneFacture, Prop
 from pieces_jointes import analyser_piece
 from progression import ErreurProgression
 from redaction import rediger
-from regles import (Regles, garde_fou_achat, garde_fous_facture, garde_fous_temps, heures_facturees, heures_fr,
-                    lignes_materiel)
-
-
-def ajuster_main_oeuvre(bon: Bon, heures: dict[str, float]) -> tuple[list[Ligne], dict[str, str]]:
-    """Monte la ligne facturée de chaque technicien à ses heures arrondies. Ne réduit jamais."""
-    lignes = [replace(l) for l in bon.lignes]
-    par_id = {l.id: l for l in lignes if l.id is not None}
-    techniciens_par_ligne: dict[int, set[str]] = defaultdict(set)
-    lignes_par_tech: dict[str, list[int]] = defaultdict(list)
-    for e in bon.entrees:
-        if e.ligne_id in par_id:
-            techniciens_par_ligne[e.ligne_id].add(e.technicien)
-            if e.ligne_id not in lignes_par_tech[e.technicien]:
-                lignes_par_tech[e.technicien].append(e.ligne_id)
-    origine: dict[str, str] = {}
-    for tech, cible in heures.items():
-        ids = lignes_par_tech.get(tech)
-        if not ids or any(len(techniciens_par_ligne[i]) > 1 for i in ids):
-            continue  # signalé par analyser_bon
-        ecart = round(cible - sum(par_id[i].quantite for i in ids), 4)
-        if ecart <= 0:
-            continue
-        derniere = par_id[ids[-1]]
-        derniere.quantite = round(derniere.quantite + ecart, 4)
-        origine[str(derniere.id)] = f"Arrondi au 15 min supérieur – {tech} : {heures_fr(cible)} h facturées"
-    return lignes, origine
-
-
-def _alertes_main_oeuvre(bon: Bon, heures: dict[str, float]) -> list[Alerte]:
-    ids_lignes = {l.id for l in bon.lignes}
-    alertes = []
-    techs_par_ligne: dict[int, set[str]] = defaultdict(set)
-    for e in bon.entrees:
-        if e.ligne_id in ids_lignes:
-            techs_par_ligne[e.ligne_id].add(e.technicien)
-    for tech in heures:
-        ids = {e.ligne_id for e in bon.entrees if e.technicien == tech and e.ligne_id in ids_lignes}
-        if not ids:
-            alertes.append(Alerte("main_oeuvre_introuvable",
-                                  f"Aucune ligne facturée liée au temps de {tech} : arrondi non appliqué."))
-        elif any(len(techs_par_ligne[i]) > 1 for i in ids):
-            alertes.append(Alerte("main_oeuvre_partagee",
-                                  f"La ligne de main-d'œuvre de {tech} est partagée avec un autre technicien : "
-                                  "arrondi à vérifier à la main."))
-    return alertes
+from facturation import (ajuster_heures_transport, alertes_inventaire, alertes_marge, classer, estimer_marge)
+from regles import Regles, garde_fou_achat, garde_fous_facture, garde_fous_temps, ligne_materiel
 
 
 def chemin_cache(cache: Path, bon: Bon, r: Regles, cfg: dict) -> Path:
@@ -74,24 +29,25 @@ def effacer_cache(cache: Path, bon_id: int) -> None:
         fichier.unlink(missing_ok=True)
 
 
+def _ligne_vide(l: Ligne) -> bool:
+    return classer(l) == "materiel" and l.id is not None and not l.external_id and l.quantite == 0 and l.prix == 0
+
+
 def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, cache: Path) -> Proposition:
     fichier = chemin_cache(cache, bon, r, cfg)
     if fichier.exists():
         return proposition_depuis_dict(json.loads(fichier.read_text(encoding="utf-8")))
 
     alertes = garde_fous_temps(bon.entrees, r)
-    heures = heures_facturees(bon.entrees, r.pas_minutes)
-    lignes, origine = ajuster_main_oeuvre(bon, heures)
-    alertes += _alertes_main_oeuvre(bon, heures)
-
-    if r.regle_transports == "conserver":
-        alertes.append(Alerte("transport_a_definir",
-                              "Règle des transports pas encore définie : nombre de transports à vérifier."))
+    lignes, origine, alertes_heures = ajuster_heures_transport(bon, r)
+    alertes += alertes_heures
 
     deja_refacturees = journal.factures_refacturees()
     deja_dans_le_bon = {l.external_id.rsplit("|", 1)[0] for l in bon.lignes if l.external_id}
+    vides = [l for l in lignes if _ligne_vide(l)]   # lignes « Matériel acheté » vides, réutilisées en premier
     vues: set[str] = set()
     analyses: list[AnalysePiece] = []
+    photos: list[tuple[str, bytes]] = []
     for piece in bon.pieces:
         try:
             contenu = progression.telecharger_piece(piece.id)
@@ -99,6 +55,8 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
             analyse = AnalysePiece(piece.id, "incertain", None, f"Téléchargement impossible : {e}")
         else:
             analyse = analyser_piece(piece, contenu, client, cfg["claude"])
+            if analyse.genre == "photo":
+                photos.append((piece.type_mime, contenu))
         analyses.append(analyse)
         if analyse.genre == "incertain":
             alertes.append(Alerte("piece_incertaine", f"Pièce « {piece.nom} » : {analyse.raison}"))
@@ -115,24 +73,56 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
             continue  # déjà refacturée dans ce bon lors d'un envoi précédent
         # Une facture refacturée dans un AUTRE bon est vérifiée par doublons_externes, à chaque affichage.
         alertes += garde_fous_facture(f, bon.date_rv, r)
-        for ligne in lignes_materiel(f, r.marge):
-            lignes.append(ligne)
-            origine[ligne.external_id] = f"Facture {nom}, coût + {r.marge * 100:g} %".replace(".", ",")
+        nouvelle = ligne_materiel(f, r.marge)
+        if vides:
+            existante = vides.pop(0)
+            for champ in ("libelle", "description", "quantite", "prix", "cout_unitaire", "external_id"):
+                setattr(existante, champ, getattr(nouvelle, champ))
+            cle_origine = str(existante.id)
+        else:
+            lignes.append(nouvelle)
+            cle_origine = nouvelle.external_id
+        origine[cle_origine] = f"Facture {nom}, coût avant taxes + {r.marge * 100:g} %".replace(".", ",")
 
+    retirees = [l.id for l in vides]
+    for i in retirees:
+        origine[str(i)] = "Ligne « Matériel acheté » vide : retirée"
+    alertes += alertes_inventaire(lignes)
     alertes += garde_fou_achat(bon.achat, sum(1 for a in analyses if a.genre == "facture"))
 
-    description, alertes_texte = rediger(bon.description, client, cfg["claude"])
+    description, alertes_texte = rediger(bon.description, client, cfg["claude"], photos=photos, demande=bon.demande)
     alertes += alertes_texte
+
+    marge = estimer_marge(bon, lignes, retirees)
+    alertes += alertes_marge(marge, r)
 
     proposition = Proposition(
         bon_id=bon.id, maj=bon.maj, description=description, description_originale=bon.description,
-        lignes=lignes, analyses=analyses, alertes=alertes, origine=origine)
+        lignes=lignes, analyses=analyses, alertes=alertes, origine=origine, lignes_retirees=retirees, marge=marge)
     if not any(a.raison.startswith("Téléchargement impossible") for a in analyses):
         # Un échec de téléchargement est passager : on ne le garde pas, la prochaine analyse réessaie.
         fichier.parent.mkdir(parents=True, exist_ok=True)
         fichier.write_text(json.dumps(proposition_vers_dict(proposition), ensure_ascii=False, indent=1),
                            encoding="utf-8")
     return proposition
+
+
+def transports_en_double(paires: list[tuple[Bon, Proposition]]) -> None:
+    """Signale un transport facturé alors que le même technicien était déjà dans le même immeuble le même jour
+    pour un autre bon du lot. Recalculé à chaque fois (jamais mis en cache)."""
+    vus: dict[tuple, str] = {}
+    for bon, p in sorted(paires, key=lambda x: min((e.debut.isoformat() if e.debut else "") for e in x[0].entrees)
+                         if x[0].entrees else ""):
+        p.alertes = [a for a in p.alertes if a.code != "transport_double"]
+        cles = {(e.technicien, e.jour, bon.lieu.split("/")[0]) for e in bon.entrees
+                if "en route" in (e.activite or "").lower() and e.jour}
+        for cle in sorted(cles, key=str):
+            if cle in vus and vus[cle] != bon.code:
+                p.alertes.append(Alerte("transport_double",
+                                        f"{cle[0]} était déjà dans cet immeuble le {cle[1]} pour le bon {vus[cle]} : "
+                                        "transport possiblement facturé en double."))
+            else:
+                vus.setdefault(cle, bon.code)
 
 
 def doublons_externes(propositions: list[Proposition], journal, progression, memo: dict) -> None:
@@ -194,4 +184,6 @@ def proposition_depuis_dict(d: dict) -> Proposition:
         analyses=[AnalysePiece(a["piece_id"], a["genre"], facture(a["facture"]), a["raison"]) for a in d["analyses"]],
         alertes=[Alerte(**a) for a in d["alertes"]],
         origine=dict(d["origine"]),
+        lignes_retirees=list(d.get("lignes_retirees") or []),
+        marge=dict(d.get("marge") or {}),
     )

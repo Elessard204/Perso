@@ -1,13 +1,26 @@
 # Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.
 [heures]
-pas_minutes = 15
+pas_minutes = 15                 # chaque ligne de main-d'œuvre au 0,25 h supérieur (minimum 0,25)
+transport_max_minutes = 60       # au-delà, l'excédent du transport passe en main-d'œuvre
 [materiel]
-marge = 0.10
+marge = 0.15                     # coût avant taxes + 15 %
 refacturer_taxes = false
 [transports]
-regle = "conserver"   # seule valeur implémentée; Hugo définira la vraie règle
+regle = "un_par_visite"          # quantité 1 par entrée de transport
+[tarifs."Appel de service"]      # service SMMP
+service = "SMMP"
+heure = 65.0
+transport = 50.0
+[tarifs."Maintenance"]           # service SELP
+service = "SELP"
+heure = 45.0
+transport = 40.0
+[tarifs_autres.SRP]              # rénovations : jamais appliqué automatiquement, le bon est signalé
+heure = 85.0
+transport = 50.0
 [garde_fous]
 ecart_sous_total = 0.05
 jours_max_facture = 30
 montant_max_ligne = 1000.00
 heures_max_jour = 12
+marge_minimum = 0.0              # 0 = signaler seulement les bons à perte

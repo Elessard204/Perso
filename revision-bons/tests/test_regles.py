@@ -9,7 +9,7 @@ from regles import (
     garde_fous_facture,
     garde_fous_temps,
     heures_facturees,
-    lignes_materiel,
+    ligne_materiel,
     prix_avec_marge,
 )
 
@@ -21,7 +21,7 @@ def codes(alertes):
 
 
 def test_regles_toml():
-    assert (R.pas_minutes, R.marge, R.regle_transports) == (15, 0.10, "conserver")
+    assert (R.pas_minutes, R.marge, R.regle_transports) == (15, 0.15, "un_par_visite")
     assert (R.ecart_sous_total, R.jours_max_facture, R.montant_max_ligne, R.heures_max_jour) == (0.05, 30, 1000.00, 12)
 
 
@@ -47,12 +47,18 @@ def test_marge():
     assert prix_avec_marge(100.00, 0.10) == 110.00
 
 
-def test_lignes_materiel_cout_et_prix():
-    f = Facture("Rona", "A-1", J, 20.0, [LigneFacture("Vis", 2, 10.0)])
-    [l] = lignes_materiel(f, 0.10)
-    assert (l.cout_unitaire, l.prix, l.quantite) == (10.0, 11.0, 2)
+def test_une_ligne_par_facture_sous_total_plus_marge():
+    f = Facture("Rona", "A-1", J, 31.48, [LigneFacture("Robinet de cuisine", 1, 24.98), LigneFacture("Raccord 1/2 po", 2, 3.25)])
+    l = ligne_materiel(f, 0.15)
+    assert (l.id, l.quantite, l.cout_unitaire, l.prix) == (None, 1, 31.48, 36.2)   # 31,48 × 1,15 = 36,20
+    assert l.libelle == "Matériel acheté" and l.produit == "Matériel acheté"
+    assert l.description == "Rona – facture A-1 : Robinet de cuisine (1), Raccord 1/2 po (2)"
     assert l.external_id == "rona|A-1|1"
-    assert l.id is None
+
+
+def test_sans_sous_total_imprime_on_additionne_les_lignes():
+    f = Facture("BMR", "9", J, None, [LigneFacture("Vis", 2, 10.0), LigneFacture("Écofrais", 1, 0.5)])
+    assert ligne_materiel(f, 0.15).cout_unitaire == 20.5
 
 
 def test_facture_conforme_sans_alerte():

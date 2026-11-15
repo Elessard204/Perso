@@ -3,6 +3,37 @@
 Date : 2026-11-10
 Statut : à relire par la direction avant le plan de développement
 
+## 0. Version 2 — règles confirmées par Hugo (questionnaire du 2026-11-14)
+
+Cette section remplace ce qui la contredit plus bas (sections 2, 6 et 7).
+
+- **Flux réel.** Le technicien passe le bon à « Terminé ». Hugo clique « Facturer » dans l'onglet Feuille de
+  temps : Progression crée une ligne par entrée de temps (activité « En route » → ligne Transport,
+  « En cours » → ligne Main d'oeuvre). L'API n'a pas d'équivalent à ce bouton : l'outil travaille après ce clic
+  et bloque un bon dont des entrées de temps ne sont liées à aucune ligne. Ensuite Hugo passe le bon à
+  « Prêt à facturer », puis au 1er du mois à « Transférer au système comptable » (logicId 700).
+- **Transport** : quantité 1 par entrée; au-delà de 60 min, l'excédent passe en main-d'œuvre (alerte :
+  possible oubli de changer le statut).
+- **Main-d'œuvre** : chaque ligne au 0,25 h supérieur, minimum 0,25; jamais réduite.
+- **Tarifs selon le type de bon** (vérifié sur 80 bons transférés) : Appel de service = SMMP (65 $/h,
+  50 $ le transport); Maintenance = SELP (45 $/h, 40 $). SRP (rénovations, 85 $/h, 50 $) n'est jamais appliqué
+  automatiquement : un taux hors grille est gardé et signalé. Question en attente : SRP a-t-il son propre type?
+- **Matériel acheté** : une ligne par facture, quantité 1, articles en description, prix = sous-total avant
+  taxes (écofrais, consignes et livraison compris) + **15 %**. Une ligne « Matériel acheté » vide existante est
+  réutilisée; une ligne vide inutile est retirée.
+- **Description** : le champ à réviser est la « Note technicien » (`properties.info.notes`, clé à plat).
+  L'IA s'appuie aussi sur la demande de départ et sur les photos; chaque détail tiré d'une photo est listé et
+  signalé « à vérifier ».
+- **Garde-fous ajoutés** (objectif : ne rien oublier de facturer, département autosuffisant) : heures non
+  envoyées à la facture (bloquant), transport manquant, transport en double (même technicien, même immeuble,
+  même jour), taux non conforme au type, matériel en inventaire à 0 $, rentabilité estimée par bon (revenu
+  contre coût horaire des techniciens et coût du matériel; alerte si à perte ou sous la marge minimale). Le
+  garde-fou du champ « Achat » est conservé à la demande de la direction.
+- **Reste manuel** : prix du matériel en inventaire, fusion d'heures pour certains clients, plafonds de
+  soumission, refacturation à un locataire.
+- **Prochaine étape envisagée** : calcul automatique du kilométrage de la paie (trajets journaliers par
+  technicien), deuxième plus gros irritant de Hugo.
+
 ## 1. Le problème
 
 Avant d'envoyer un bon de service Progression Live à la facturation, Hugo

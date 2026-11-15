@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 
@@ -14,7 +14,10 @@ class EntreeTemps:
     technicien: str
     jour: date | None
     minutes: float  # exactes (secondes comprises)
-    ligne_id: int | None  # ligne facturable générée à partir de cette entrée
+    ligne_id: int | None  # ligne facturable générée par « Facturer » à partir de cette entrée
+    activite: str = ""  # « En route » (transport) ou « En cours » (main-d'œuvre)
+    debut: datetime | None = None
+    cout_horaire: float | None = None  # coût horaire moyen du technicien
 
 
 @dataclass
@@ -78,6 +81,10 @@ class Bon:
     lignes: list[Ligne] = field(default_factory=list)
     pieces: list[PieceJointe] = field(default_factory=list)
     achat: str = ""  # champ « Achat » rempli par le technicien (ex. « Non », « Robinet cuisine », « 61.13 »)
+    type_bon: str = ""  # « Appel de service » ou « Maintenance » : détermine les tarifs
+    lieu: str = ""  # « client/location » : sert à repérer un transport en double dans le même immeuble
+    lieu_libelle: str = ""
+    demande: str = ""  # sommaire et description rédigés au départ (contexte pour la réécriture)
 
 
 @dataclass
@@ -97,6 +104,8 @@ class Proposition:
     analyses: list[AnalysePiece] = field(default_factory=list)
     alertes: list[Alerte] = field(default_factory=list)
     origine: dict[str, str] = field(default_factory=dict)
+    lignes_retirees: list[int] = field(default_factory=list)  # lignes vides que l'écriture supprime
+    marge: dict = field(default_factory=dict)  # {"revenu", "cout", "marge", "cout_complet"}
 
     @property
     def statut(self) -> Literal["pret", "a_verifier", "bloque"]:

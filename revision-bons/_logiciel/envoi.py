@@ -29,7 +29,7 @@ def _nouvelle_ligne(ligne: Ligne, cfg: dict) -> dict:
     item = {nom: getattr(ligne, attribut) for attribut, nom in CHAMPS}
     item["externalId"] = ligne.external_id
     if cfg.get("produit_materiel"):
-        item["product"] = {"code": cfg["produit_materiel"]}
+        item["product"] = {"label": cfg["produit_materiel"]}
     return item
 
 
@@ -53,12 +53,14 @@ def corps_mise_a_jour(p: Proposition, cfg: dict, tache: dict | None,
     """
     if tache is not None:
         brutes = {i.get("id"): i for i in (tache.get("itemList") or {}).get("items") or [] if i.get("id") is not None}
-        manquantes = [i for i in brutes if i not in {l.id for l in p.lignes}]
+        manquantes = [i for i in brutes if i not in {l.id for l in p.lignes} and i not in set(p.lignes_retirees)]
         if manquantes:
             raise ValueError(f"Ligne(s) {', '.join(map(str, manquantes))} du bon absente(s) de la proposition : "
                              "l'écriture les effacerait.")
         items = []
         for l in p.lignes:
+            if l.id is not None and l.id in set(p.lignes_retirees):
+                continue  # ligne vide retirée : absente de la liste, Progression la supprime
             if l.id is None:
                 items.append(_nouvelle_ligne(l, cfg))
             elif l.id in brutes:
@@ -69,6 +71,8 @@ def corps_mise_a_jour(p: Proposition, cfg: dict, tache: dict | None,
         # Simulation sans réseau : on montre ce qu'on connaît des lignes.
         items = []
         for l in p.lignes:
+            if l.id is not None and l.id in set(p.lignes_retirees):
+                continue
             item = _nouvelle_ligne(l, cfg) if l.id is None else {nom: getattr(l, a) for a, nom in CHAMPS}
             if l.id is not None and l.produit:
                 item["product"] = {"code": l.produit}

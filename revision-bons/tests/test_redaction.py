@@ -7,7 +7,7 @@ CFG = {"modele": "claude-opus-5-5", "effort": "medium"}
 
 
 def reponse(texte):
-    return FauxClaude(json.dumps({"texte": texte}))
+    return FauxClaude(json.dumps({"texte": texte, "ajouts_photos": []}))
 
 
 def test_nombres_absents():
@@ -47,3 +47,44 @@ def test_refus():
 def test_reponse_vide_garde_l_original():
     texte, alertes = rediger("changé robinet", reponse("  "), CFG)
     assert texte == "changé robinet" and [a.code for a in alertes] == ["redaction_echec"]
+
+
+def reponse_v2(texte, ajouts=()):
+    return FauxClaude(json.dumps({"texte": texte, "ajouts_photos": list(ajouts)}))
+
+
+PHOTO = ("image/jpeg", b"\xff\xd8 photo")
+
+
+def test_photos_et_demande_envoyees():
+    c = reponse_v2("Remplacement du détecteur de fumée.")
+    rediger("Détecteur de fumme", c, CFG, photos=[PHOTO, PHOTO], demande="Détecteur à remplacer au 3e")
+    contenu = c.appels[0]["messages"][0]["content"]
+    assert [b["type"] for b in contenu] == ["image", "image", "text"]
+    assert "Détecteur à remplacer au 3e" in contenu[-1]["text"] and "Détecteur de fumme" in contenu[-1]["text"]
+
+
+def test_au_plus_quatre_photos_legeres():
+    c = reponse_v2("x")
+    grosse = ("image/jpeg", b"0" * (5 * 1024 * 1024 + 1))
+    rediger("texte", c, CFG, photos=[PHOTO] * 6 + [grosse, ("image/heic", b"x")])
+    assert sum(1 for b in c.appels[0]["messages"][0]["content"] if b["type"] == "image") == 4
+
+
+def test_ajouts_des_photos_signales():
+    texte, alertes = rediger("Détecteur de fumme",
+                             reponse_v2("Remplacé le détecteur de fumée à pile lithium 10 ans.", ["pile lithium 10 ans"]),
+                             CFG, photos=[PHOTO])
+    codes = [a.code for a in alertes]
+    assert "description_enrichie" in codes and "pile lithium 10 ans" in alertes[codes.index("description_enrichie")].message
+
+
+def test_note_vide_description_creee_a_partir_des_photos():
+    texte, alertes = rediger("", reponse_v2("Réparation du plafond.", ["plafond réparé"]), CFG, photos=[PHOTO],
+                             demande="Plafond à réparer")
+    assert texte == "Réparation du plafond." and "description_creee" in [a.code for a in alertes]
+
+
+def test_nombre_de_la_demande_accepte():
+    _, alertes = rediger("posé détecteur", reponse_v2("Pose de 3 détecteurs."), CFG, demande="Installer 3 détecteurs")
+    assert "redaction_chiffre" not in [a.code for a in alertes]

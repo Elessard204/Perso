@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import tomllib
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -23,6 +23,10 @@ class Regles:
     jours_max_facture: int
     montant_max_ligne: float
     heures_max_jour: float
+    transport_max_minutes: int = 60
+    marge_minimum: float = 0.0
+    tarifs: dict = field(default_factory=dict)          # type de bon -> {service, heure, transport}
+    tarifs_autres: dict = field(default_factory=dict)   # services jamais appliqués automatiquement (SRP)
 
 
 def charger_regles(chemin: Path) -> Regles:
@@ -37,6 +41,10 @@ def charger_regles(chemin: Path) -> Regles:
         jours_max_facture=int(g["jours_max_facture"]),
         montant_max_ligne=float(g["montant_max_ligne"]),
         heures_max_jour=float(g["heures_max_jour"]),
+        transport_max_minutes=int(d["heures"].get("transport_max_minutes", 60)),
+        marge_minimum=float(g.get("marge_minimum", 0.0)),
+        tarifs={k: dict(v) for k, v in d.get("tarifs", {}).items()},
+        tarifs_autres={k: dict(v) for k, v in d.get("tarifs_autres", {}).items()},
     )
 
 
@@ -72,19 +80,31 @@ def prix_avec_marge(cout: float, marge: float) -> float:
     return cents(Decimal(str(cout)) * (1 + Decimal(str(marge))))
 
 
-def lignes_materiel(facture: Facture, marge: float) -> list[Ligne]:
-    lignes = []
-    for i, lf in enumerate(facture.lignes, start=1):
-        lignes.append(Ligne(
-            id=None,
-            libelle=lf.description,
-            description=f"{facture.fournisseur} – facture {facture.numero}",
-            quantite=lf.quantite,
-            prix=prix_avec_marge(lf.prix_unitaire, marge),
-            cout_unitaire=lf.prix_unitaire,
-            external_id=f"{facture.cle}|{i}",
-        ))
-    return lignes
+PRODUIT_MATERIEL = "Matériel acheté"
+
+
+def total_avant_taxes(facture: Facture) -> float:
+    """Sous-total imprimé avant taxes (frais compris); sinon la somme des lignes."""
+    if facture.sous_total is not None:
+        return cents(facture.sous_total)
+    return cents(sum(Decimal(str(l.quantite)) * Decimal(str(l.prix_unitaire)) for l in facture.lignes))
+
+
+def ligne_materiel(facture: Facture, marge: float) -> Ligne:
+    """Comme Hugo : une ligne « Matériel acheté » par facture, quantité 1, articles en description,
+    prix = total avant taxes + marge."""
+    articles = ", ".join(f"{l.description} ({l.quantite:g})" for l in facture.lignes)
+    total = total_avant_taxes(facture)
+    return Ligne(
+        id=None,
+        libelle=PRODUIT_MATERIEL,
+        description=f"{facture.fournisseur} – facture {facture.numero} : {articles}",
+        quantite=1,
+        prix=prix_avec_marge(total, marge),
+        cout_unitaire=total,
+        produit=PRODUIT_MATERIEL,
+        external_id=f"{facture.cle}|1",
+    )
 
 
 def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> list[Alerte]:

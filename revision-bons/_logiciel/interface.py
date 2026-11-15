@@ -27,7 +27,8 @@ ICI = Path(__file__).resolve().parent
 sys.path.insert(0, str(ICI))
 
 import cles  # noqa: E402
-from analyse import analyser_bon, chemin_cache, doublons_externes, effacer_cache, proposition_vers_dict  # noqa: E402
+from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
+                     proposition_vers_dict, transports_en_double)
 from claude_client import creer_client  # noqa: E402
 from envoi import envoyer  # noqa: E402
 from journal import Journal  # noqa: E402
@@ -45,12 +46,41 @@ CHAMPS_REGLES = {
     "jours_max_facture": ("garde_fous", "jours_max_facture", int),
     "montant_max_ligne": ("garde_fous", "montant_max_ligne", float),
     "heures_max_jour": ("garde_fous", "heures_max_jour", float),
+    "transport_max_minutes": ("heures", "transport_max_minutes", int),
+    "marge_minimum": ("garde_fous", "marge_minimum", float),
 }
 
 
 def alerte_principale(alertes):
     """L'alerte à montrer dans la liste : bloquante d'abord, le transport à définir en dernier."""
     return sorted(alertes, key=lambda a: (not a.bloquante, a.code == "transport_a_definir"))[0]
+
+
+def _valeur_toml(v) -> str:
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return repr(v)
+    return json.dumps(str(v), ensure_ascii=False)
+
+
+def _cle_toml(cle: str) -> str:
+    return cle if re.fullmatch(r"[A-Za-z0-9_-]+", cle) else json.dumps(cle, ensure_ascii=False)
+
+
+def toml_texte(donnees: dict) -> str:
+    """Écrit regles.toml : sections simples, et sous-tables (tarifs."Appel de service")."""
+    lignes = []
+    for section, contenu in donnees.items():
+        simples = {k: v for k, v in contenu.items() if not isinstance(v, dict)}
+        if simples:
+            lignes.append(f"[{_cle_toml(section)}]")
+            lignes += [f"{_cle_toml(k)} = {_valeur_toml(v)}" for k, v in simples.items()]
+        for k, v in contenu.items():
+            if isinstance(v, dict):
+                lignes.append(f"[{_cle_toml(section)}.{_cle_toml(k)}]")
+                lignes += [f"{_cle_toml(k2)} = {_valeur_toml(v2)}" for k2, v2 in v.items()]
+    return "\n".join(lignes) + "\n"
 
 
 class ErreurDemande(Exception):
@@ -67,9 +97,10 @@ def _nombre(valeur) -> float:
     return n
 
 
-REGLES_TRANSPORTS = {"conserver"}   # seule règle implémentée pour l'instant
+REGLES_TRANSPORTS = {"un_par_visite"}   # quantité 1 par entrée de transport
 BORNES = {"pas_minutes": (1, 60), "marge": (0, 1), "ecart_sous_total": (0, 100), "jours_max_facture": (0, 365),
-          "montant_max_ligne": (0, 1_000_000), "heures_max_jour": (1, 24)}
+          "montant_max_ligne": (0, 1_000_000), "heures_max_jour": (1, 24),
+          "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9)}
 
 
 class Application:
@@ -216,6 +247,10 @@ class Application:
             doublons_externes(propositions, self.journal, progression, self.memo_progression)
         except ErreurProgression:
             doublons_externes(propositions, self.journal, None, self.memo_progression)
+        with self.verrou:
+            paires = [(self.bons[i]["bon"], self.bons[i]["proposition"]) for i in ordre
+                      if self.bons[i].get("proposition") and self.bons[i].get("bon")]
+        transports_en_double(paires)
 
     # ---------- un bon ----------
     def _bon(self, bon_id: int) -> dict:
@@ -230,7 +265,8 @@ class Application:
             bon, p = b["bon"], b["proposition"]
             return {
                 "liste": self._ligne_liste(bon_id),
-                "bon": {"description": bon.description, "achat": bon.achat, "lignes": [asdict(l) for l in bon.lignes],
+                "bon": {"description": bon.description, "achat": bon.achat, "demande": bon.demande,
+                        "type": bon.type_bon, "lignes": [asdict(l) for l in bon.lignes],
                         "entrees": [{"technicien": e.technicien, "jour": str(e.jour or ""), "minutes": e.minutes}
                                     for e in bon.entrees]},
                 "proposition": proposition_vers_dict(p),
@@ -351,16 +387,12 @@ class Application:
                 raise ErreurDemande(f"Valeur invalide pour « {nom} ».") from None
         if nouvelles["regle_transports"] not in REGLES_TRANSPORTS:
             raise ErreurDemande("Règle des transports inconnue.")
-        sections: dict[str, list[str]] = {}
-        for nom, (section, cle, type_) in CHAMPS_REGLES.items():
-            v = nouvelles[nom]
-            texte = ("true" if v else "false") if type_ is bool else (json.dumps(v, ensure_ascii=False)
-                                                                      if type_ is str else repr(v))
-            sections.setdefault(section, []).append(f"{cle} = {texte}")
+        # On repart du fichier actuel : les sections que la page ne modifie pas (tarifs) sont conservées.
+        donnees = tomllib.loads(self.chemin_regles.read_text(encoding="utf-8"))
+        for nom, (section, cle, _) in CHAMPS_REGLES.items():
+            donnees.setdefault(section, {})[cle] = nouvelles[nom]
         contenu = "# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.\n"
-        contenu += f"# Dernière modification : {self.personne}\n"
-        for section, lignes in sections.items():
-            contenu += f"[{section}]\n" + "\n".join(lignes) + "\n"
+        contenu += f"# Dernière modification : {self.personne}\n" + toml_texte(donnees)
         self.chemin_regles.write_text(contenu, encoding="utf-8")
         return self.lire_regles()
 

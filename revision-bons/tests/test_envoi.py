@@ -69,10 +69,11 @@ def test_liste_complete_sans_ids():
 
 def test_ligne_existante_renvoyee_au_complet_avec_nos_changements():
     items = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"]
+    # nos valeurs (libellé, description, quantité, prix) par-dessus tout le reste de la ligne lue
     assert items[0] == {"label": "Main-d'œuvre", "description": "Luc", "quantity": 2.25, "price": 95.0,
-                        "unitCost": 40.0, "product": {"id": 9, "label": "MO-PLOMB", "code": "MO-PLOMB"}}
+                        "unitCost": 40.0, "product": {"id": 9, "label": "Main d'oeuvre"}}
     assert items[1] == {"label": "Transport", "description": "", "quantity": 1, "price": 45.0,
-                        "product": {"id": 10, "label": "TRANSPORT", "code": "TRANSPORT"}}
+                        "product": {"id": 10, "label": "Transport"}}
 
 
 def test_champs_inconnus_de_l_outil_conserves():
@@ -113,7 +114,7 @@ def test_ligne_supprimee_par_l_outil_jamais():
 def test_external_id_sur_nouvelles_lignes():
     nouvelle = corps_mise_a_jour(proposition(), CFG, TACHE)["itemList"]["items"][2]
     assert nouvelle == {"label": "Vis", "description": "Rona – facture A-1", "quantity": 2, "price": 11.0,
-                        "unitCost": 10.0, "externalId": "rona|A-1|1", "product": {"code": "MAT"}}
+                        "unitCost": 10.0, "externalId": "rona|A-1|1", "product": {"label": "MAT"}}
 
 
 def test_sans_produit_materiel():
@@ -221,3 +222,23 @@ def test_simulation_avec_lignes_originales(tmp_path):
     originaux = {1001: proposition().lignes[:2]}
     [r] = envoyer([proposition()], FauxProgression(), Journal(tmp_path, "hugo"), CFG, "simulation", originaux)
     assert r["corps"]["itemList"]["items"][1]["label"] == "Transport" and "id" not in r["corps"]["itemList"]["items"][1]
+
+
+def test_ligne_retiree_explicitement_absente_du_corps():
+    p = proposition()
+    p.lignes = [l for l in p.lignes if l.id != 502]
+    p.lignes_retirees = [502]
+    items = corps_mise_a_jour(p, CFG, TACHE)["itemList"]["items"]
+    assert len(items) == 2 and not any(i.get("label", "").startswith("Transport") for i in items)
+
+
+def test_produit_materiel_par_libelle():
+    nouvelle = corps_mise_a_jour(proposition(), {**CFG, "produit_materiel": "Matériel acheté"}, TACHE)["itemList"]["items"][2]
+    assert nouvelle["product"] == {"label": "Matériel acheté"}
+
+
+def test_ligne_retiree_encore_dans_la_proposition_n_est_pas_envoyee():
+    p = proposition()
+    p.lignes_retirees = [502]   # la ligne est toujours dans p.lignes, comme le produit l'analyse
+    items = corps_mise_a_jour(p, CFG, TACHE)["itemList"]["items"]
+    assert len(items) == 2 and not any(i.get("label", "").startswith("Transport") for i in items)

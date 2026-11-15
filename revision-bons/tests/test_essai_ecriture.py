@@ -83,7 +83,7 @@ def test_quantite_modifiee_sur_ligne_existante():
     prog = FausseProgression()
     essai_ecriture(prog, 1001, CLIENT_TEST, CFG)
     premiere = prog.ecrits[0]["itemList"]["items"][0]
-    assert premiere["quantity"] == 3.0833 and premiere["label"] == "Main-d'œuvre" and "id" not in premiere
+    assert premiere["quantity"] == 3.0833 and premiere["label"].startswith("Main d'oeuvre") and "id" not in premiere
     assert prog.ecrits[0]["itemList"]["items"][1]["taxable"] is False   # champs inconnus de l'outil conservés
 
 

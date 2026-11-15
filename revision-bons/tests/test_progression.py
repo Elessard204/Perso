@@ -64,18 +64,19 @@ def test_minutes_iso():
 def test_bon_depuis_json():
     bon = bon_depuis_json(TACHE, ENTREES, CFG)
     assert (bon.id, bon.code, bon.client, bon.maj) == (1001, "BS-1001", "Gestion Fictive inc.", "2026-11-03T16:42:10-05:00")
-    assert bon.description.startswith("changer robinet")
-    assert [(e.technicien, e.minutes, e.ligne_id) for e in bon.entrees] == [("Luc Tremblay", 80, 501), ("Luc Tremblay", 45, 501)]
+    assert bon.description.startswith("changer robinet")   # champ « description » quand c'est celui configuré
+    assert [(e.technicien, e.minutes, e.ligne_id) for e in bon.entrees] == [
+        ("Luc Tremblay", 80, 502), ("Luc Tremblay", 80, 501), ("Luc Tremblay", 45, 501)]
     assert str(bon.entrees[0].jour) == "2026-11-03"
     mo = bon.lignes[0]
-    assert (mo.id, mo.quantite, mo.prix, mo.cout_unitaire, mo.produit) == (501, 2.0833, 95.0, 40.0, "MO-PLOMB")
+    assert (mo.id, mo.quantite, mo.prix, mo.cout_unitaire, mo.produit) == (501, 2.0833, 65.0, 40.0, "Main d'oeuvre")
     assert bon.lignes[1].cout_unitaire is None
     assert [(p.id, p.type_mime) for p in bon.pieces] == [(9001, "image/jpeg"), (9002, "application/pdf")]
 
 
 def test_description_dans_properties():
-    bon = bon_depuis_json(TACHE, ENTREES, {"champ_description": "properties.notesTech"})
-    assert bon.description == "texte du technicien dans un champ perso"
+    bon = bon_depuis_json(TACHE, ENTREES, {"champ_description": "properties.info.notes"})
+    assert bon.description == "changé robinet cuisine, posé 2 raccord"
 
 
 def test_telecharger_piece():
@@ -167,3 +168,25 @@ def test_champ_achat_lu():
     bon = bon_depuis_json(tache, ENTREES, {"champ_achat": "properties.info.achat"})
     assert bon.achat == "Robinet cuisine"
     assert bon_depuis_json(TACHE, ENTREES, CFG).achat == ""
+
+
+def test_champs_v2_lus():
+    bon = bon_depuis_json(TACHE, ENTREES, {"champ_description": "properties.info.notes"})
+    assert bon.type_bon == "Appel de service"
+    assert bon.lieu == "77/2624" and bon.lieu_libelle == "Gestion Fictive inc. – Logement 3"
+    assert bon.demande.startswith("Fuite")   # sommaire puis description de la demande
+    assert bon.description == "changé robinet cuisine, posé 2 raccord"
+    e = bon.entrees[0]
+    assert (e.activite, e.cout_horaire, str(e.debut)) == ("En route", 30.0, "2026-11-03 07:50:00-05:00")
+    assert bon.lignes[1].produit == "Transport"
+
+
+def test_activite_en_liste():
+    entree = dict(ENTREES[0], activity=[{"label": "En cours"}])
+    assert bon_depuis_json(TACHE, [entree], CFG).entrees[0].activite == "En cours"
+
+
+def test_champs_personnalises_a_plat_comme_dans_progression():
+    # Format réel observé à l'inspection : clés « info.notes », pas d'objet imbriqué.
+    bon = bon_depuis_json(TACHE, ENTREES, {"champ_description": "properties.info.notes", "champ_achat": "properties.info.achat"})
+    assert bon.description == "changé robinet cuisine, posé 2 raccord" and bon.achat == "Robinet cuisine"

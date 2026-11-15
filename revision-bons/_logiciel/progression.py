@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 
 from modele import Bon, EntreeTemps, Ligne, PieceJointe
 
@@ -46,11 +46,31 @@ def _jour(horodatage: str | None) -> date | None:
 
 
 def _libelle(ref) -> str:
+    if isinstance(ref, list):
+        ref = ref[0] if ref else {}
     return (ref or {}).get("label") or ""
 
 
+def _horodatage(texte: str | None) -> datetime | None:
+    if not texte:
+        return None
+    try:
+        return datetime.fromisoformat(re.sub(r"([+-]\d{2})$", r"\1:00", texte))
+    except ValueError:
+        return None
+
+
 def lire_champ(tache: dict, champ: str) -> str:
-    """Lit « description » ou « properties.notesTech » dans une tâche."""
+    """Lit « description » ou un champ personnalisé « properties.info.notes ».
+
+    Progression renvoie les champs personnalisés à plat (clé « info.notes ») ; un objet imbriqué
+    ({"info": {"notes": ...}}) est aussi accepté.
+    """
+    if champ.startswith("properties."):
+        proprietes = tache.get("properties") or {}
+        cle = champ[len("properties."):]
+        if isinstance(proprietes.get(cle), str):
+            return proprietes[cle]
     valeur = tache
     for partie in champ.split("."):
         valeur = (valeur or {}).get(partie) if isinstance(valeur, dict) else None
@@ -68,7 +88,7 @@ def bon_depuis_json(tache: dict, entrees: list[dict], cfg: dict) -> Bon:
             quantite=float(it.get("quantity") or 0),
             prix=float(it.get("price") or 0),
             cout_unitaire=float(it["unitCost"]) if it.get("unitCost") is not None else None,
-            produit=produit.get("code") or produit.get("label"),
+            produit=produit.get("label") or produit.get("code"),
             external_id=it.get("externalId"),
         ))
     return Bon(
@@ -85,6 +105,9 @@ def bon_depuis_json(tache: dict, entrees: list[dict], cfg: dict) -> Bon:
                 jour=_jour(e.get("start")),
                 minutes=minutes_iso(e.get("duration") or ""),
                 ligne_id=(e.get("item") or {}).get("id"),
+                activite=_libelle(e.get("activity")),
+                debut=_horodatage(e.get("start")),
+                cout_horaire=float(e["averageHourlyCost"]) if e.get("averageHourlyCost") is not None else None,
             )
             for e in entrees
         ],
@@ -94,6 +117,10 @@ def bon_depuis_json(tache: dict, entrees: list[dict], cfg: dict) -> Bon:
             for a in tache.get("attachments") or []
         ],
         achat=lire_champ(tache, cfg["champ_achat"]) if cfg.get("champ_achat") else "",
+        type_bon=_libelle(tache.get("type")),
+        lieu=f"{(tache.get('client') or {}).get('id', '')}/{(tache.get('location') or {}).get('id', '')}",
+        lieu_libelle=" – ".join(x for x in (_libelle(tache.get("client")), _libelle(tache.get("location"))) if x),
+        demande="\n".join(x for x in (tache.get("summary") or "", tache.get("description") or "") if x.strip()),
     )
 
 

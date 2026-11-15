@@ -4,10 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from analyse import ajuster_main_oeuvre, analyser_bon, proposition_depuis_dict, proposition_vers_dict
+from analyse import analyser_bon, proposition_depuis_dict, proposition_vers_dict, transports_en_double
 from conftest import LOGICIEL
 from journal import Journal
-from modele import EntreeTemps, Ligne
+from modele import EntreeTemps, Ligne, Proposition
 from progression import ErreurProgression, bon_depuis_json
 from regles import charger_regles
 from test_progression import ENTREES, TACHE
@@ -18,7 +18,7 @@ PHOTO = {"genre": "photo", "raison": "Lavabo", "fournisseur": "", "numero": "", 
 FACTURE = {"genre": "facture", "raison": "Reçu", "fournisseur": "Rona", "numero": "A-1", "date": "2026-11-02",
            "sous_total": 20.0, "lignes": [{"description": "Vis", "quantite": 2, "prix_unitaire": 10.0}]}
 INCERTAIN = {**PHOTO, "genre": "incertain", "raison": "Flou"}
-TEXTE = {"texte": "Remplacement du robinet de cuisine et pose de 2 raccords."}
+TEXTE = {"texte": "Remplacement du robinet de cuisine et pose de 2 raccords.", "ajouts_photos": []}
 
 
 class FauxClaude:
@@ -58,56 +58,6 @@ def codes(p):
     return [a.code for a in p.alertes]
 
 
-def test_arrondi_applique_aux_lignes_pas_aux_entrees(tmp_path):
-    bon = nouveau_bon()   # Luc : 80 + 45 = 125 min -> 2 h 15
-    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
-    mo = next(l for l in p.lignes if l.id == 501)
-    assert mo.quantite == 2.25
-    assert [e.minutes for e in bon.entrees] == [80, 45]
-    assert next(l for l in bon.lignes if l.id == 501).quantite == 2.0833
-    assert "Arrondi" in p.origine["501"] and "Luc Tremblay" in p.origine["501"] and "2,25 h" in p.origine["501"]
-
-
-def test_arrondi_ne_reduit_jamais(tmp_path):
-    bon = nouveau_bon()
-    bon.lignes[0].quantite = 3.0   # déjà plus haut que 2 h 15
-    lignes, origine = ajuster_main_oeuvre(bon, {"Luc Tremblay": 2.25})
-    assert lignes[0].quantite == 3.0 and origine == {}
-
-
-def test_ajout_sur_la_derniere_ligne_du_technicien():
-    bon = nouveau_bon()
-    bon.lignes.insert(0, Ligne(500, "Main-d'œuvre", "Luc", 1.0, 95.0))
-    bon.entrees = [EntreeTemps(1, "Luc Tremblay", None, 60, 500), EntreeTemps(2, "Luc Tremblay", None, 65, 501)]
-    bon.lignes[1].quantite = 1.0833
-    lignes, _ = ajuster_main_oeuvre(bon, {"Luc Tremblay": 2.25})
-    assert [(l.id, l.quantite) for l in lignes[:2]] == [(500, 1.0), (501, 1.25)]
-
-
-def test_main_oeuvre_introuvable(tmp_path):
-    bon = nouveau_bon()
-    for e in bon.entrees:
-        e.ligne_id = None
-    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
-    assert "main_oeuvre_introuvable" in codes(p)
-    assert next(l for l in p.lignes if l.id == 501).quantite == 2.0833
-
-
-def test_main_oeuvre_partagee():
-    bon = nouveau_bon()
-    bon.entrees.append(EntreeTemps(9, "Max Roy", None, 30, 501))
-    lignes, origine = ajuster_main_oeuvre(bon, {"Luc Tremblay": 2.25, "Max Roy": 0.5})
-    assert lignes[0].quantite == 2.0833 and origine == {}
-
-
-def test_ligne_materiel_ajoutee_avec_origine(tmp_path):
-    p = analyser(nouveau_bon(), FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
-    [mat] = [l for l in p.lignes if l.external_id]
-    assert (mat.libelle, mat.quantite, mat.cout_unitaire, mat.prix, mat.external_id) == ("Vis", 2, 10.0, 11.0, "rona|A-1|1")
-    assert p.origine["rona|A-1|1"] == "Facture Rona A-1, coût + 10 %"
-    assert [a.genre for a in p.analyses] == ["photo", "facture"]
-
-
 def test_photo_ignoree(tmp_path):
     p = analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
     assert not [l for l in p.lignes if l.external_id]
@@ -140,14 +90,6 @@ def test_meme_facture_deux_fois_dans_le_bon(tmp_path):
     assert "facture_doublon" in codes(p) and p.statut == "bloque"
 
 
-def test_facture_deja_dans_le_bon_non_rajoutee(tmp_path):
-    bon = nouveau_bon()
-    bon.lignes.append(Ligne(503, "Vis", "Rona", 2, 11.0, 10.0, None, "rona|A-1|1"))
-    p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
-    assert [l.id for l in p.lignes if l.external_id] == [503]
-    assert "facture_doublon" not in codes(p)
-
-
 def test_piece_incertaine_continue(tmp_path):
     p = analyser(nouveau_bon(), FauxClaude(INCERTAIN, FACTURE, TEXTE), tmp_path)
     assert "piece_incertaine" in codes(p)
@@ -158,12 +100,6 @@ def test_telechargement_echoue_continue(tmp_path):
     p = analyser(nouveau_bon(), FauxClaude(FACTURE, TEXTE), tmp_path, progression=FauxProgression(erreur_sur={9001}))
     assert p.analyses[0].genre == "incertain" and "piece_incertaine" in codes(p)
     assert [l.external_id for l in p.lignes if l.external_id] == ["rona|A-1|1"]
-
-
-def test_transport_a_definir(tmp_path):
-    p = analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
-    assert "transport_a_definir" in codes(p)
-    assert next(l for l in p.lignes if l.id == 502).quantite == 1
 
 
 def test_description_revisee(tmp_path):
@@ -185,13 +121,6 @@ def test_aller_retour_dict(tmp_path):
     assert proposition_depuis_dict(json.loads(json.dumps(proposition_vers_dict(p)))) == p
 
 
-def test_statut(tmp_path):
-    p = analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
-    assert p.statut == "a_verifier"   # transport à définir
-    p.alertes = []
-    assert p.statut == "pret"
-
-
 def test_achat_declare_sans_facture_signale(tmp_path):
     bon = nouveau_bon()
     bon.achat = "Robinet cuisine"
@@ -204,3 +133,85 @@ def test_achat_coherent_sans_alerte(tmp_path):
     bon.achat = "Robinet cuisine"
     p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
     assert "achat_sans_facture" not in codes(p) and "facture_sans_achat" not in codes(p)
+
+
+def test_heures_et_transport_selon_les_regles_de_hugo(tmp_path):
+    bon = nouveau_bon()
+    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert next(l for l in p.lignes if l.id == 502).quantite == 1        # transport à 1
+    assert next(l for l in p.lignes if l.id == 501).quantite == 2.5      # 2 h 05 + 20 min d'excédent -> 2,5
+    assert [e.minutes for e in bon.entrees] == [80, 80, 45]              # feuilles de temps intactes
+
+
+def test_une_ligne_materiel_par_facture(tmp_path):
+    p = analyser(nouveau_bon(), FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
+    [mat] = [l for l in p.lignes if l.external_id]
+    assert (mat.libelle, mat.quantite, mat.cout_unitaire, mat.prix, mat.external_id) == ("Matériel acheté", 1, 20.0, 23.0, "rona|A-1|1")
+    assert p.origine["rona|A-1|1"] == "Facture Rona A-1, coût avant taxes + 15 %"
+
+
+def test_ligne_materiel_vide_reutilisee(tmp_path):
+    bon = nouveau_bon()
+    bon.lignes.append(Ligne(503, "Matériel acheté", "", 0.0, 0.0, None, "Matériel acheté", None))
+    p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
+    reutilisee = next(l for l in p.lignes if l.id == 503)
+    assert (reutilisee.prix, reutilisee.external_id) == (23.0, "rona|A-1|1")
+    assert len([l for l in p.lignes if l.external_id]) == 1 and p.lignes_retirees == []
+
+
+def test_ligne_materiel_vide_inutile_retiree(tmp_path):
+    bon = nouveau_bon()
+    bon.lignes.append(Ligne(503, "Matériel acheté", "", 0.0, 0.0, None, "Matériel acheté", None))
+    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert p.lignes_retirees == [503] and "retirée" in p.origine["503"]
+
+
+def test_facture_deja_dans_le_bon_non_rajoutee(tmp_path):
+    bon = nouveau_bon()
+    bon.lignes.append(Ligne(503, "Matériel acheté", "Rona", 1, 23.0, 20.0, "Matériel acheté", "rona|A-1|1"))
+    p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
+    assert [l.id for l in p.lignes if l.external_id] == [503]
+
+
+def test_photos_transmises_a_la_redaction(tmp_path):
+    claude = FauxClaude(PHOTO, FACTURE, TEXTE)
+    analyser(nouveau_bon(), claude, tmp_path)
+    contenu = claude.appels[-1]["messages"][0]["content"]
+    assert [b["type"] for b in contenu] == ["image", "text"]   # la photo, pas la facture
+    assert "Fuite" in contenu[-1]["text"]                       # la demande de départ sert de contexte
+
+
+def test_marge_calculee(tmp_path):
+    p = analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert p.marge["revenu"] == 212.5 and p.marge["cout"] == 102.5
+
+
+def test_statut(tmp_path):
+    p = analyser(nouveau_bon(), FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert p.statut == "a_verifier"   # transport long : à vérifier
+    p.alertes = []
+    assert p.statut == "pret"
+
+
+def _bon_le(code, client_id, jour="2026-11-03"):
+    from datetime import date, datetime
+    b = nouveau_bon()
+    b.code, b.lieu = code, f"{client_id}/1"
+    for e in b.entrees:
+        e.jour = date.fromisoformat(jour)
+        e.debut = datetime.fromisoformat(jour + ("T08:00:00" if code.endswith("1") else "T13:00:00"))
+    return b
+
+
+def test_transport_en_double_meme_immeuble_meme_jour():
+    a, b = _bon_le("BS-1", 77), _bon_le("BS-2", 77)
+    pa, pb = Proposition(1, "m", "", ""), Proposition(2, "m", "", "")
+    transports_en_double([(b, pb), (a, pa)])
+    assert [x.code for x in pa.alertes] == [] and [x.code for x in pb.alertes] == ["transport_double"]
+    assert "BS-1" in pb.alertes[0].message
+
+
+def test_pas_de_double_si_autre_immeuble_ou_autre_jour():
+    pa, pb, pc = (Proposition(i, "m", "", "") for i in (1, 2, 3))
+    transports_en_double([(_bon_le("BS-1", 77), pa), (_bon_le("BS-2", 88), pb), (_bon_le("BS-3", 77, "2026-11-04"), pc)])
+    assert not pa.alertes and not pb.alertes and not pc.alertes

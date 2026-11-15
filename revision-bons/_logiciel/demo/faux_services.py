@@ -7,6 +7,7 @@ photo illisible, journée de plus de 12 h, bon sans heures, facture dont le tota
 from __future__ import annotations
 
 import json
+import re
 import struct
 import zlib
 from types import SimpleNamespace
@@ -71,33 +72,55 @@ DESCRIPTIONS = {
         "Travaux à compléter.",
     "remplacé 2 disjoncteur panneau + boite":
         "Remplacement de 2 disjoncteurs au panneau électrique et d'une boîte électrique.",
+    "peinture cage escalier":
+        "Peinture de la cage d'escalier.",
 }
 
+# Le champ « Achat » du technicien et le type de chaque bon.
+ACHATS = {1: "Robinet cuisine", 3: "Silicone", 6: "Non"}
+TYPES = {1: "Appel de service", 2: "Appel de service", 3: "Maintenance", 4: "Maintenance", 5: "Appel de service",
+         6: "Maintenance", 7: "Maintenance"}
+IMMEUBLES = {1: 701, 2: 702, 3: 703, 4: 704, 5: 705, 6: 706, 7: 704}   # le bon 7 est dans le même immeuble que le 4
 
-ACHATS = {3: "Silicone", 6: "Non", 1: "Robinet cuisine"}   # champ « Achat » du technicien
 
-
-def _tache(n: int, description: str, pieces: list[tuple[int, str, str]], heures: list[tuple[str, int, str]],
-           items_mo: list[tuple[int, str, float]]) -> tuple[dict, list[dict]]:
+def _tache(n: int, note: str, pieces: list[tuple[int, str, str]], travail: list[tuple[str, str, str]],
+           jour: int | None = None, prix_heure: float = 65.0, inventaire_vide: bool = False,
+           non_facturee: bool = False) -> tuple[dict, list[dict]]:
+    """travail : (technicien, durée du transport, durée du travail). Les lignes sont celles que crée
+    « Facturer » : une par entrée de temps, aux taux par défaut de Progression (65 $/h, 50 $ le transport)."""
+    jour = jour or n + 2
+    items, entrees = [], []
+    for k, (tech, transport, duree) in enumerate(travail):
+        it_t, it_mo = 2000 + n * 10 + 2 * k, 2000 + n * 10 + 2 * k + 1
+        items.append({"id": it_t, "label": f"Transport (En route, {tech})", "description": "", "quantity": 1.0,
+                      "price": 50.0, "product": {"label": "Transport"}})
+        heures = round(sum(int(x) * f for x, f in zip(re.findall(r"(\d+)", duree.replace("PT", "")), (1, 1 / 60))
+                       ) if "H" in duree else int(re.findall(r"\d+", duree)[0]) / 60, 4)
+        items.append({"id": it_mo, "label": f"Main d'oeuvre (En cours, {tech})", "description": "", "quantity": heures,
+                      "price": prix_heure, "product": {"label": "Main d'oeuvre"}})
+        entrees.append({"id": 30000 + n * 10 + 2 * k, "duration": transport, "start": f"2026-11-{jour:02d}T08:00:00-05:00",
+                        "activity": {"label": "En route"}, "averageHourlyCost": 28.0, "humanResource": {"label": tech},
+                        "item": {"id": it_t}})
+        entrees.append({"id": 30000 + n * 10 + 2 * k + 1, "duration": duree, "start": f"2026-11-{jour:02d}T09:00:00-05:00",
+                        "activity": {"label": "En cours"}, "averageHourlyCost": 28.0, "humanResource": {"label": tech},
+                        "item": {"id": it_mo}})
+    if inventaire_vide:
+        items.append({"id": 2000 + n * 10 + 9, "label": "Matériel", "description": "", "quantity": 1.0, "price": 0.0,
+                      "product": {"label": "Matériel en inventaire"}})
+    if non_facturee:
+        entrees.append({"id": 30000 + n * 10 + 9, "duration": "PT45M", "start": f"2026-11-{jour:02d}T14:00:00-05:00",
+                        "activity": {"label": "En cours"}, "averageHourlyCost": 28.0, "humanResource": {"label": "Max Roy"},
+                        "item": None})
     tache = {
-        "id": 2000 + n, "code": f"BS-{2000 + n}", "label": description[:30],
-        "rv": f"2026-11-{n + 2:02d}T08:00:00-05:00", "updated": f"2026-11-{n + 2:02d}T17:00:00-05:00",
-        "description": description, "client": {"label": CLIENTS[n % len(CLIENTS)]},
-        "currentState": {"label": "Complété", "logicId": 600},
-        "properties": {"info": {"achat": ACHATS.get(n, "")}},
-        "itemList": {"items": [
-            *({"id": i, "label": "Main-d'œuvre", "description": tech, "quantity": q, "price": 95.0, "unitCost": 40.0,
-               "product": {"code": "MO"}} for i, tech, q in items_mo),
-            {"id": 2000 + n * 10 + 9, "label": "Transport", "description": "", "quantity": 1, "price": 45.0,
-             "product": {"code": "TRANSPORT"}},
-        ]},
+        "id": 2000 + n, "code": f"BS-{2000 + n}", "summary": "", "rv": f"2026-11-{jour:02d}T08:00:00-05:00",
+        "updated": f"2026-11-{jour:02d}T17:00:00-05:00", "description": f"Intervention demandée au logement {n}.",
+        "type": {"label": TYPES[n]}, "client": {"id": IMMEUBLES[n], "label": CLIENTS[n % len(CLIENTS)]},
+        "location": {"id": n, "label": f"Logement {n}"},
+        "currentState": {"label": "Terminé", "logicId": 600},
+        "properties": {"info.notes": note, "info.achat": ACHATS.get(n, "")},
+        "itemList": {"items": items},
         "attachments": [{"id": pid, "name": nom, "contentType": mime} for pid, nom, mime in pieces],
     }
-    entrees = [
-        {"id": 2000 + n * 100 + i, "duration": duree, "start": f"2026-11-{n + 2:02d}T08:00:00-05:00",
-         "humanResource": {"label": tech}, "item": {"id": next((i_ for i_, t, _ in items_mo if t == tech), None)}}
-        for i, (tech, _, duree) in enumerate(heures)
-    ]
     return tache, entrees
 
 
@@ -105,21 +128,22 @@ def _jeu() -> dict[int, tuple[dict, list[dict]]]:
     bons = [
         _tache(1, "changer robinet cuisine fuite sous lavabo, posé 2 raccord",
                [(9101, "IMG_2041.png", "image/png"), (9102, "facture_rona_A-1.pdf", "application/pdf")],
-               [("Luc Tremblay", 0, "PT2H5M")], [(2011, "Luc Tremblay", 2.0833)]),
+               [("Luc Tremblay", "PT1H20M", "PT2H5M")]),
         _tache(2, "fuite reglé meme chose que hier",
                [(9201, "facture_rona_A-1.pdf", "application/pdf"), (9202, "facture_rona_A-1 (copie).pdf", "application/pdf")],
-               [("Luc Tremblay", 0, "PT40M")], [(2021, "Luc Tremblay", 0.6667)]),
+               [("Luc Tremblay", "PT25M", "PT40M")]),
         _tache(3, "inspection toiture photo jointe",
                [(9301, "toiture.png", "image/png"), (9302, "IMG_8812.heic", "image/heic")],
-               [("Max Roy", 0, "PT1H")], [(2031, "Max Roy", 1.0)]),
+               [("Max Roy", "PT30M", "PT1H")]),
         _tache(4, "urgence degat deau sous sol pompé eau toute la nuit",
                [(9401, "sous-sol.png", "image/png")],
-               [("Max Roy", 0, "PT12H30M")], [(2041, "Max Roy", 12.5)]),
-        _tache(5, "a faire", [(9501, "avant.png", "image/png")], [], []),
+               [("Max Roy", "PT30M", "PT12H30M")]),
+        _tache(5, "a faire", [(9501, "avant.png", "image/png")], [], inventaire_vide=True),
         _tache(6, "remplacé 2 disjoncteur panneau + boite",
                [(9601, "facture_bmr_778.pdf", "application/pdf"), (9602, "panneau.png", "image/png")],
-               [("Luc Tremblay", 0, "PT1H10M"), ("Sam Côté", 0, "PT50M")],
-               [(2061, "Luc Tremblay", 1.1667), (2062, "Sam Côté", 0.8333)]),
+               [("Luc Tremblay", "PT20M", "PT1H10M"), ("Sam Côté", "PT20M", "PT50M")]),
+        _tache(7, "peinture cage escalier", [(9701, "escalier.png", "image/png")],
+               [("Max Roy", "PT15M", "PT3H")], jour=6, prix_heure=85.0, non_facturee=True),
     ]
     return {t["id"]: (t, e) for t, e in bons}
 
@@ -177,9 +201,9 @@ class FauxClaude:
     def _create(self, **kwargs):
         textes = [b["text"] for b in kwargs["messages"][0]["content"] if b.get("type") == "text"]
         consigne = textes[-1] if textes else ""
-        if consigne.startswith("Description du technicien"):
-            original = consigne.split("\n\n", 1)[1]
-            reponse = {"texte": DESCRIPTIONS.get(original, original.capitalize())}
+        if "Note du technicien :" in consigne:
+            original = consigne.split("Note du technicien :\n", 1)[1].strip()
+            reponse = {"texte": DESCRIPTIONS.get(original, original.capitalize()), "ajouts_photos": []}
         else:
             nom = consigne.split("«", 1)[1].split("»", 1)[0].strip() if "«" in consigne else ""
             reponse = FACTURES.get(nom.replace(" (copie)", ""), PHOTO)

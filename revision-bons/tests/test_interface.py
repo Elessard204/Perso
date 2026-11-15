@@ -102,10 +102,11 @@ def test_envoi_reel_verrouille(site):
 
 def test_regles_aller_retour(site):
     code, r = site("/regles")
-    assert code == 200 and r["marge"] == 0.10 and r["pas_minutes"] == 15
-    assert site("/regles", {**r, "montant_max_ligne": 1500})[0] == 200
+    assert code == 200 and r["marge"] == 0.15 and r["pas_minutes"] == 15
+    assert site("/regles", {**r, "montant_max_ligne": 1500, "transport_max_minutes": 45})[0] == 200
     _, r2 = site("/regles")
-    assert (r2["marge"], r2["montant_max_ligne"]) == (0.10, 1500)
+    assert (r2["marge"], r2["montant_max_ligne"], r2["transport_max_minutes"]) == (0.15, 1500, 45)
+    assert r2["tarifs"]["Maintenance"]["heure"] == 45.0 and r2["tarifs_autres"]["SRP"]["heure"] == 85.0  # tarifs conservés
 
 
 def test_regles_invalides_refusees(site):
@@ -187,7 +188,8 @@ def test_envoi_refuse_pendant_un_autre_envoi(site):
 
 
 @pytest.mark.parametrize("champ,valeur", [("marge", 10), ("marge", "nan"), ("marge", "inf"),
-                                           ("regle_transports", "autre"), ("pas_minutes", 0)])
+                                           ("regle_transports", "autre"), ("pas_minutes", 0),
+                                           ("transport_max_minutes", 0), ("marge_minimum", 2)])
 def test_regles_hors_bornes(site, champ, valeur):
     _, r = site("/regles")
     assert site("/regles", {**r, champ: valeur})[0] == 400
@@ -243,3 +245,21 @@ def test_garde_fou_achat_en_demo(site):
     assert "achat_sans_facture" in [a["code"] for a in detail["proposition"]["alertes"]]
     _, detail = site(f"/bon/{bons['BS-2006']['id']}")
     assert "facture_sans_achat" in [a["code"] for a in detail["proposition"]["alertes"]]
+
+
+def _codes(site, bons, code):
+    return [a["code"] for a in site(f"/bon/{bons[code]['id']}")[1]["proposition"]["alertes"]]
+
+
+def test_garde_fous_v2_en_demo(site):
+    bons = charger_et_analyser(site)
+    assert "transport_double" in _codes(site, bons, "BS-2007")          # même immeuble, même jour que BS-2004
+    assert "transport_double" not in _codes(site, bons, "BS-2004")
+    assert "tarif_non_standard" in _codes(site, bons, "BS-2007")         # 85 $/h (SRP) sur une maintenance
+    assert "heures_non_facturees" in _codes(site, bons, "BS-2007") and bons["BS-2007"]["statut"] == "bloque"
+    assert "inventaire_a_zero" in _codes(site, bons, "BS-2005")
+    assert "transport_long" in _codes(site, bons, "BS-2001")
+    _, d = site(f"/bon/{bons['BS-2003']['id']}")
+    prix = {l["libelle"].split(" ")[0]: l["prix"] for l in d["proposition"]["lignes"]}
+    assert prix == {"Transport": 40.0, "Main": 45.0}                    # tarifs SELP appliqués à une maintenance
+    assert d["proposition"]["marge"]["revenu"] > 0

@@ -57,7 +57,9 @@ Classe la pièce :
 
 Pour une facture, extrais le fournisseur, le numéro de facture, la date (AAAA-MM-JJ, chaîne vide si absente),
 le sous-total avant taxes (null s'il n'est pas imprimé) et chaque ligne de matériel avec sa quantité et son
-prix unitaire AVANT taxes. Ignore la TPS, la TVQ, les écofrais, les consignes et les rabais globaux.
+prix unitaire AVANT taxes. Garde les écofrais, consignes et frais de livraison comme des lignes
+(ils sont refacturés). Ignore seulement la TPS et la TVQ. Le sous-total est le montant avant taxes,
+frais compris, rabais déduits.
 Ne devine jamais un montant illisible : si un prix ou une quantité ne se lit pas clairement, classe la pièce
 « incertain » et explique pourquoi dans « raison ».
 Pour une photo ou une pièce incertaine, laisse fournisseur, numéro et date vides, sous_total null, lignes vide.

@@ -1,6 +1,50 @@
 [
-  {"id": 3001, "duration": "PT1H20M", "start": "2026-11-03T08:10:00-05:00", "end": "2026-11-03T09:30:00-05:00",
-   "humanResource": {"id": 5, "label": "Luc Tremblay"}, "item": {"id": 501}},
-  {"id": 3002, "duration": "PT45M", "start": "2026-11-03T13:00:00-05:00", "end": "2026-11-03T13:45:00-05:00",
-   "humanResource": {"id": 5, "label": "Luc Tremblay"}, "item": {"id": 501}}
+  {
+    "id": 3000,
+    "duration": "PT1H20M",
+    "start": "2026-11-03T07:50:00-05:00",
+    "activity": {
+      "label": "En route"
+    },
+    "averageHourlyCost": 30.0,
+    "humanResource": {
+      "id": 5,
+      "label": "Luc Tremblay"
+    },
+    "item": {
+      "id": 502
+    }
+  },
+  {
+    "id": 3001,
+    "duration": "PT1H20M",
+    "start": "2026-11-03T09:10:00-05:00",
+    "activity": {
+      "label": "En cours"
+    },
+    "averageHourlyCost": 30.0,
+    "humanResource": {
+      "id": 5,
+      "label": "Luc Tremblay"
+    },
+    "item": {
+      "id": 501
+    }
+  },
+  {
+    "id": 3002,
+    "duration": "PT45M",
+    "start": "2026-11-03T13:00:00-05:00",
+    "activity": {
+      "label": "En cours"
+    },
+    "averageHourlyCost": 30.0,
+    "humanResource": {
+      "id": 5,
+      "label": "Luc Tremblay"
+    },
+    "item": {
+      "id": 501
+    }
+  }
 ]

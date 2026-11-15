@@ -6,18 +6,65 @@
   "updated": "2026-11-03T16:42:10-05:00",
   "description": "changer robinet cuisine fuite sous lavabo, posé 2 raccord",
   "summary": "Fuite",
-  "client": {"id": 77, "label": "Gestion Fictive inc."},
-  "currentState": {"label": "Complété", "logicId": 600},
-  "properties": {"notesTech": "texte du technicien dans un champ perso"},
+  "client": {
+    "id": 77,
+    "label": "Gestion Fictive inc."
+  },
+  "currentState": {
+    "label": "Complété",
+    "logicId": 600
+  },
+  "properties": {
+    "info.notes": "changé robinet cuisine, posé 2 raccord",
+    "info.achat": "Robinet cuisine",
+    "info.km": "9"
+  },
   "itemList": {
     "subTotal": 250.0,
     "items": [
-      {"id": 501, "label": "Main-d'œuvre", "description": "Luc Tremblay", "quantity": 2.0833, "price": 95.0, "unitCost": 40.0, "product": {"id": 9, "label": "MO-PLOMB", "code": "MO-PLOMB"}},
-      {"id": 502, "label": "Transport", "description": "", "quantity": 1, "price": 45.0, "product": {"id": 10, "label": "TRANSPORT", "code": "TRANSPORT"}}
+      {
+        "id": 501,
+        "label": "Main d'oeuvre (En cours, Luc Tremblay)",
+        "description": "",
+        "quantity": 2.0833,
+        "price": 65.0,
+        "unitCost": 40.0,
+        "product": {
+          "id": 9,
+          "label": "Main d'oeuvre"
+        }
+      },
+      {
+        "id": 502,
+        "label": "Transport (En route, Luc Tremblay)",
+        "description": "",
+        "quantity": 1.3333,
+        "price": 50.0,
+        "product": {
+          "id": 10,
+          "label": "Transport"
+        }
+      }
     ]
   },
   "attachments": [
-    {"id": 9001, "name": "IMG_2041.jpg", "contentType": "image/jpeg"},
-    {"id": 9002, "name": "facture_rona.pdf", "contentType": "application/pdf"}
-  ]
+    {
+      "id": 9001,
+      "name": "IMG_2041.jpg",
+      "contentType": "image/jpeg"
+    },
+    {
+      "id": 9002,
+      "name": "facture_rona.pdf",
+      "contentType": "application/pdf"
+    }
+  ],
+  "type": {
+    "id": 2,
+    "label": "Appel de service"
+  },
+  "location": {
+    "id": 2624,
+    "label": "Logement 3"
+  }
 }
