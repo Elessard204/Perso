@@ -219,7 +219,9 @@ class FauxClaude:
     def _create(self, **kwargs):
         textes = [b["text"] for b in kwargs["messages"][0]["content"] if b.get("type") == "text"]
         consigne = textes[-1] if textes else ""
-        if "Note du technicien :" in consigne:
+        if "Kilométrage inscrit" in consigne:
+            reponse = {"km": 52, "confiance": "haute"}
+        elif "Note du technicien :" in consigne:
             original = consigne.split("Note du technicien :\n", 1)[1].strip()
             reponse = {"texte": DESCRIPTIONS.get(original, original.capitalize()), "ajouts_photos": []}
         else:
