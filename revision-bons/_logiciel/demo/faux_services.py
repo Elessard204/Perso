@@ -7,6 +7,7 @@ photo illisible, journée de plus de 12 h, bon sans heures, facture dont le tota
 from __future__ import annotations
 
 import json
+import math
 import re
 import struct
 import zlib
@@ -190,6 +191,23 @@ class FausseProgression:
     def mettre_a_jour(self, identifiant: int, corps: dict) -> dict:
         self.ecrits.append((identifiant, corps))
         return {}
+
+
+class FaussesCartes:
+    """Même interface que cartes.Cartes, sans réseau ni clé, et toujours les mêmes résultats."""
+
+    def geocoder(self, code_postal: str) -> tuple[float, float] | None:
+        n = sum(int(c) for c in code_postal if c.isdigit())
+        return (round(45.45 + n / 100, 5), round(-73.45 - n / 100, 5))
+
+    def distance_km(self, a: tuple[float, float], b: tuple[float, float]) -> float:
+        """Distance à vol d'oiseau (haversine) × 1,3, arrondie à 0,1 km."""
+        if (round(a[0], 5), round(a[1], 5)) == (round(b[0], 5), round(b[1], 5)):
+            return 0.0
+        p1, p2 = math.radians(a[0]), math.radians(b[0])
+        dp, dl = p2 - p1, math.radians(b[1] - a[1])
+        h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return round(6371.0 * 2 * math.asin(math.sqrt(h)) * 1.3, 1)
 
 
 class FauxClaude:
