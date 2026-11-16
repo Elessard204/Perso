@@ -124,6 +124,9 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 #r-couts .cout-nom { width: 100%; min-width: 11em; }
 #r-couts .cout-taux { width: 6em; text-align: right; }
 #r-couts td:first-child { width: 60%; }
+.aide { border: 1px solid var(--ligne); border-radius: var(--rayon-controle); padding: 8px 10px; background: var(--surface-lecture); display: grid; gap: 6px; }
+.aide summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--info); }
+.aide[open] summary { margin-bottom: 4px; }
 .cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .carte { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
 .carte h2 { font-size: 15px; }
@@ -226,6 +229,20 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
     <section class="carte">
       <p class="surtitre">Coût horaire des techniciens (rentabilité)</p>
       <p class="note">Salaire horaire chargé de chaque technicien, pour estimer la marge de chaque bon. Les frais fixes (gestion, administration, logiciels, bureau) ne sont pas comptés : c'est une marge sur coûts directs. Sans taux, la marge du bon est affichée « inconnue ».</p>
+      <details class="aide">
+        <summary>Quoi inclure dans le coût horaire d'un employé ?</summary>
+        <p class="note">Calcul : coût annuel total de l'employé ÷ heures inscrites sur des bons dans l'année. Ne rien oublier :</p>
+        <ul>
+          <li>Salaire horaire de base, primes et temps supplémentaire habituel.</li>
+          <li>Vacances (4 % à 8 %) et jours fériés payés.</li>
+          <li>Charges de l'employeur : RRQ, assurance-emploi, RQAP, FSS, CNESST, normes du travail (souvent 12 % à 16 % du salaire).</li>
+          <li>Avantages : assurance collective, REER ou régime de retraite, allocation de cellulaire.</li>
+          <li>Véhicule : camion (location ou amortissement, assurance, immatriculation, entretien, essence) ou kilométrage remboursé.</li>
+          <li>Outils et équipement fournis, uniformes et équipement de protection, formation et cartes de compétence.</li>
+          <li>Heures payées mais pas inscrites sur un bon (atelier, magasin, attente, météo) : diviser par les heures sur bons, pas par les heures payées.</li>
+        </ul>
+        <p class="note">Exemple : 25 $/h × 2 080 h = 52 000 $, + charges et avantages 9 500 $, + camion 12 000 $, + outils et cellulaire 2 500 $ = 76 000 $ ÷ 1 700 h sur bons ≈ 44,70 $/h.</p>
+      </details>
       <div class="champ"><label for="r-cout-defaut">Coût moyen pour un technicien absent de la liste ($/h; 0 = inconnu)</label><input id="r-cout-defaut" name="cout_horaire_defaut" inputmode="decimal"></div>
       <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Coût horaire ($)</th><th></th></tr></thead>
         <tbody id="r-couts"></tbody></table></div>
