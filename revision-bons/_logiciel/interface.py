@@ -18,20 +18,24 @@ import time
 import tomllib
 import webbrowser
 from dataclasses import asdict
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 # Le Python portable n'ajoute pas le dossier du script au chemin des modules.
 ICI = Path(__file__).resolve().parent
 sys.path.insert(0, str(ICI))
 
 import cles  # noqa: E402
+import profil  # noqa: E402
 from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
                      proposition_vers_dict, transports_en_double)
 from claude_client import creer_client  # noqa: E402
 from envoi import envoyer  # noqa: E402
 from journal import Journal  # noqa: E402
+from km_calcul import periodes_proposees  # noqa: E402
+from kilometrage import Kilometrage  # noqa: E402
 from progression import ErreurProgression, Progression  # noqa: E402
 from regles import charger_regles  # noqa: E402
 
@@ -113,6 +117,41 @@ BORNES = {"pas_minutes": (1, 60), "marge": (0, 1), "ecart_sous_total": (0, 100),
           "charges_das": (0, 0.5), "charges_vacances": (0, 0.5), "charges_feries": (0, 0.5)}
 
 
+MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
+        "novembre", "décembre"]
+JOURS_COURTS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+AUJOURDHUI_DEMO = date(2026, 11, 5)   # en démo, la période courante contient les entrées du jeu d'essai
+
+
+def _jour_fr(d: date) -> str:
+    return "1er" if d.day == 1 else str(d.day)
+
+
+def libelle_periode(debut: date, fin: date) -> str:
+    """« du dim. 25 octobre au sam. 7 novembre 2026 » (sans dépendre de la langue du poste)."""
+    premier = f"{JOURS_COURTS[debut.weekday()]} {_jour_fr(debut)}"
+    if (debut.year, debut.month) != (fin.year, fin.month):
+        premier += f" {MOIS[debut.month - 1]}"
+    if debut.year != fin.year:
+        premier += f" {debut.year}"
+    return f"du {premier} au {JOURS_COURTS[fin.weekday()]} {_jour_fr(fin)} {MOIS[fin.month - 1]} {fin.year}"
+
+
+class _Paresseux:
+    """Service créé au premier usage : une page de lecture n'exige ni clé ni réseau."""
+
+    def __init__(self, fabrique):
+        self._fabrique = fabrique
+        self._objet = None
+
+    def __getattr__(self, nom):
+        if nom.startswith("__"):
+            raise AttributeError(nom)
+        if self._objet is None:
+            self._objet = self._fabrique()
+        return getattr(self._objet, nom)
+
+
 class Application:
     """État de la séance de révision. Indépendant du HTTP pour pouvoir le tester."""
 
@@ -133,6 +172,9 @@ class Application:
         self.pieces_cache: dict[int, tuple[bytes, str]] = {}
         self.memo_progression: dict[str, int | None] = {}
         self.envoi_en_cours = False
+        self.km_progres = {"en_cours": False, "message": ""}
+        self.km_dernier_debut: date | None = None
+        self._km = None
         self.jeton = secrets.token_urlsafe(24)   # exigé à chaque requête : seule la page de l'outil peut agir
         self._services = None
 
@@ -155,10 +197,183 @@ class Application:
         return {"demo": self.demo, "personne": self.personne, "cles": cles.etat(),
                 "mode_reel_permis": bool(self.cfg["progression"].get("ecriture_validee")) and not self.demo}
 
-    def enregistrer_cles(self, progression: str | None, claude: str | None) -> dict:
-        cles.ecrire(progression or None, claude or None)
+    def enregistrer_cles(self, progression: str | None, claude: str | None, google: str | None = None) -> dict:
+        cles.ecrire(progression or None, claude or None, google or None)
         self._services = None
+        self._km = None
         return self.etat()
+
+    # ---------- kilométrage ----------
+    def cartes(self):
+        if self.demo:
+            from demo.faux_services import FaussesCartes
+            return FaussesCartes()
+        from cartes import Cartes
+        google = cles.lire().get("google")
+        if not google:
+            raise ErreurDemande("Clé Google manquante : l'inscrire dans l'onglet Règles, section Connexions.")
+        return Cartes(google, profil.dossier() / "cache_cartes.json")
+
+    def km(self) -> Kilometrage:
+        if self._km is None:
+            self._km = Kilometrage(_Paresseux(lambda: self.services()[0]), _Paresseux(self.cartes),
+                                   _Paresseux(lambda: self.services()[1]), self.cfg["claude"],
+                                   self.donnees / "kilometrage", self.journal)
+        return self._km
+
+    def _aujourdhui(self) -> date:
+        return AUJOURDHUI_DEMO if self.demo else date.today()
+
+    def _debut_periode(self, texte) -> date:
+        try:
+            debut = date.fromisoformat(str(texte or ""))
+        except ValueError:
+            raise ErreurDemande("Choisir une période.") from None
+        reference = charger_regles(self.chemin_regles).km_debut_reference
+        if (debut - reference).days % 14 != 0:
+            raise ErreurDemande("Cette date n'est pas le début d'une période de paie.")
+        return debut
+
+    def km_periodes(self) -> dict:
+        reference = charger_regles(self.chemin_regles).km_debut_reference
+        return {"periodes": [{"debut": d.isoformat(), "fin": f.isoformat(), "libelle": libelle_periode(d, f)}
+                             for d, f in periodes_proposees(self._aujourdhui(), reference)]}
+
+    def km_periode(self, debut: str) -> dict:
+        d = self._debut_periode(debut)
+        return {"periode": self.km().periode(d, profil.lire_techniciens(), charger_regles(self.chemin_regles))}
+
+    def km_calculer(self, debut: str) -> dict:
+        d = self._debut_periode(debut)
+        km = self.km()
+        if km._lire(d)["statut"] == "valide":
+            raise ErreurDemande("Période validée : la rouvrir avant de recalculer.")
+        techniciens = profil.lire_techniciens()
+        with self.verrou:
+            if self.km_progres["en_cours"] or self.progres["en_cours"] or self.envoi_en_cours:
+                raise ErreurDemande("Un calcul, une analyse ou un envoi est déjà en cours : attendre la fin.")
+            self.km_progres = {"en_cours": True, "message": "Démarrage du calcul…"}
+        threading.Thread(target=self._km_calculer, args=(km, d, techniciens), daemon=True).start()
+        return dict(self.km_progres)
+
+    def _km_calculer(self, km: Kilometrage, debut: date, techniciens: dict) -> None:
+        from cartes import ErreurCartes
+        message = "Calcul terminé."
+
+        def progres(texte: str) -> None:
+            with self.verrou:
+                self.km_progres["message"] = texte
+
+        try:
+            km.calculer(debut, debut + timedelta(days=13), techniciens, progres)
+            self.km_dernier_debut = debut
+        except ErreurCartes as e:
+            message = f"Google Maps : {e}"
+        except ErreurProgression as e:
+            message = f"Progression : {e}"
+        except ErreurDemande as e:
+            message = str(e)
+        except ValueError as e:
+            message = f"Calcul refusé : {e}"
+        except Exception as e:
+            message = f"Calcul interrompu : {e}"
+        finally:
+            with self.verrou:
+                self.km_progres.update(en_cours=False, message=message)
+
+    def km_ajuster(self, corps: dict) -> dict:
+        debut = self._debut_periode(corps.get("debut"))
+        try:
+            jour = date.fromisoformat(str(corps.get("jour") or "")).isoformat()
+        except ValueError:
+            raise ErreurDemande("Jour invalide.") from None
+        brut = corps.get("magasin_km")
+        try:
+            magasin = 0.0 if brut is None or str(brut).strip() == "" else _nombre(brut)
+        except ValueError:
+            raise ErreurDemande("Inscrire un nombre de km (ex. 12,5).") from None
+        try:
+            self.km().ajuster(debut, str(corps.get("technicien") or ""), jour, bool(corps.get("uhaul")),
+                              magasin, self.personne)
+        except ValueError as e:
+            raise ErreurDemande(str(e)) from e
+        return self.km_periode(debut.isoformat())
+
+    def km_valider(self, debut: str) -> dict:
+        d = self._debut_periode(debut)
+        try:
+            periode = self.km().valider(d, profil.lire_techniciens(), charger_regles(self.chemin_regles),
+                                        self.personne)
+        except ValueError as e:
+            raise ErreurDemande(str(e)) from e
+        return {"periode": periode}
+
+    def km_rouvrir(self, debut: str, raison: str) -> dict:
+        d = self._debut_periode(debut)
+        try:
+            self.km().rouvrir(d, str(raison or ""), self.personne)
+        except ValueError as e:
+            raise ErreurDemande(str(e)) from e
+        return self.km_periode(d.isoformat())
+
+    def km_export(self, debut: str) -> tuple[bytes, str]:
+        from excel import export_periode
+        periode = self.km_periode(debut)["periode"]
+        if not periode or periode.get("statut") != "valide":
+            raise ErreurDemande("Valider la période avant d'exporter.")
+        return export_periode(periode)
+
+    def _noms_derniere_periode(self) -> set[str]:
+        km = self.km()
+        debut = self.km_dernier_debut
+        if debut is None:
+            fichiers = sorted(km.dossier.glob("????-??-??.json")) if km.dossier.exists() else []
+            if not fichiers:
+                return set()
+            debut = date.fromisoformat(fichiers[-1].stem)
+        base = km._lire(debut).get("base") or {}
+        return set(base.get("techniciens", {}))
+
+    def km_lire_reglages(self) -> dict:
+        r = charger_regles(self.chemin_regles)
+        techniciens = profil.lire_techniciens()
+        return {"taux": r.km_taux, "seuil_km": r.km_seuil_ecart, "debut_reference": r.km_debut_reference.isoformat(),
+                "techniciens": techniciens,
+                "techniciens_connus": sorted(self._noms_derniere_periode() - set(techniciens))}
+
+    def km_ecrire_reglages(self, valeurs: dict) -> dict:
+        actuels = self.km_lire_reglages()
+        try:
+            taux = _nombre(valeurs.get("taux", actuels["taux"]))
+            seuil = _nombre(valeurs.get("seuil_km", actuels["seuil_km"]))
+        except ValueError:
+            raise ErreurDemande("Le taux et le seuil doivent être des nombres.") from None
+        if not 0 <= taux <= 5:
+            raise ErreurDemande("Le taux doit être entre 0 et 5 $ du km.")
+        if not 0 <= seuil <= 1000:
+            raise ErreurDemande("Le seuil d'écart doit être entre 0 et 1000 km.")
+        try:
+            reference = date.fromisoformat(str(valeurs.get("debut_reference", actuels["debut_reference"])))
+        except ValueError:
+            raise ErreurDemande("Date de référence invalide.") from None
+        if reference.weekday() != 6:
+            raise ErreurDemande("La date de référence doit être un dimanche (début d'une période de paie).")
+        techniciens = valeurs.get("techniciens")
+        if techniciens is not None and not (
+                isinstance(techniciens, dict) and all(isinstance(v, dict) for v in techniciens.values())):
+            raise ErreurDemande("Liste des techniciens invalide.")
+        if techniciens is not None:
+            try:
+                profil.ecrire_techniciens(techniciens)
+            except ValueError as e:
+                raise ErreurDemande(str(e)) from e
+        donnees = tomllib.loads(self.chemin_regles.read_text(encoding="utf-8"))
+        donnees.setdefault("kilometrage", {}).update(taux=taux, seuil_ecart_km=seuil,
+                                                     debut_reference=reference.isoformat())
+        contenu = "# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.\n"
+        contenu += f"# Dernière modification : {self.personne}\n" + toml_texte(donnees)
+        self.chemin_regles.write_text(contenu, encoding="utf-8")
+        return self.km_lire_reglages()
 
     # ---------- liste et analyse ----------
     def _ligne_liste(self, bon_id: int) -> dict:
@@ -444,11 +659,13 @@ def creer_gestionnaire(app: Application):
         def log_message(self, *args) -> None:
             pass
 
-        def envoyer(self, code: int, contenu: bytes, type_: str) -> None:
+        def envoyer(self, code: int, contenu: bytes, type_: str, entetes: dict | None = None) -> None:
             try:
                 self.send_response(code)
                 self.send_header("Content-Type", type_)
                 self.send_header("Cache-Control", "no-store")
+                for nom, valeur in (entetes or {}).items():
+                    self.send_header(nom, valeur)
                 self.end_headers()
                 self.wfile.write(contenu)
             except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
@@ -491,6 +708,9 @@ def creer_gestionnaire(app: Application):
         def do_POST(self) -> None:
             self._traiter(self._post)
 
+        def _requete(self, nom: str) -> str:
+            return parse_qs(urlparse(self.path).query).get(nom, [""])[0]
+
         def _get(self) -> None:
             chemin = urlparse(self.path).path
             if chemin == "/":
@@ -510,6 +730,19 @@ def creer_gestionnaire(app: Application):
                 self.json(app.lire_regles())
             elif chemin == "/historique":
                 self.json(app.historique())
+            elif chemin == "/km/periodes":
+                self.json(app.km_periodes())
+            elif chemin == "/km/progres":
+                with app.verrou:
+                    self.json(dict(app.km_progres))
+            elif chemin == "/km/periode":
+                self.json(app.km_periode(self._requete("debut")))
+            elif chemin == "/km/export":
+                contenu, nom = app.km_export(self._requete("debut"))
+                self.envoyer(200, contenu, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nom)}"})
+            elif chemin == "/km/reglages":
+                self.json(app.km_lire_reglages())
             elif m := re.fullmatch(r"/bon/(\d+)", chemin):
                 self.json(app.detail(int(m.group(1))))
             elif m := re.fullmatch(r"/piece/(\d+)", chemin):
@@ -538,7 +771,17 @@ def creer_gestionnaire(app: Application):
             elif chemin == "/regles":
                 self.json(app.ecrire_regles(corps))
             elif chemin == "/cles":
-                self.json(app.enregistrer_cles(corps.get("progression"), corps.get("claude")))
+                self.json(app.enregistrer_cles(corps.get("progression"), corps.get("claude"), corps.get("google")))
+            elif chemin == "/km/calculer":
+                self.json(app.km_calculer(corps.get("debut", "")))
+            elif chemin == "/km/ajuster":
+                self.json(app.km_ajuster(corps))
+            elif chemin == "/km/valider":
+                self.json(app.km_valider(corps.get("debut", "")))
+            elif chemin == "/km/rouvrir":
+                self.json(app.km_rouvrir(corps.get("debut", ""), corps.get("raison", "")))
+            elif chemin == "/km/reglages":
+                self.json(app.km_ecrire_reglages(corps))
             elif m := re.fullmatch(r"/bon/(\d+)/modifier", chemin):
                 self.json(app.modifier(int(m.group(1)), corps.get("champ", ""), corps.get("valeur", "")))
             else:

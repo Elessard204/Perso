@@ -312,3 +312,139 @@ def test_regles_kilometrage_survivent_a_la_reecriture(site):
     assert site("/regles", {**r, "marge": 0.2})[0] == 200
     _, r2 = site("/regles")
     assert (r2["km_debut_reference"], r2["km_taux"], r2["km_seuil_ecart"]) == ("2026-11-08", 0.61, 10.0)
+
+
+# ---------- kilométrage ----------
+DEBUT_KM = "2026-10-25"
+TECHS_KM = {"Luc Tremblay": {"code_postal": "h1a 1a1", "paye_km": True},
+            "Max Roy": {"code_postal": "H2B 2B2", "paye_km": True}}
+
+
+@pytest.fixture
+def km_site(site, tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    return site
+
+
+def attendre_km(appel):
+    for _ in range(200):
+        if not appel("/km/progres")[1]["en_cours"]:
+            return appel("/km/progres")[1]
+        time.sleep(0.05)
+
+
+def reglages_km(appel, techniciens=None):
+    return appel("/km/reglages", {"taux": "0,61", "seuil_km": 15, "debut_reference": "2026-11-08",
+                                  "techniciens": TECHS_KM if techniciens is None else techniciens})
+
+
+def calculer_km(appel):
+    assert reglages_km(appel)[0] == 200
+    code, _ = appel("/km/calculer", {"debut": DEBUT_KM})
+    assert code == 200
+    assert "terminé" in attendre_km(appel)["message"]
+
+
+def telecharger(site, chemin):
+    req = urllib.request.Request(site.base + chemin, headers={"X-Jeton": site.app.jeton})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, dict(r.headers), r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, dict(e.headers), e.read()
+
+
+def test_km_reglages_aller_retour(km_site, tmp_path):
+    code, r = reglages_km(km_site)
+    assert code == 200
+    code, lus = km_site("/km/reglages")
+    assert code == 200
+    assert lus["taux"] == 0.61 and lus["seuil_km"] == 15 and lus["debut_reference"] == "2026-11-08"
+    assert lus["techniciens"]["Luc Tremblay"] == {"code_postal": "H1A 1A1", "paye_km": True}
+    assert "google" not in json.dumps(lus).lower()
+    texte = (tmp_path / "regles.toml").read_text(encoding="utf-8")
+    assert "[kilometrage]" in texte and "seuil_ecart_km = 15" in texte
+    assert "[tarifs" in texte   # les autres sections sont conservées
+
+
+def test_km_reglages_invalides(km_site):
+    base = {"taux": 0.61, "seuil_km": 10, "debut_reference": "2026-11-08", "techniciens": {}}
+    assert km_site("/km/reglages", {**base, "debut_reference": "2026-11-09"})[0] == 400   # un lundi
+    assert km_site("/km/reglages", {**base, "taux": 9})[0] == 400
+    assert km_site("/km/reglages", {**base, "seuil_km": 5000})[0] == 400
+    code, r = km_site("/km/reglages", {**base, "techniciens": {"Luc": {"code_postal": "J4W", "paye_km": True}}})
+    assert code == 400 and "J4W" in r["erreur"]
+    assert km_site("/km/reglages", {**base, "techniciens": {"Luc": "x"}})[0] == 400
+    assert km_site("/km/reglages", {**base, "techniciens": ["Luc"]})[0] == 400
+
+
+def test_km_periodes(km_site):
+    code, r = km_site("/km/periodes")
+    assert code == 200 and len(r["periodes"]) == 4
+    assert r["periodes"][0] == {"debut": "2026-10-25", "fin": "2026-11-07",
+                                "libelle": "du dim. 25 octobre au sam. 7 novembre 2026"}
+    assert r["periodes"][1]["libelle"] == "du dim. 11 au sam. 24 octobre 2026"
+
+
+def test_km_calcul_et_periode(km_site):
+    assert km_site(f"/km/periode?debut={DEBUT_KM}")[1] == {"periode": None}
+    assert km_site("/km/calculer", {"debut": "2026-10-26"})[0] == 400   # pas un début de période
+    calculer_km(km_site)
+    code, r = km_site(f"/km/periode?debut={DEBUT_KM}")
+    assert code == 200 and r["periode"]["techniciens"]
+    code, r = km_site("/km/reglages")
+    assert r["techniciens_connus"] == []
+    km_site("/km/reglages", {"taux": 0.61, "seuil_km": 10, "debut_reference": "2026-11-08", "techniciens": {}})
+    assert set(km_site("/km/reglages")[1]["techniciens_connus"]) >= {"Luc Tremblay"}
+
+
+def test_km_calcul_refuse_si_occupe_et_erreur_lisible(km_site):
+    km_site.app.progres["en_cours"] = True
+    code, r = km_site("/km/calculer", {"debut": DEBUT_KM})
+    km_site.app.progres["en_cours"] = False
+    assert code == 400 and "en cours" in r["erreur"]
+
+
+def test_km_ajuster_valider_exporter(km_site):
+    calculer_km(km_site)
+    periode = km_site(f"/km/periode?debut={DEBUT_KM}")[1]["periode"]
+    luc = next(t for t in periode["techniciens"] if t["nom"] == "Luc Tremblay")
+    jour = luc["details"][0]["jour"]
+    code, r = km_site("/km/ajuster", {"debut": DEBUT_KM, "technicien": "Luc Tremblay", "jour": jour,
+                                      "uhaul": False, "magasin_km": 12})
+    assert code == 200
+    luc = next(t for t in r["periode"]["techniciens"] if t["nom"] == "Luc Tremblay")
+    assert luc["km_magasin"] == 12
+    assert km_site("/km/ajuster", {"debut": DEBUT_KM, "technicien": "Luc Tremblay", "jour": jour,
+                                   "uhaul": False, "magasin_km": "abc"})[0] == 400
+    code, _, corps = telecharger(km_site, f"/km/export?debut={DEBUT_KM}")
+    assert code == 400 and "Valider la période" in json.loads(corps)["erreur"]
+    code, r = km_site("/km/valider", {"debut": DEBUT_KM})
+    assert code == 200 and r["periode"]["statut"] == "valide"
+    code, entetes, corps = telecharger(km_site, f"/km/export?debut={DEBUT_KM}")
+    assert code == 200 and corps[:2] == b"PK"
+    assert entetes["Content-Type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert entetes["Content-Disposition"].startswith("attachment; filename*=UTF-8''")
+    assert km_site("/km/ajuster", {"debut": DEBUT_KM, "technicien": "Luc Tremblay", "jour": jour,
+                                   "uhaul": True, "magasin_km": 0})[0] == 400
+
+
+def test_km_rouvrir(km_site):
+    calculer_km(km_site)
+    km_site("/km/valider", {"debut": DEBUT_KM})
+    code, r = km_site("/km/rouvrir", {"debut": DEBUT_KM, "raison": ""})
+    assert code == 400
+    code, r = km_site("/km/rouvrir", {"debut": DEBUT_KM, "raison": "Oubli d'une journée"})
+    assert code == 200 and r["periode"]["statut"] == "brouillon" and r["periode"]["revision"] == 1
+
+
+def test_km_sans_jeton_refuse(site):
+    req = urllib.request.Request(site.base + f"/km/periode?debut={DEBUT_KM}")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req, timeout=10)
+    assert e.value.code == 403
+
+
+def test_cles_accepte_google(km_site):
+    code, etat = km_site("/cles", {"google": "AIza-fausse"})
+    assert code == 200 and etat["cles"]["google"] is True
