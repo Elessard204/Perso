@@ -74,13 +74,14 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
     if tarif is None and any(classer(l) in ("transport", "main_oeuvre") for l in lignes):
         alertes.append(Alerte("type_sans_tarif", f"Aucun tarif défini pour le type de bon « {bon.type_bon or '?'} » : "
                                                  "vérifier les taux des heures et du transport."))
-    standards = {genre: {t[genre] for t in r.tarifs.values()} for genre in ("heure", "transport")}
+    # Seul le taux que Progression met par défaut est corrigé : tout autre taux a été choisi par quelqu'un.
+    defaut = r.tarifs.get(r.tarif_progression)
     for l in lignes:
         genre = {"main_oeuvre": "heure", "transport": "transport"}.get(classer(l))
         if genre is None or tarif is None or abs(l.prix - tarif[genre]) < 0.005:
             continue
-        if any(abs(l.prix - p) < 0.005 for p in standards[genre]):
-            # Taux d'un autre type de bon (souvent le taux par défaut de Progression) : on applique le bon.
+        if defaut is not None and abs(l.prix - defaut[genre]) < 0.005:
+            # Taux par défaut de Progression laissé tel quel : on applique celui du type de bon.
             origine[str(l.id)] = f"Tarif {bon.type_bon} ({tarif.get('service', '')}) : {argent_fr(tarif[genre])}"
             l.prix = tarif[genre]
         else:

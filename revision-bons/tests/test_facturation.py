@@ -30,7 +30,8 @@ def ligne(lignes, id_):
 def test_regles_v2():
     assert (R.marge, R.pas_minutes, R.transport_max_minutes, R.regle_transports) == (0.15, 15, 60, "un_par_visite")
     assert R.tarifs["Maintenance"] == {"service": "SELP", "heure": 45.0, "transport": 40.0}
-    assert R.tarifs_autres["SRP"]["heure"] == 85.0
+    assert R.tarifs["Rénovation"] == {"service": "SRP", "heure": 85.0, "transport": 50.0}
+    assert R.tarif_progression == "Appel de service"
 
 
 def test_classer():
@@ -93,6 +94,23 @@ def test_tarif_srp_garde_et_signale():
     lignes, _, alertes = ajuster_heures_transport(b, R)
     assert ligne(lignes, 501).prix == 85.0
     assert "tarif_non_standard" in codes(alertes) and "SRP" in next(a.message for a in alertes if a.code == "tarif_non_standard")
+
+
+def test_renovation_taux_par_defaut_corrige():
+    """Progression met le taux SMMP par défaut : sur un bon Rénovation, il devient le taux SRP."""
+    lignes, origine, alertes = ajuster_heures_transport(bon("Rénovation"), R)
+    assert (ligne(lignes, 501).prix, ligne(lignes, 502).prix) == (85.0, 50.0)
+    assert "SRP" in origine["501"]
+    assert "tarif_non_standard" not in codes(alertes)
+
+
+def test_taux_choisi_a_la_main_signale_pas_corrige():
+    """Un taux autre que celui par défaut de Progression a été choisi par quelqu'un : on le garde et on signale."""
+    b = bon()
+    b.lignes[0].prix = 45.0      # taux SELP sur un appel de service
+    lignes, _, alertes = ajuster_heures_transport(b, R)
+    assert ligne(lignes, 501).prix == 45.0
+    assert "tarif_non_standard" in codes(alertes)
 
 
 def test_type_sans_tarif():

@@ -15,9 +15,12 @@ transport = 50.0
 service = "SELP"
 heure = 45.0
 transport = 40.0
-[tarifs_autres.SRP]              # rénovations : jamais appliqué automatiquement, le bon est signalé
+[tarifs."Rénovation"]            # service SRP (numéros SRP…)
+service = "SRP"
 heure = 85.0
 transport = 50.0
+[tarif_progression]              # taux que Progression met par défaut : seul celui-ci est corrigé automatiquement
+type = "Appel de service"
 [couts]                          # coût horaire des techniciens, pour estimer la rentabilité (modifiable dans Règles)
 defaut = 0.0                     # coût moyen si le technicien n'est pas dans la liste; 0 = inconnu
 [couts.techniciens]

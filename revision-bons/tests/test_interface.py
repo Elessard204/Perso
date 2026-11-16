@@ -106,7 +106,7 @@ def test_regles_aller_retour(site):
     assert site("/regles", {**r, "montant_max_ligne": 1500, "transport_max_minutes": 45})[0] == 200
     _, r2 = site("/regles")
     assert (r2["marge"], r2["montant_max_ligne"], r2["transport_max_minutes"]) == (0.15, 1500, 45)
-    assert r2["tarifs"]["Maintenance"]["heure"] == 45.0 and r2["tarifs_autres"]["SRP"]["heure"] == 85.0  # tarifs conservés
+    assert r2["tarifs"]["Maintenance"]["heure"] == 45.0 and r2["tarifs"]["Rénovation"]["heure"] == 85.0  # tarifs conservés
 
 
 def test_couts_horaires_des_techniciens(site):
