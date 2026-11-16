@@ -77,3 +77,11 @@ def test_totaliser_seuil_et_non_declare():
     assert next(t for t in totaliser(base, {}, 0.61, 10.0, techs)["techniciens"] if t["nom"] == "Vadim")["statut"] == "ok"
     base["techniciens"]["Vadim"]["bons"][0]["statut"] = "vide"
     assert next(t for t in totaliser(base, {}, 0.61, 10.0, techs)["techniciens"] if t["nom"] == "Vadim")["statut"] == "non_declare"
+
+
+def test_montant_arrondi_demi_superieur():
+    base = {"debut": "2026-11-08", "fin": "2026-11-21", "techniciens": {"Vadim": {"jours": [
+        {"jour": "2026-11-10", "arrets": [], "troncons": [], "km": 0.5, "a_verifier": [], "domicile": True, "minutes": 0.0}],
+        "bons": []}}}
+    p = totaliser(base, {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": True}})
+    assert p["techniciens"][0]["montant"] == 0.31 and p["total_montant"] == 0.31

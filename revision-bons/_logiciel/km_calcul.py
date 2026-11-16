@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from progression import minutes_iso
+from regles import cents
 
 _NBSP = chr(0xA0)
 _RE_KM = re.compile(
@@ -152,7 +153,7 @@ def totaliser(base: dict, ajustements: dict, taux: float, seuil: float,
 
         if paie:
             km_a_payer = round(km_a_payer, 1)
-            montant = round(km_a_payer * taux, 2)
+            montant = cents(km_a_payer * taux)
             ecart = round(km_declare - km_a_payer, 1)
             if not a_declare:
                 statut = "non_declare"
@@ -173,4 +174,4 @@ def totaliser(base: dict, ajustements: dict, taux: float, seuil: float,
             "details": details, "bons": bons,
         })
     return {"debut": base.get("debut"), "fin": base.get("fin"), "taux": taux, "seuil_km": seuil,
-            "techniciens": lignes, "total_km": round(total_km, 1), "total_montant": round(total_montant, 2)}
+            "techniciens": lignes, "total_km": round(total_km, 1), "total_montant": cents(total_montant)}

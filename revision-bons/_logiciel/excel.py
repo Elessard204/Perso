@@ -10,12 +10,17 @@ import zipfile
 from datetime import date, timedelta
 from xml.sax.saxutils import escape
 
+from regles import cents
+
 _JOURS = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."]
 _ILLEGAL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
-class Gras(str):
-    """Texte affiché en gras (en-têtes)."""
+class Gras:
+    """Valeur (texte ou nombre) affichée en gras."""
+
+    def __init__(self, valeur):
+        self.valeur = valeur
 
 
 def h_mm(minutes: float) -> str:
@@ -33,13 +38,16 @@ def _lettre(i: int) -> str:
 
 
 def _cellule(ref: str, v) -> str:
+    gras = isinstance(v, Gras)
+    if gras:
+        v = v.valeur
     if v is None or v == "":
         return ""
     if isinstance(v, bool):
         v = "Oui" if v else "Non"
     if isinstance(v, (int, float)):
-        return f'<c r="{ref}"><v>{v!r}</v></c>'
-    style = ' s="1"' if isinstance(v, Gras) else ""
+        return f'<c r="{ref}"{' s="1"' if gras else ""}><v>{v!r}</v></c>'
+    style = ' s="1"' if gras else ""
     texte = escape(_ILLEGAL.sub("", str(v)))
     return f'<c r="{ref}"{style} t="inlineStr"><is><t xml:space="preserve">{texte}</t></is></c>'
 
@@ -126,7 +134,8 @@ def _entier_si_rond(x: float):
     return int(x) if float(x) == int(x) else round(x, 1)
 
 
-def _semaine(periode: dict, dimanche: date) -> list[list]:
+def _semaine(periode: dict, dimanche: date, premiere: bool) -> list[list]:
+    """Une semaine; montant de la semaine 1 arrondi, semaine 2 = montant validé de la période - semaine 1."""
     samedi = dimanche + timedelta(days=6)
     jours = [(dimanche + timedelta(days=i)).isoformat() for i in range(7)]
     taux = periode.get("taux") or 0
@@ -134,8 +143,8 @@ def _semaine(periode: dict, dimanche: date) -> list[list]:
         statut = ["Statut : validé", f"Validé par : {periode.get('valide_par') or ''}",
                   f"Le : {periode.get('valide_le') or ''}"]
     else:
-        statut = ["Statut : brouillon", "", ""]
-    lignes: list[list] = [[Gras(f"Semaine du {dimanche.isoformat()} - {samedi.isoformat()}")] + statut,
+        statut = ["Statut : brouillon"]
+    lignes: list[list] = [[Gras(f"Semaine du {dimanche.isoformat()} - {samedi.isoformat()}")], statut,
                           [Gras(t) for t in ["Ressource humaine"] + _JOURS + ["Total", "Km à payer", "Montant km ($)"]]]
     tot_min = [0.0] * 7
     tot_km = tot_montant = 0.0
@@ -145,14 +154,18 @@ def _semaine(periode: dict, dimanche: date) -> list[list]:
         par_jour = t.get("minutes_par_jour") or {}
         minutes = [float(par_jour.get(j, 0)) for j in jours]
         km = round(sum(d.get("km_paye", 0.0) for d in t.get("details", []) if d.get("jour") in jours), 1)
-        montant = round(km * taux, 2)
+        if premiere:
+            montant = cents(km * taux)
+        else:
+            jours1 = {(dimanche - timedelta(days=7 - i)).isoformat() for i in range(7)}
+            km1 = round(sum(d.get("km_paye", 0.0) for d in t.get("details", []) if d.get("jour") in jours1), 1)
+            montant = cents((t.get("montant") or 0) - cents(km1 * taux))
         lignes.append([t["nom"]] + [h_mm(m) for m in minutes] + [h_mm(sum(minutes)), _entier_si_rond(km), montant])
         tot_min = [a + b for a, b in zip(tot_min, minutes)]
         tot_km += km
         tot_montant += montant
-    lignes.append([Gras("Total")] + [h_mm(m) for m in tot_min] + [h_mm(sum(tot_min)),
-                                                                   _entier_si_rond(round(tot_km, 1)),
-                                                                   round(tot_montant, 2)])
+    lignes.append([Gras("Total")] + [Gras(h_mm(m)) for m in tot_min]
+                  + [Gras(h_mm(sum(tot_min))), Gras(_entier_si_rond(round(tot_km, 1))), Gras(cents(tot_montant))])
     return lignes
 
 
@@ -173,7 +186,7 @@ def export_periode(periode: dict) -> tuple[bytes, str]:
     debut, fin = periode["debut"], periode["fin"]
     d1 = date.fromisoformat(debut)
     d2 = d1 + timedelta(days=7)
-    feuilles = {f"Semaine du {d.isoformat()}": _semaine(periode, d) for d in (d1, d2)}
+    feuilles = {f"Semaine du {d.isoformat()}": _semaine(periode, d, d is d1) for d in (d1, d2)}
     feuilles["Détail"] = _detail(periode)
     rev = periode.get("revision")
     nom = f"Feuille de temps et km {debut} au {fin}{' (revise ' + str(rev) + ')' if rev else ''}.xlsx"

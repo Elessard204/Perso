@@ -73,16 +73,19 @@ def test_export_feuille_de_temps():
     for n in ("Semaine du 2026-11-08", "Semaine du 2026-11-15", "Détail"):
         assert f'name="{n}"' in wb
     s1 = _lignes(z, 1)
-    assert s1[0][0] == "Semaine du 2026-11-08 - 2026-11-14"
-    assert s1[1] == ["Ressource humaine", "Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Total",
+    assert s1[0] == ["Semaine du 2026-11-08 - 2026-11-14"]
+    assert s1[1] == ["Statut : validé", "Validé par : Hugo", "Le : 2026-11-23"]
+    assert s1[2] == ["Ressource humaine", "Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Total",
                      "Km à payer", "Montant km ($)"]
     vadim = next(r for r in s1 if r[0] == "Vadim")
     assert vadim[3] == "5:00" and vadim[4] == "4:00" and vadim[1] == "0:00" and vadim[8] == "9:00"
     assert vadim[9] == 112 and vadim[10] == 68.32
-    assert all(r[0] != "Toufik" for r in s1) and s1[-1][0] == "Total"
+    assert all(r[0] != "Toufik" for r in s1)
+    assert s1[-1] == ["Total", "0:00", "0:00", "5:00", "4:00", "0:00", "0:00", "0:00", "9:00", 112, 68.32]
     s2 = _lignes(z, 2)
     vadim2 = next(r for r in s2 if r[0] == "Vadim")
-    assert vadim2[3] == "2:00" and vadim2[9] == 0
+    assert vadim2[3] == "2:00" and vadim2[9] == 0 and vadim2[10] == 0
+    assert s2[-1] == ["Total", "0:00", "0:00", "2:00", "0:00", "0:00", "0:00", "0:00", "2:00", 0, 0]
     detail = _lignes(z, 3)
     assert detail[0] == ["Technicien", "Jour", "Trajet", "Km calculé", "Uhaul", "Km magasin", "Km payé",
                          "À vérifier"]
@@ -98,3 +101,29 @@ def test_export_brouillon_sans_revision():
 
 def test_h_mm():
     assert [h_mm(m) for m in (0, 59.6, 405, 404.6, 600)] == ["0:00", "1:00", "6:45", "6:45", "10:00"]
+
+
+def test_exclut_a_configurer_et_recalcul_requis_et_brouillon():
+    p = _periode()
+    p.update(statut="brouillon", revision=0, valide_par=None, valide_le=None)
+    for nom, statut in (("Zoe", "a_configurer"), ("Max", "recalcul_requis")):
+        p["techniciens"].append({"nom": nom, "paie": statut == "recalcul_requis", "statut": statut,
+                                 "minutes_par_jour": {"2026-11-10": 60}, "minutes_total": 60,
+                                 "km_a_payer": 5.0, "montant": 3.05,
+                                 "details": [_jour("2026-11-10", 5.0, 60)]})
+    z = zipfile.ZipFile(io.BytesIO(export_periode(p)[0]))
+    s1 = _lignes(z, 1)
+    assert s1[1] == ["Statut : brouillon"]
+    assert [r[0] for r in s1[3:]] == ["Vadim", "Total"]
+
+
+def test_montants_des_deux_semaines_somment_au_montant_de_la_periode():
+    p = _periode()
+    p["techniciens"] = [{"nom": "Vadim", "paie": True, "statut": "ok", "minutes_par_jour": {},
+                         "minutes_total": 0, "km_a_payer": 21.0, "montant": 12.81,
+                         "details": [_jour("2026-11-10", 10.5, 0), _jour("2026-11-17", 10.5, 0)]}]
+    z = zipfile.ZipFile(io.BytesIO(export_periode(p)[0]))
+    m1 = next(r for r in _lignes(z, 1) if r[0] == "Vadim")[10]
+    m2 = next(r for r in _lignes(z, 2) if r[0] == "Vadim")[10]
+    assert (m1, m2) == (6.41, 6.4) and round(m1 + m2, 2) == 12.81
+    assert _lignes(z, 2)[-1][10] == 6.4
