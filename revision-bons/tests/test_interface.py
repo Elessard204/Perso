@@ -109,6 +109,24 @@ def test_regles_aller_retour(site):
     assert r2["tarifs"]["Maintenance"]["heure"] == 45.0 and r2["tarifs_autres"]["SRP"]["heure"] == 85.0  # tarifs conservés
 
 
+def test_couts_horaires_des_techniciens(site):
+    _, r = site("/regles")
+    assert r["cout_horaire_defaut"] == 0.0 and r["couts_techniciens"] == {}
+    code, r2 = site("/regles", {**r, "cout_horaire_defaut": "32,50",
+                                "couts_techniciens": {"Harry Charlette": "35", "  ": "20", "Vide": ""}})
+    assert code == 200
+    assert r2["cout_horaire_defaut"] == 32.5 and r2["couts_techniciens"] == {"Harry Charlette": 35.0}
+    assert r2["tarifs"]["Maintenance"]["heure"] == 45.0          # tarifs toujours conservés
+    assert site("/regles", {**r2, "couts_techniciens": {"Harry Charlette": "-3"}})[0] == 400
+    assert site("/regles", {**r2, "couts_techniciens": ["pas", "un", "dict"]})[0] == 400
+
+
+def test_techniciens_connus_proposes(site):
+    charger_et_analyser(site)
+    _, r = site("/regles")
+    assert r["techniciens_connus"] and all(isinstance(t, str) and t for t in r["techniciens_connus"])
+
+
 def test_regles_invalides_refusees(site):
     _, r = site("/regles")
     code, err = site("/regles", {**r, "marge": "beaucoup"})

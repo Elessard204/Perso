@@ -18,6 +18,9 @@ transport = 40.0
 [tarifs_autres.SRP]              # rénovations : jamais appliqué automatiquement, le bon est signalé
 heure = 85.0
 transport = 50.0
+[couts]                          # coût horaire des techniciens, pour estimer la rentabilité (modifiable dans Règles)
+defaut = 0.0                     # coût moyen si le technicien n'est pas dans la liste; 0 = inconnu
+[couts.techniciens]
 [garde_fous]
 ecart_sous_total = 0.05
 jours_max_facture = 30

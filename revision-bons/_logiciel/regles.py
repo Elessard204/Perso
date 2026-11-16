@@ -27,6 +27,8 @@ class Regles:
     marge_minimum: float = 0.0
     tarifs: dict = field(default_factory=dict)          # type de bon -> {service, heure, transport}
     tarifs_autres: dict = field(default_factory=dict)   # services jamais appliqués automatiquement (SRP)
+    cout_horaire_defaut: float = 0.0                    # coût horaire moyen d'un technicien; 0 = inconnu
+    couts_techniciens: dict = field(default_factory=dict)  # nom du technicien -> coût horaire
 
 
 def charger_regles(chemin: Path) -> Regles:
@@ -45,6 +47,8 @@ def charger_regles(chemin: Path) -> Regles:
         marge_minimum=float(g.get("marge_minimum", 0.0)),
         tarifs={k: dict(v) for k, v in d.get("tarifs", {}).items()},
         tarifs_autres={k: dict(v) for k, v in d.get("tarifs_autres", {}).items()},
+        cout_horaire_defaut=float(d.get("couts", {}).get("defaut", 0.0)),
+        couts_techniciens={k: float(v) for k, v in d.get("couts", {}).get("techniciens", {}).items()},
     )
 
 

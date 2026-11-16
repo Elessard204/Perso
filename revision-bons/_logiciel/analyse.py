@@ -93,7 +93,7 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
     description, alertes_texte = rediger(bon.description, client, cfg["claude"], photos=photos, demande=bon.demande)
     alertes += alertes_texte
 
-    marge = estimer_marge(bon, lignes, retirees)
+    marge = estimer_marge(bon, lignes, retirees, r)
     alertes += alertes_marge(marge, r)
 
     proposition = Proposition(

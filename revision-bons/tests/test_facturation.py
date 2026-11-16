@@ -1,4 +1,5 @@
 import copy
+from dataclasses import replace
 
 from conftest import LOGICIEL
 from facturation import ajuster_heures_transport, arrondir_quart, classer, estimer_marge, alertes_marge, alertes_inventaire
@@ -141,8 +142,32 @@ def test_marge_et_bon_a_perte():
     assert codes(alertes_marge(dict(m, revenu=0.0, marge=None), R)) == ["bon_sans_revenu"]
 
 
-def test_marge_cout_incomplet():
+def test_marge_cout_inconnu_pas_de_fausse_marge():
+    """Sans coût horaire nulle part, pas de marge à 100 % trompeuse : marge inconnue, pas d'alerte de perte."""
     b = bon()
-    b.entrees[0].cout_horaire = None
-    m = estimer_marge(b, b.lignes, [])
-    assert m["cout_complet"] is False
+    for e in b.entrees:
+        e.cout_horaire = None
+    m = estimer_marge(b, b.lignes, [], R)
+    assert m["cout_complet"] is False and m["marge"] is None
+    assert m["sans_cout"] == ["Luc Tremblay"]
+    assert alertes_marge(dict(m, revenu=10.0), R) == []
+
+
+def test_marge_taux_inscrit_dans_les_regles():
+    """Le taux inscrit par Hugo pour le technicien remplace un coût absent de Progression."""
+    b = bon()
+    for e in b.entrees:
+        e.cout_horaire = None
+    r = replace(R, couts_techniciens={"Luc Tremblay": 30.0})
+    lignes, _, _ = ajuster_heures_transport(b, r)
+    m = estimer_marge(b, lignes, [], r)
+    assert (m["cout"], m["cout_complet"], m["sans_cout"]) == (102.5, True, [])
+
+
+def test_marge_taux_par_defaut():
+    b = bon()
+    for e in b.entrees:
+        e.cout_horaire = None
+    r = replace(R, cout_horaire_defaut=30.0, couts_techniciens={"Autre": 99.0})
+    lignes, _, _ = ajuster_heures_transport(b, r)
+    assert estimer_marge(b, lignes, [], r)["cout"] == 102.5

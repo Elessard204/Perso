@@ -48,6 +48,7 @@ CHAMPS_REGLES = {
     "heures_max_jour": ("garde_fous", "heures_max_jour", float),
     "transport_max_minutes": ("heures", "transport_max_minutes", int),
     "marge_minimum": ("garde_fous", "marge_minimum", float),
+    "cout_horaire_defaut": ("couts", "defaut", float),
 }
 
 
@@ -105,7 +106,7 @@ def _nombre(valeur) -> float:
 REGLES_TRANSPORTS = {"un_par_visite"}   # quantité 1 par entrée de transport
 BORNES = {"pas_minutes": (1, 60), "marge": (0, 1), "ecart_sous_total": (0, 100), "jours_max_facture": (0, 365),
           "montant_max_ligne": (0, 1_000_000), "heures_max_jour": (1, 24),
-          "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9)}
+          "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9), "cout_horaire_defaut": (0, 500)}
 
 
 class Application:
@@ -370,7 +371,30 @@ class Application:
     # ---------- règles et historique ----------
     def lire_regles(self) -> dict:
         r = charger_regles(self.chemin_regles)
-        return asdict(r)
+        with self.verrou:
+            vus = {e.technicien for b in self.bons.values() if b.get("bon") for e in b["bon"].entrees if e.technicien}
+        return {**asdict(r), "techniciens_connus": sorted(vus - set(r.couts_techniciens))}
+
+    @staticmethod
+    def _couts_techniciens(valeur, actuels: dict) -> dict:
+        """Taux horaires inscrits par technicien : nom non vide, taux entre 0 et 500 $; un taux vide retire la ligne."""
+        if valeur is None:
+            return actuels
+        if not isinstance(valeur, dict):
+            raise ErreurDemande("Liste des coûts horaires invalide.")
+        couts = {}
+        for nom, taux in valeur.items():
+            nom = " ".join(str(nom).split())[:80]
+            if not nom or str(taux).strip() == "":
+                continue
+            try:
+                n = _nombre(taux)
+            except ValueError:
+                raise ErreurDemande(f"Coût horaire invalide pour {nom}.") from None
+            if not 0 < n <= 500:
+                raise ErreurDemande(f"Le coût horaire de {nom} doit être entre 0 et 500 $.")
+            couts[nom] = n
+        return couts
 
     def ecrire_regles(self, valeurs: dict) -> dict:
         actuelles = self.lire_regles()
@@ -390,12 +414,14 @@ class Application:
                     nouvelles[nom] = int(n) if type_ is int else n
             except ValueError:
                 raise ErreurDemande(f"Valeur invalide pour « {nom} ».") from None
+        couts = self._couts_techniciens(valeurs.get("couts_techniciens"), actuelles["couts_techniciens"])
         if nouvelles["regle_transports"] not in REGLES_TRANSPORTS:
             raise ErreurDemande("Règle des transports inconnue.")
         # On repart du fichier actuel : les sections que la page ne modifie pas (tarifs) sont conservées.
         donnees = tomllib.loads(self.chemin_regles.read_text(encoding="utf-8"))
         for nom, (section, cle, _) in CHAMPS_REGLES.items():
             donnees.setdefault(section, {})[cle] = nouvelles[nom]
+        donnees.setdefault("couts", {})["techniciens"] = couts
         contenu = "# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.\n"
         contenu += f"# Dernière modification : {self.personne}\n" + toml_texte(donnees)
         self.chemin_regles.write_text(contenu, encoding="utf-8")

@@ -143,22 +143,37 @@ def alertes_inventaire(lignes: list[Ligne]) -> list[Alerte]:
             for l in lignes if classer(l) == "inventaire" and (l.quantite == 0 or l.prix == 0)]
 
 
-def estimer_marge(bon: Bon, lignes: list[Ligne], retirees: list[int]) -> dict:
-    """Revenu facturé contre coût : temps des techniciens à leur coût horaire, plus le matériel au coût."""
+def cout_horaire(e, r: Regles | None) -> float | None:
+    """Coût horaire du technicien : celui de Progression, sinon celui inscrit dans Règles, sinon le coût moyen."""
+    if e.cout_horaire is not None:
+        return e.cout_horaire
+    if r is None:
+        return None
+    return r.couts_techniciens.get(e.technicien) or r.cout_horaire_defaut or None
+
+
+def estimer_marge(bon: Bon, lignes: list[Ligne], retirees: list[int], r: Regles | None = None) -> dict:
+    """Revenu facturé contre coût : temps des techniciens à leur coût horaire, plus le matériel au coût.
+
+    Si le coût d'un technicien est inconnu, la marge n'est pas calculée : mieux vaut « inconnue » qu'un faux 100 %.
+    Les frais fixes (gestion, administration, logiciels, bureau) ne sont pas comptés.
+    """
     gardees = [l for l in lignes if l.id not in set(retirees)]
     revenu = cents(sum(l.quantite * l.prix for l in gardees))
-    cout_temps = sum((e.minutes / 60) * (e.cout_horaire or 0) for e in bon.entrees)
+    sans_cout = sorted({e.technicien for e in bon.entrees if e.minutes > 0 and cout_horaire(e, r) is None})
+    cout_temps = sum((e.minutes / 60) * (cout_horaire(e, r) or 0) for e in bon.entrees)
     cout_materiel = sum((l.cout_unitaire or 0) * l.quantite for l in gardees
                         if classer(l) not in ("transport", "main_oeuvre"))
     cout = cents(cout_temps + cout_materiel)
-    return {"revenu": revenu, "cout": cout, "marge": (revenu - cout) / revenu if revenu else None,
-            "cout_complet": all(e.cout_horaire is not None for e in bon.entrees)}
+    complet = not sans_cout
+    return {"revenu": revenu, "cout": cout, "marge": (revenu - cout) / revenu if revenu and complet else None,
+            "cout_complet": complet, "sans_cout": sans_cout}
 
 
 def alertes_marge(m: dict, r: Regles) -> list[Alerte]:
     if not m.get("revenu"):
         return [Alerte("bon_sans_revenu", "Aucun montant facturé sur ce bon : vérifier qu'il ne manque rien.")]
-    if m["revenu"] < m["cout"]:
+    if m.get("cout_complet", True) and m["revenu"] < m["cout"]:
         return [Alerte("bon_a_perte", f"Bon à perte : {argent_fr(m['revenu'])} facturés pour un coût estimé de "
                                       f"{argent_fr(m['cout'])}.")]
     if r.marge_minimum > 0 and m["marge"] is not None and m["marge"] < r.marge_minimum:

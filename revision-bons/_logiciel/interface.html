@@ -121,6 +121,9 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 .piece-corps table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .piece-corps td { padding: 2px 4px; border-bottom: 1px solid var(--ligne); }
 /* Règles */
+#r-couts .cout-nom { width: 100%; min-width: 11em; }
+#r-couts .cout-taux { width: 6em; text-align: right; }
+#r-couts td:first-child { width: 60%; }
 .cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .carte { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
 .carte h2 { font-size: 15px; }
@@ -219,6 +222,15 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <div class="grille"><table><thead><tr><th>Type de bon</th><th>Service</th><th class="nombre">Heure</th><th class="nombre">Transport</th></tr></thead>
         <tbody id="r-tarifs"></tbody></table></div>
       <small class="note">Un taux d'un autre type est corrigé automatiquement; un taux hors grille (ex. SRP) est gardé et le bon est signalé. Ces tarifs se modifient dans regles.toml.</small>
+    </section>
+    <section class="carte">
+      <p class="surtitre">Coût horaire des techniciens (rentabilité)</p>
+      <p class="note">Salaire horaire chargé de chaque technicien, pour estimer la marge de chaque bon. Les frais fixes (gestion, administration, logiciels, bureau) ne sont pas comptés : c'est une marge sur coûts directs. Sans taux, la marge du bon est affichée « inconnue ».</p>
+      <div class="champ"><label for="r-cout-defaut">Coût moyen pour un technicien absent de la liste ($/h; 0 = inconnu)</label><input id="r-cout-defaut" name="cout_horaire_defaut" inputmode="decimal"></div>
+      <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Coût horaire ($)</th><th></th></tr></thead>
+        <tbody id="r-couts"></tbody></table></div>
+      <button type="button" id="ajouter-cout">Ajouter un technicien</button>
+      <small class="note">Les techniciens vus dans les bons chargés apparaissent d'eux-mêmes; laisser le taux vide pour ne pas l'inscrire.</small>
     </section>
     <section class="carte">
       <p class="surtitre">Garde-fous : le bon passe « À vérifier »</p>
@@ -459,7 +471,7 @@ function afficherFiche() {
   $("fiche-marge").innerHTML = m.revenu === undefined ? "" :
     `Rentabilité estimée : <b>${argent(m.revenu)}</b> facturés, coût ${argent(m.cout)}` +
     (m.marge === null || m.marge === undefined ? "" : ` · marge <b>${Math.round(m.marge * 100)} %</b>`) +
-    (m.cout_complet ? "" : " (coût horaire manquant pour un technicien : coût sous-estimé)");
+    (m.cout_complet !== false ? "" : ` · marge <b>inconnue</b> : inscrire le coût horaire de ${echapper((m.sans_cout || []).join(", ") || "chaque technicien")} dans l'onglet Règles`);
   const minutes = {};
   d.bon.entrees.forEach(e => minutes[e.technicien] = (minutes[e.technicien] || 0) + Math.round(e.minutes));
   $("fiche-temps").textContent = "Temps réel (feuilles de temps, non modifiées) : " +
@@ -527,14 +539,39 @@ async function chargerRegles() {
     $("r-transports").value = r.regle_transports;
     $("r-ecart").value = String(r.ecart_sous_total).replace(".", ","); $("r-jours").value = r.jours_max_facture;
     $("r-montant").value = String(r.montant_max_ligne).replace(".", ","); $("r-heures").value = String(r.heures_max_jour).replace(".", ",");
+    $("r-cout-defaut").value = String(r.cout_horaire_defaut || 0).replace(".", ",");
+    $("r-couts").innerHTML = "";
+    Object.entries(r.couts_techniciens || {}).forEach(([nom, taux]) => ligneCout(nom, taux));
+    (r.techniciens_connus || []).forEach(nom => ligneCout(nom, ""));
   } catch (e) { message("message-regles", e.message); }
   afficherCles();
+}
+function ligneCout(nom, taux) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td><input class="cout-nom" aria-label="Technicien"></td>` +
+    `<td class="nombre"><input class="cout-taux" inputmode="decimal" aria-label="Coût horaire"></td>` +
+    `<td><button type="button" class="cout-retirer">Retirer</button></td>`;
+  tr.querySelector(".cout-nom").value = nom;
+  tr.querySelector(".cout-taux").value = taux === "" ? "" : String(taux).replace(".", ",");
+  tr.querySelector(".cout-retirer").addEventListener("click", () => tr.remove());
+  $("r-couts").appendChild(tr);
+  return tr;
+}
+$("ajouter-cout").addEventListener("click", () => ligneCout("", "").querySelector(".cout-nom").focus());
+function coutsSaisis() {
+  const couts = {};
+  $("r-couts").querySelectorAll("tr").forEach(tr => {
+    const nom = tr.querySelector(".cout-nom").value.trim(), taux = tr.querySelector(".cout-taux").value.trim();
+    if (nom && taux) couts[nom] = taux;
+  });
+  return couts;
 }
 $("enregistrer-regles").addEventListener("click", async () => {
   const valeurs = { pas_minutes: $("r-pas").value, marge: $("r-marge").value,
     regle_transports: $("r-transports").value, ecart_sous_total: $("r-ecart").value, jours_max_facture: $("r-jours").value,
     montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value,
-    transport_max_minutes: $("r-transport-max").value, marge_minimum: $("r-marge-min").value };
+    transport_max_minutes: $("r-transport-max").value, marge_minimum: $("r-marge-min").value,
+    cout_horaire_defaut: $("r-cout-defaut").value, couts_techniciens: coutsSaisis() };
   try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
   catch (e) { message("message-regles", e.message); }
 });
