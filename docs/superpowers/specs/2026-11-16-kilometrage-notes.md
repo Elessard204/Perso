@@ -1,6 +1,6 @@
 # Volet 2 : validation du kilométrage des techniciens (notes de départ)
 
-État : en attente des réponses de Hugo (règle de remboursement). Aucun code écrit.
+État : réponses de Hugo reçues (voir plus bas). Aucun code écrit; approche à choisir avec Éric.
 
 ## But (selon Éric)
 Garde-fou avant la paie : contre-vérifier le kilométrage inscrit par les techniciens pour détecter
@@ -33,3 +33,17 @@ valider rapidement, puis transmettre à Sabrina (paie, aux deux semaines).
 ## Pistes techniques (à trancher avec Éric)
 - Distances routières : Google Maps (payant, clé API) ou OpenStreetMap/OSRM (gratuit).
 - Lecture du texte libre du km : règles simples + IA pour les cas ambigus.
+
+## Réponses de Hugo (2026-11-16)
+- Trajet payé : maison → premier immeuble → … → dernier immeuble → maison, chaque jour travaillé.
+  Toujours présumé, même si l'ouvrier ne part pas de chez lui ou n'y retourne pas.
+- Exemption : jours où l'ouvrier utilise un véhicule loué (Uhaul) plutôt que son véhicule personnel.
+- Taux : 0,61 $/km. Période de paie : deux semaines, du dimanche au samedi.
+- Arrêts au magasin : trop de variables (technicien, type de travail, carte de crédit Progim, compte de
+  dépense, secteur). Aucune règle fixe possible.
+- Adresses des ouvriers : dans la charte de feuille de temps de Hugo et les dossiers d'employés
+  (Hugo enverra l'information). Données personnelles : à garder hors du dépôt Git.
+- Seuil d'écart : sans objet pour Hugo, puisqu'il ne regarde pas le km déclaré.
+- Km déclaré : inscrit sur le bon de la job. Hugo ne le consulte jamais (plus de 10 h/semaine à ouvrir
+  chaque bon); le champ sert surtout à rassurer les gars. Le km payé est celui que Hugo reconstitue.
+- Rénovations : type de tâche « Rénovation », numéros SRP (intégré à l'outil de révision des bons).
