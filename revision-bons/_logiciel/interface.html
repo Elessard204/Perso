@@ -133,7 +133,34 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 .carte ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--discret); display: grid; gap: 4px; }
 .case-seule { display: flex; gap: 8px; align-items: center; font-weight: 400; font-size: 14px; }
 .case-seule input { width: 18px; height: 18px; accent-color: var(--ok); }
+/* Kilométrage */
+.pastille.km-ok { color: var(--ok); background: var(--ok-pale); }
+.pastille.km-ecart { color: var(--bloque); background: var(--bloque-pale); }
+.pastille.km-non_declare, .pastille.km-a_configurer, .pastille.km-recalcul_requis { color: var(--avert); background: var(--avert-pale); }
+.pastille.km-sous_traitant, .pastille.km-brouillon { color: var(--discret); background: var(--survol); }
+.pastille.km-valide { color: var(--ok); background: var(--ok-pale); }
+.pastille .lien-bouton { padding: 0; font-size: 12px; color: inherit; text-decoration: underline; }
+.grille tr.grise td { color: var(--discret); background: var(--surface-lecture); }
+.grille tr.choisie td { background: var(--ligne-survol); }
+.grille tr.total td { font-weight: 700; background: var(--fond); }
+.grille .ecart-fort { color: var(--bloque); font-weight: 700; }
+.lien-export { display: inline-block; font: inherit; padding: 8px 14px; border-radius: var(--rayon-controle); border: 1px solid var(--marine);
+  background: var(--marine); color: #FFFFFF; font-weight: 700; text-decoration: none; }
+.lien-export:hover { background: var(--marine-desactive); }
+.lien-export[aria-disabled="true"] { background: var(--surface); color: var(--pale); border-color: var(--ligne); pointer-events: none; }
+.km-detail { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 14px 16px; display: grid; gap: 12px; }
+.km-detail h3 { margin: 0; font-size: 15px; }
+.km-detail .grille { max-height: none; border: 1px solid var(--ligne); border-radius: var(--rayon-controle); }
+.km-detail .fleche { color: var(--orange-texte); cursor: help; padding: 0 2px; }
+.km-detail input[type=number] { width: 90px; padding: 3px 6px; font-size: 13px; text-align: right; }
+.km-detail .trajet { min-width: 16em; }
+.km-detail .texte-bon { max-width: 38em; white-space: pre-wrap; }
+.km-reglage-tech input[type=text] { width: 100%; min-width: 8em; }
+.km-reglage-tech .code-postal { width: 8em; }
 @media (max-width: 860px) {
+  .entete { padding: 0 8px; }
+  .onglets { gap: 0; }
+  .onglets button { padding: 0 10px; font-size: 13px; }
   .deux { grid-template-columns: 1fr; }
   .page { padding: 16px; }
   .piste { width: 120px; }
@@ -152,6 +179,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 <div class="entete"><div class="entete-contenu">
   <nav class="onglets" aria-label="Sections">
     <button type="button" data-vue="reviser" aria-selected="true">À réviser</button>
+    <button type="button" data-vue="kilometrage" aria-selected="false">Kilométrage</button>
     <button type="button" data-vue="regles" aria-selected="false">Règles</button>
     <button type="button" data-vue="historique" aria-selected="false">Historique</button>
   </nav>
@@ -198,6 +226,37 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
     <h2>Résultat de l'envoi</h2>
     <div class="grille"><table><thead><tr><th>Bon</th><th>Résultat</th><th>Détail</th></tr></thead><tbody id="resultats-corps"></tbody></table></div>
   </section>
+</main>
+
+<!-- ===== Kilométrage ===== -->
+<main class="page" id="vue-kilometrage" hidden>
+  <section class="outils">
+    <div class="barre">
+      <div class="champ"><label for="km-periode">Période de paie</label><select id="km-periode"></select></div>
+      <button type="button" class="principal" id="km-calculer">Calculer</button>
+      <div class="avancement" id="km-avancement" hidden><div class="piste"><div id="km-barre"></div></div><span id="km-progres-texte"></span></div>
+      <span id="km-statut"></span>
+      <span class="espace"></span>
+      <button type="button" class="engageant" id="km-valider" disabled>Valider la période</button>
+      <button type="button" id="km-rouvrir" disabled>Rouvrir</button>
+      <a class="lien-export" id="km-export" aria-disabled="true" download>Exporter Excel</a>
+    </div>
+    <p class="message" id="km-message" role="status"></p>
+  </section>
+
+  <section class="tableau-travail">
+    <div class="grille" id="km-grille">
+      <table>
+        <thead><tr>
+          <th>Technicien</th><th class="nombre">Jours</th><th class="nombre">Heures</th><th class="nombre">Km calculé</th><th class="nombre">Magasin</th>
+          <th class="nombre">Km à payer</th><th class="nombre">Montant</th><th class="nombre">Km déclaré</th><th class="nombre">Écart</th><th>Statut</th>
+        </tr></thead>
+        <tbody id="km-corps"></tbody>
+      </table>
+      <div class="vide" id="km-vide">Choisir une période et cliquer « Calculer ».</div>
+    </div>
+  </section>
+  <section class="km-detail" id="km-detail" hidden></section>
 </main>
 
 <!-- ===== Règles ===== -->
@@ -283,12 +342,28 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
   </form>
   <div class="barre"><button type="button" class="principal" id="enregistrer-regles">Enregistrer les règles</button><p class="message" id="message-regles" role="status"></p></div>
 
+  <section class="carte" id="km-reglages">
+    <p class="surtitre">Kilométrage</p>
+    <div class="deux">
+      <div class="champ"><label for="kmr-taux">Taux ($/km)</label><input id="kmr-taux" inputmode="decimal"></div>
+      <div class="champ"><label for="kmr-seuil">Seuil d'écart (km par technicien et par période)</label><input id="kmr-seuil" inputmode="decimal">
+        <small>Hugo peut l'augmenter pour éviter les alertes inutiles</small></div>
+      <div class="champ"><label for="kmr-debut">Date de début d'une période (un dimanche)</label><input type="date" id="kmr-debut"></div>
+    </div>
+    <div class="grille km-reglage-tech"><table><thead><tr><th>Technicien</th><th>Code postal</th><th>Employé Progim (sur la paie, payé au km)</th></tr></thead>
+      <tbody id="kmr-tech"></tbody></table></div>
+    <button type="button" id="kmr-ajouter">Ajouter un technicien</button>
+    <p class="note">Codes postaux gardés dans votre profil Windows, jamais dans le dossier partagé. Case décochée : sous-traitant (aucun km payé).</p>
+    <div class="barre"><button type="button" class="principal" id="kmr-enregistrer">Enregistrer</button><p class="message" id="message-km-reglages" role="status"></p></div>
+  </section>
+
   <section class="carte" id="connexions">
     <p class="surtitre">Connexions</p>
     <p class="note">Les clés sont gardées dans votre profil Windows, jamais dans le dossier partagé. Laisser vide pour garder la clé actuelle.</p>
     <div class="deux">
       <div class="champ"><label for="cle-progression">Clé API Progression <span id="etat-progression"></span></label><input type="password" id="cle-progression" autocomplete="off"></div>
       <div class="champ"><label for="cle-claude">Clé API Claude <span id="etat-claude"></span></label><input type="password" id="cle-claude" autocomplete="off"></div>
+      <div class="champ"><label for="cle-google">Clé API Google Maps <span id="etat-google"></span></label><input type="password" id="cle-google" autocomplete="off"></div>
     </div>
     <div class="barre"><button type="button" id="enregistrer-cles">Enregistrer les clés</button><p class="message" id="message-cles" role="status"></p></div>
   </section>
@@ -367,8 +442,9 @@ async function api(chemin, corps) {
 
 // ---------- onglets ----------
 function montrer(vue) {
-  ["reviser", "regles", "historique"].forEach(v => $("vue-" + v).hidden = v !== vue);
+  ["reviser", "kilometrage", "regles", "historique"].forEach(v => $("vue-" + v).hidden = v !== vue);
   document.querySelectorAll(".onglets button").forEach(b => b.setAttribute("aria-selected", b.dataset.vue === vue));
+  if (vue === "kilometrage") chargerKm();
   if (vue === "regles") chargerRegles();
   if (vue === "historique") chargerHistorique();
 }
@@ -562,6 +638,7 @@ async function chargerRegles() {
     (r.techniciens_connus || []).forEach(nom => ligneCout(nom, ""));
     majCoutsCharges();
   } catch (e) { message("message-regles", e.message); }
+  chargerKmReglages();
   afficherCles();
 }
 function ligneCout(nom, taux) {
@@ -616,13 +693,218 @@ function afficherCles() {
   const c = etat.cles || {};
   $("etat-progression").innerHTML = c.progression ? '<span class="pastille oui">configurée</span>' : '<span class="pastille non">manquante</span>';
   $("etat-claude").innerHTML = c.claude ? '<span class="pastille oui">configurée</span>' : '<span class="pastille non">manquante</span>';
+  $("etat-google").innerHTML = c.google ? '<span class="pastille oui">configurée</span>' : '<span class="pastille non">manquante</span>';
 }
 $("enregistrer-cles").addEventListener("click", async () => {
   try {
-    etat = await api("/cles", { progression: $("cle-progression").value, claude: $("cle-claude").value });
-    $("cle-progression").value = ""; $("cle-claude").value = ""; afficherCles();
+    etat = await api("/cles", { progression: $("cle-progression").value, claude: $("cle-claude").value, google: $("cle-google").value });
+    $("cle-progression").value = ""; $("cle-claude").value = ""; $("cle-google").value = ""; afficherCles();
     message("message-cles", "Clés enregistrées dans votre profil Windows.", true);
   } catch (e) { message("message-cles", e.message); }
+});
+
+// ---------- kilométrage ----------
+const KM_STATUTS = { ok: "Conforme", ecart: "Écart", non_declare: "Non déclaré", a_configurer: "À configurer",
+  sous_traitant: "Sous-traitant", recalcul_requis: "Recalcul requis" };
+const KM_AIDES = { recalcul_requis: "Le code postal a changé depuis le calcul : cliquer « Calculer »." };
+const BON_STATUTS = { ok: "Compté", a_verifier: "À vérifier", vide: "Aucun km déclaré", partage: "Partagé, non attribué" };
+let kmPeriodes = [], kmDebut = "", kmData = null, kmOuvert = "", kmCharge = false;
+
+function nbKm(n) { return n == null ? "" : Number(n).toLocaleString("fr-CA", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+function heuresHMM(minutes) {
+  const m = Math.round(Number(minutes) || 0);
+  return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0");
+}
+function jourFr(iso) {
+  const [a, m, j] = iso.split("-").map(Number);
+  return new Date(a, m - 1, j).toLocaleDateString("fr-CA", { weekday: "short", day: "numeric", month: "short" });
+}
+function pastilleKm(t) {
+  const texte = echapper(KM_STATUTS[t.statut] || t.statut);
+  const aide = KM_AIDES[t.statut] ? ` title="${echapper(KM_AIDES[t.statut])}"` : "";
+  if (t.statut === "a_configurer") return `<span class="pastille km-a_configurer"><button type="button" class="lien-bouton" data-aller="regles">${texte}</button></span>`;
+  return `<span class="pastille km-${t.statut}"${aide}>${texte}</span>`;
+}
+
+async function chargerKm() {
+  if (kmCharge) return;
+  try {
+    kmPeriodes = (await api("/km/periodes")).periodes;
+    $("km-periode").innerHTML = kmPeriodes.map(p => `<option value="${echapper(p.debut)}">${echapper(p.libelle)}</option>`).join("");
+    kmCharge = true;
+    kmDebut = kmPeriodes.length ? $("km-periode").value : "";
+    await chargerPeriodeKm();
+  } catch (e) { message("km-message", e.message); }
+}
+$("km-periode").addEventListener("change", () => { kmDebut = $("km-periode").value; kmOuvert = ""; message("km-message", ""); chargerPeriodeKm(); });
+
+async function chargerPeriodeKm() {
+  if (!kmDebut) { kmData = null; afficherKm(); return; }
+  try { kmData = (await api("/km/periode?debut=" + encodeURIComponent(kmDebut))).periode; }
+  catch (e) { kmData = null; message("km-message", e.message); }
+  afficherKm();
+}
+
+function afficherKm() {
+  const p = kmData, valide = !!p && p.statut === "valide";
+  $("km-vide").hidden = !!p;
+  $("km-statut").innerHTML = !p ? '<span class="pastille km-brouillon">Pas encore calculée</span>'
+    : valide ? `<span class="pastille km-valide">Validée, révision ${p.revision}</span>` : `<span class="pastille km-brouillon">Brouillon, révision ${p.revision}</span>`;
+  $("km-valider").disabled = !p || valide;
+  $("km-rouvrir").disabled = !valide;
+  $("km-calculer").disabled = valide || kmEnCours;
+  const lien = $("km-export");
+  if (valide) { lien.href = `/km/export?debut=${encodeURIComponent(kmDebut)}&jeton=${encodeURIComponent(JETON)}`; lien.setAttribute("aria-disabled", "false"); }
+  else { lien.removeAttribute("href"); lien.setAttribute("aria-disabled", "true"); }
+  if (!p) { $("km-corps").innerHTML = ""; $("km-detail").hidden = true; return; }
+  const lignes = p.techniciens.map(t => {
+    const gris = t.statut === "sous_traitant" ? " grise" : "";
+    const sel = t.nom === kmOuvert ? " choisie" : "";
+    const ecartFort = t.statut === "ecart" ? " ecart-fort" : "";
+    const ecart = t.ecart == null ? "" : (t.ecart > 0 ? "+" : "") + nbKm(t.ecart);
+    return `<tr class="cliquable${gris}${sel}" data-nom="${echapper(t.nom)}" tabindex="0">
+      <td class="code">${echapper(t.nom)}</td><td class="nombre">${t.jours}</td><td class="nombre">${heuresHMM(t.minutes_total)}</td>
+      <td class="nombre">${nbKm(t.km_calcule)}</td><td class="nombre">${t.km_magasin ? nbKm(t.km_magasin) : ""}</td>
+      <td class="nombre">${t.paie ? "<b>" + nbKm(t.km_a_payer) + "</b>" : ""}</td><td class="nombre">${t.paie ? argent(t.montant) : ""}</td>
+      <td class="nombre">${t.statut === "non_declare" ? "—" : nbKm(t.km_declare)}</td>
+      <td class="nombre${ecartFort}">${ecart}</td><td>${pastilleKm(t)}</td></tr>`;
+  });
+  lignes.push(`<tr class="total"><td>Total</td><td></td><td></td><td></td><td></td><td class="nombre">${nbKm(p.total_km)}</td>
+    <td class="nombre">${argent(p.total_montant)}</td><td></td><td></td><td></td></tr>`);
+  $("km-corps").innerHTML = lignes.join("");
+  afficherDetailKm();
+}
+
+function trajetHtml(j) {
+  const t = j.troncons || [];
+  if (t.length) {
+    return echapper(t[0].de) + t.map(x => ` <span class="fleche" title="${echapper(nbKm(x.km))} km">→</span> ${echapper(x.a)}`).join("");
+  }
+  const codes = (j.arrets || []).map(a => a.code);
+  return codes.length ? echapper(codes.join(" → ")) : '<span class="discret">Aucun arrêt localisé</span>';
+}
+
+function afficherDetailKm() {
+  const zone = $("km-detail");
+  const t = kmData && kmData.techniciens.find(x => x.nom === kmOuvert);
+  zone.hidden = !t;
+  if (!t) return;
+  const fige = kmData.statut === "valide";
+  const jours = t.details.map(j => `<tr data-jour="${echapper(j.jour)}">
+      <td class="code">${echapper(jourFr(j.jour))}</td>
+      <td class="nombre">${heuresHMM(t.minutes_par_jour[j.jour])}</td>
+      <td class="trajet">${trajetHtml(j)}${(j.a_verifier || []).map(a => `<div><span class="pastille a_verifier">À vérifier</span> <span class="discret">${echapper(a)}</span></div>`).join("")}</td>
+      <td class="nombre">${j.uhaul ? '<span class="discret">exclu</span>' : nbKm(j.km)}</td>
+      <td><label class="case-seule"><input type="checkbox" class="km-uhaul" ${j.uhaul ? "checked" : ""} ${fige ? "disabled" : ""}> Uhaul (jour exclu)</label></td>
+      <td class="nombre"><input type="number" class="km-magasin" min="0" step="0.1" value="${j.magasin_km || ""}" placeholder="0" ${fige ? "disabled" : ""} aria-label="+ km magasin"></td>
+      <td class="nombre"><b>${nbKm(j.km_paye)}</b></td></tr>`).join("");
+  const bons = t.bons.map(b => `<tr><td class="code">${echapper(b.code)}</td><td class="texte-bon">${echapper(b.texte || "")}</td>
+      <td class="nombre">${b.km == null ? "" : nbKm(b.km)}</td>
+      <td>${b.statut === "ok" ? '<span class="pastille pret">' : '<span class="pastille a_verifier">'}${echapper(BON_STATUTS[b.statut] || b.statut)}</span></td>
+      <td class="nombre">${b.statut === "ok" && b.part != null && b.part < 1 ? Math.round(b.part * 100) + " %" : ""}</td></tr>`).join("");
+  zone.innerHTML = `<h3>${echapper(t.nom)} : détail jour par jour</h3>
+    <div class="grille"><table><thead><tr><th>Jour</th><th class="nombre">Heures</th><th>Trajet</th><th class="nombre">Km du jour</th><th>Uhaul</th>
+      <th class="nombre">+ km magasin</th><th class="nombre">Km à payer</th></tr></thead>
+      <tbody>${jours || '<tr><td colspan="7" class="discret">Aucun jour de travail.</td></tr>'}</tbody></table></div>
+    <h3>Bons et km déclarés</h3>
+    <div class="grille"><table><thead><tr><th>Bon</th><th>Texte du technicien</th><th class="nombre">Km déclaré</th><th>Statut</th><th class="nombre">Part</th></tr></thead>
+      <tbody>${bons || '<tr><td colspan="5" class="discret">Aucun bon.</td></tr>'}</tbody></table></div>`;
+}
+
+$("km-corps").addEventListener("click", e => {
+  const aller = e.target.closest("[data-aller]");
+  if (aller) { montrer(aller.dataset.aller); return; }
+  const tr = e.target.closest("tr[data-nom]"); if (!tr) return;
+  kmOuvert = kmOuvert === tr.dataset.nom ? "" : tr.dataset.nom;
+  afficherKm();
+  if (kmOuvert) $("km-detail").scrollIntoView({ block: "nearest" });
+});
+$("km-corps").addEventListener("keydown", e => {
+  const tr = e.target.closest("tr[data-nom]");
+  if (tr && e.key === "Enter") { kmOuvert = kmOuvert === tr.dataset.nom ? "" : tr.dataset.nom; afficherKm(); }
+});
+async function ajusterKm(tr) {
+  const corps = { debut: kmDebut, technicien: kmOuvert, jour: tr.dataset.jour,
+    uhaul: tr.querySelector(".km-uhaul").checked, magasin_km: tr.querySelector(".km-magasin").value };
+  try { kmData = (await api("/km/ajuster", corps)).periode; message("km-message", ""); }
+  catch (e) { message("km-message", e.message); }
+  afficherKm();
+}
+$("km-detail").addEventListener("change", e => {
+  const tr = e.target.closest("tr[data-jour]");
+  if (tr && (e.target.classList.contains("km-uhaul") || e.target.classList.contains("km-magasin"))) ajusterKm(tr);
+});
+
+let kmEnCours = false;
+$("km-calculer").addEventListener("click", async () => {
+  if (!kmDebut) return;
+  try { await api("/km/calculer", { debut: kmDebut }); message("km-message", ""); suivreKm(); }
+  catch (e) { message("km-message", e.message); }
+});
+async function suivreKm() {
+  kmEnCours = true; $("km-avancement").hidden = false; $("km-calculer").disabled = true; $("km-periode").disabled = true;
+  let p;
+  try { p = await api("/km/progres"); } catch (e) { p = { en_cours: false, message: e.message }; }
+  $("km-barre").style.width = p.en_cours ? "60%" : "100%";
+  $("km-progres-texte").textContent = p.message || "";
+  if (p.en_cours) { setTimeout(suivreKm, 700); return; }
+  kmEnCours = false; $("km-periode").disabled = false;
+  await chargerPeriodeKm();
+  message("km-message", p.message, !p.message || p.message === "Calcul terminé.");
+  setTimeout(() => $("km-avancement").hidden = true, 1500);
+}
+$("km-valider").addEventListener("click", async () => {
+  if (!confirm("Valider cette période ? Les chiffres seront figés pour l'export.")) return;
+  try { kmData = (await api("/km/valider", { debut: kmDebut })).periode; message("km-message", "Période validée.", true); }
+  catch (e) { message("km-message", e.message); }
+  afficherKm();
+});
+$("km-rouvrir").addEventListener("click", async () => {
+  const raison = prompt("Raison de la réouverture ?");
+  if (raison === null) return;
+  try { kmData = (await api("/km/rouvrir", { debut: kmDebut, raison })).periode; message("km-message", "Période rouverte.", true); }
+  catch (e) { message("km-message", e.message); }
+  afficherKm();
+});
+
+// réglages du kilométrage (onglet Règles)
+function ligneTechKm(nom, code, paye, connu) {
+  const tr = document.createElement("tr");
+  tr.dataset.connu = connu ? "1" : "";
+  tr.innerHTML = `<td><input type="text" class="kmr-nom" aria-label="Technicien"></td>
+    <td><input type="text" class="kmr-code code-postal" maxlength="7" placeholder="A1A 1A1" autocomplete="off" aria-label="Code postal"></td>
+    <td><label class="case-seule"><input type="checkbox" class="kmr-paye"> Employé Progim</label></td>`;
+  const nomInput = tr.querySelector(".kmr-nom");
+  nomInput.value = nom; nomInput.readOnly = !!nom;
+  tr.querySelector(".kmr-code").value = code || "";
+  tr.querySelector(".kmr-paye").checked = !!paye;
+  $("kmr-tech").appendChild(tr);
+  return tr;
+}
+async function chargerKmReglages() {
+  try {
+    const r = await api("/km/reglages");
+    $("kmr-taux").value = String(r.taux).replace(".", ","); $("kmr-seuil").value = String(r.seuil_km).replace(".", ",");
+    $("kmr-debut").value = r.debut_reference;
+    $("kmr-tech").innerHTML = "";
+    Object.entries(r.techniciens || {}).forEach(([nom, v]) => ligneTechKm(nom, v.code_postal, v.paye_km, true));
+    (r.techniciens_connus || []).forEach(nom => ligneTechKm(nom, "", false, false));
+  } catch (e) { message("message-km-reglages", e.message); }
+}
+$("kmr-ajouter").addEventListener("click", () => ligneTechKm("", "", false, false).querySelector(".kmr-nom").focus());
+$("kmr-enregistrer").addEventListener("click", async () => {
+  const techniciens = {};
+  $("kmr-tech").querySelectorAll("tr").forEach(tr => {
+    const nom = tr.querySelector(".kmr-nom").value.trim(), code = tr.querySelector(".kmr-code").value.trim();
+    const paye = tr.querySelector(".kmr-paye").checked;
+    // Un technicien connu mais jamais configuré reste absent tant qu'on n'y touche pas.
+    if (nom && (tr.dataset.connu || code || paye)) techniciens[nom] = { code_postal: code, paye_km: paye };
+  });
+  try {
+    await api("/km/reglages", { taux: $("kmr-taux").value, seuil_km: $("kmr-seuil").value, debut_reference: $("kmr-debut").value, techniciens });
+    await chargerKmReglages(); kmCharge = false;
+    message("message-km-reglages", "Réglages du kilométrage enregistrés.", true);
+  } catch (e) { message("message-km-reglages", e.message); }
 });
 
 // ---------- historique ----------

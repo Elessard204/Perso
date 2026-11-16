@@ -2,6 +2,7 @@
 
 Date : 2026-11-10
 Statut : à relire par la direction avant le plan de développement
+Suite : le suivi du kilométrage des techniciens est décrit dans `docs/superpowers/specs/2026-11-16-kilometrage-design.md`.
 
 ## 0. Version 2 — règles confirmées par Hugo (questionnaire du 2026-11-14)
 

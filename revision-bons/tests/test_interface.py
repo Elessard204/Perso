@@ -157,6 +157,7 @@ def test_page_html(site):
     with urllib.request.urlopen(site.base + "/", timeout=10) as r:
         page = r.read().decode("utf-8")
     assert "Révision des bons" in page and "À réviser" in page and "Règles" in page and "Historique" in page
+    assert 'data-vue="kilometrage"' in page and "Seuil d'écart" in page
 
 
 def test_raison_montre_l_alerte_la_plus_importante(site):
