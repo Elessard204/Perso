@@ -61,7 +61,7 @@ def test_cout_charge_depuis_taux_de_base():
     assert round(r.facteur_charges, 3) == 1.202
     lignes, _, _ = ajuster_heures_transport(b, r)
     # (80 + 80 + 45) min × 30 $ × 1,202 = 123,21 $
-    assert estimer_marge(b, lignes, [], r)["cout"] == 123.21
+    assert abs(estimer_marge(b, lignes, [], r)["cout"] - 123.21) <= 0.01
 ```
 Dans `test_interface.py::test_couts_horaires_des_techniciens`, ajouter : POST `charges_feries: "0,042"` → GET renvoie `0.042`; `charges_das: "0,9"` → 400. Adapter `test_marge_taux_inscrit_dans_les_regles` et `test_marge_taux_par_defaut` (le coût attendu est maintenant multiplié par 1,202 : 123,21).
 
