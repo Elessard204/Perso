@@ -224,3 +224,67 @@ def test_code_postal_introuvable_a_verifier(tmp_path):
     for jour in max_roy["details"]:
         assert jour["domicile"] is False
         assert any("code postal introuvable" in note for note in jour["a_verifier"])
+
+
+def test_config_changee_depuis_le_calcul_recalcul_requis(tmp_path):
+    km = _km(tmp_path)
+    sans_code = {**TECHS, "Max Roy": {"code_postal": "", "paye_km": True}}
+    km.calculer(DEBUT, FIN, sans_code)
+
+    # Hugo saisit le code postal de Max sans recalculer : pas de montant sur des distances sans domicile.
+    resultat = km.periode(DEBUT, TECHS, R)
+    max_roy, luc = _ligne(resultat, "Max Roy"), _ligne(resultat, "Luc Tremblay")
+    assert max_roy["statut"] == "recalcul_requis" and max_roy["montant"] is None
+    assert max_roy["ecart"] is None and max_roy["paie"] is False and max_roy["km_a_payer"] == 0.0
+    assert resultat["total_km"] == luc["km_a_payer"] and resultat["total_montant"] == luc["montant"]
+    with pytest.raises(ValueError, match="Recalcul requis pour : Max Roy — recalculer la période avant de valider."):
+        km.valider(DEBUT, TECHS, R, "Hugo")
+    assert km.periode(DEBUT, TECHS, R)["statut"] == "brouillon"
+
+    # Code corrigé pour un technicien déjà admissible : même chose.
+    corrige = {**TECHS, "Luc Tremblay": {"code_postal": "J4W 3J9", "paye_km": True}}
+    assert _ligne(km.periode(DEBUT, corrige, R), "Luc Tremblay")["statut"] == "recalcul_requis"
+    # Devenu sous-traitant : aucun montant de toute façon, pas besoin de recalcul.
+    sous_traitant = {**sans_code, "Max Roy": {"code_postal": "", "paye_km": False}}
+    assert _ligne(km.periode(DEBUT, sous_traitant, R), "Max Roy")["statut"] == "sous_traitant"
+
+    km.calculer(DEBUT, FIN, TECHS)
+    resultat = km.periode(DEBUT, TECHS, R)
+    assert _ligne(resultat, "Max Roy")["montant"] > 0
+    assert km.valider(DEBUT, TECHS, R, "Hugo")["statut"] == "valide"
+
+
+def test_code_introuvable_puis_corrige_recalcul_requis(tmp_path):
+    km = _km(tmp_path, CartesEspionnes(introuvables=("H2B 2B2",)))
+    km.calculer(DEBUT, FIN, TECHS)
+    assert _ligne(km.periode(DEBUT, TECHS, R), "Max Roy")["statut"] != "recalcul_requis"
+    corrige = {**TECHS, "Max Roy": {"code_postal": "H2B 2B3", "paye_km": True}}
+    assert _ligne(km.periode(DEBUT, corrige, R), "Max Roy")["statut"] == "recalcul_requis"
+
+
+def test_validation_pendant_le_calcul_gardee(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+    autre = _km(tmp_path)
+
+    def valider_pendant(message):
+        if message.startswith("Calcul des distances"):
+            autre.valider(DEBUT, TECHS, R, "Hugo")
+
+    assert km.calculer(DEBUT, FIN, TECHS, valider_pendant) is None
+    fige = km.periode(DEBUT, TECHS, R)
+    assert fige["statut"] == "valide" and fige["valide_par"] == "Hugo"
+    donnees = json.loads((tmp_path / "kilometrage" / "2026-10-25.json").read_text(encoding="utf-8"))
+    assert donnees["instantane"] is not None
+
+
+def test_ajustement_pendant_le_calcul_garde(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+
+    def ajuster_pendant(message):
+        if message.startswith("Calcul des distances"):
+            km.ajuster(DEBUT, "Luc Tremblay", "2026-11-03", False, 9, "Hugo")
+
+    km.calculer(DEBUT, FIN, TECHS, ajuster_pendant)
+    assert _ligne(km.periode(DEBUT, TECHS, R), "Luc Tremblay")["km_magasin"] == 9

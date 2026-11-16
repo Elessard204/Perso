@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
@@ -20,10 +21,25 @@ from regles import Regles
 MAGASIN_MAX_KM = 500
 _REFUS_VALIDEE = "Période validée : la rouvrir avant de modifier."
 _NOTE_INTROUVABLE = "code postal introuvable : trajet calculé sans le domicile"
+RECALCUL_REQUIS = "recalcul_requis"
+
+# Un verrou par dossier de périodes, partagé par toutes les instances (fils de l'interface).
+_VERROUS: dict[str, threading.Lock] = {}
+_VERROUS_GARDE = threading.Lock()
+
+
+def _verrou(dossier: Path) -> threading.Lock:
+    with _VERROUS_GARDE:
+        return _VERROUS.setdefault(str(Path(dossier).resolve()), threading.Lock())
 
 
 def _admissible(config: dict | None) -> bool:
     return bool(config and config.get("paye_km") and (config.get("code_postal") or "").strip())
+
+
+def _code_utilise(config: dict | None) -> str | None:
+    """Code postal qui sert au calcul : celui d'un technicien admissible, sinon None."""
+    return config["code_postal"].strip() if _admissible(config) else None
 
 
 class Kilometrage:
@@ -34,6 +50,7 @@ class Kilometrage:
         self.cfg_claude = cfg_claude
         self.dossier = Path(dossier)
         self.journal = journal
+        self._verrou = _verrou(self.dossier)
 
     # --- fichier de période -------------------------------------------------------------------
     def _fichier(self, debut: date) -> Path:
@@ -83,10 +100,9 @@ class Kilometrage:
         cache_ia: dict = {}
         base_techs = {}
         for nom in sorted(par_technicien):
-            config = techniciens.get(nom)
+            code = _code_utilise(techniciens.get(nom))
             domicile, note = None, None
-            if _admissible(config):
-                code = config["code_postal"].strip()
+            if code is not None:
                 if code not in positions:
                     positions[code] = self.cartes.geocoder(code)
                 domicile = positions[code]
@@ -105,11 +121,17 @@ class Kilometrage:
             progres(f"Km déclarés : {nom}…")
             bons = bons_du_technicien(nom, entrees_par_tache, taches, debut, fin,
                                       self.client_ia, self.cfg_claude, cache_ia)
-            base_techs[nom] = {"jours": jours, "bons": bons}
+            base_techs[nom] = {"code_postal": code, "jours": jours, "bons": bons}
 
-        donnees["base"] = {"debut": debut.isoformat(), "fin": fin.isoformat(), "techniciens": base_techs,
-                           "calcule_le": datetime.now().astimezone().isoformat(timespec="seconds")}
-        self._ecrire(debut, donnees)
+        base = {"debut": debut.isoformat(), "fin": fin.isoformat(), "techniciens": base_techs,
+                "calcule_le": datetime.now().astimezone().isoformat(timespec="seconds")}
+        with self._verrou:
+            # Relu juste avant d'écrire : une validation ou un ajustement fait pendant le calcul est gardé.
+            donnees = self._lire(debut)
+            if donnees["statut"] == "valide":
+                return None
+            donnees["base"] = base
+            self._ecrire(debut, donnees)
         progres("Calcul terminé.")
         return None
 
@@ -123,21 +145,40 @@ class Kilometrage:
             return None
         totaux = km_calcul.totaliser(donnees["base"], donnees["ajustements"], regles.km_taux,
                                      regles.km_seuil_ecart, techniciens)
+        self._marquer_recalcul(totaux, donnees["base"], techniciens)
         return {**totaux, "statut": "brouillon", "revision": donnees["revision"]}
+
+    @staticmethod
+    def _marquer_recalcul(totaux: dict, base: dict, techniciens: dict) -> None:
+        """Un technicien admissible dont le code postal n'est plus celui du calcul n'est pas payé
+        sur des distances périmées : statut « recalcul requis », sans montant, hors des totaux."""
+        calcules = base.get("techniciens", {})
+        for ligne in totaux["techniciens"]:
+            actuel = _code_utilise(techniciens.get(ligne["nom"]))
+            if actuel is not None and actuel != (calcules.get(ligne["nom"]) or {}).get("code_postal"):
+                ligne.update(statut=RECALCUL_REQUIS, paie=False, km_a_payer=0.0, montant=None, ecart=None)
+        payees = [l for l in totaux["techniciens"] if l["paie"]]
+        totaux["total_km"] = round(sum(l["km_a_payer"] for l in payees), 1)
+        totaux["total_montant"] = round(sum(l["montant"] for l in payees), 2)
 
     # --- modifications ------------------------------------------------------------------------
     def ajuster(self, debut: date, technicien: str, jour: str, uhaul: bool, magasin_km: float,
                 personne: str) -> None:
-        donnees = self._lire(debut)
-        if donnees["statut"] == "valide":
-            raise ValueError(_REFUS_VALIDEE)
         magasin = float(magasin_km)
         if not 0 <= magasin <= MAGASIN_MAX_KM:
             raise ValueError(f"Km magasin : entre 0 et {MAGASIN_MAX_KM}.")
+        with self._verrou:
+            self._ajuster(debut, technicien, jour, bool(uhaul), magasin, personne)
+
+    def _ajuster(self, debut: date, technicien: str, jour: str, uhaul: bool, magasin: float,
+                 personne: str) -> None:
+        donnees = self._lire(debut)
+        if donnees["statut"] == "valide":
+            raise ValueError(_REFUS_VALIDEE)
         cle = f"{technicien}|{jour}"
         precedent = donnees["ajustements"].get(cle) or {}
         avant = {"uhaul": bool(precedent.get("uhaul")), "magasin_km": float(precedent.get("magasin_km") or 0)}
-        apres = {"uhaul": bool(uhaul), "magasin_km": magasin}
+        apres = {"uhaul": uhaul, "magasin_km": magasin}
         if apres == avant:
             return
         donnees["ajustements"][cle] = apres
@@ -146,12 +187,19 @@ class Kilometrage:
                                                     "jour": jour, "avant": avant, "apres": apres})
 
     def valider(self, debut: date, techniciens: dict, regles: Regles, personne: str) -> dict:
+        with self._verrou:
+            return self._valider(debut, techniciens, regles, personne)
+
+    def _valider(self, debut: date, techniciens: dict, regles: Regles, personne: str) -> dict:
         donnees = self._lire(debut)
         if donnees["statut"] == "valide":
             raise ValueError("Période déjà validée.")
         brouillon = self.periode(debut, techniciens, regles)
         if brouillon is None:
             raise ValueError("Aucun calcul pour cette période : la calculer avant de valider.")
+        a_recalculer = [l["nom"] for l in brouillon["techniciens"] if l["statut"] == RECALCUL_REQUIS]
+        if a_recalculer:
+            raise ValueError(f"Recalcul requis pour : {', '.join(a_recalculer)} — recalculer la période avant de valider.")
         instantane = {k: v for k, v in brouillon.items() if k not in ("statut", "revision")}
         donnees.update(statut="valide", instantane=instantane, valide_par=personne,
                        valide_le=datetime.now().astimezone().isoformat(timespec="seconds"))
@@ -165,6 +213,10 @@ class Kilometrage:
         raison = (raison or "").strip()
         if len(raison) < 5:
             raise ValueError("Indiquer la raison de la réouverture (au moins 5 caractères).")
+        with self._verrou:
+            self._rouvrir(debut, raison, personne)
+
+    def _rouvrir(self, debut: date, raison: str, personne: str) -> None:
         donnees = self._lire(debut)
         if donnees["statut"] != "valide":
             raise ValueError("Cette période n'est pas validée.")
