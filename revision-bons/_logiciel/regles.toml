@@ -21,8 +21,11 @@ heure = 85.0
 transport = 50.0
 [tarif_progression]              # taux que Progression met par défaut : seul celui-ci est corrigé automatiquement
 type = "Appel de service"
-[couts]                          # coût horaire des techniciens, pour estimer la rentabilité (modifiable dans Règles)
-defaut = 0.0                     # coût moyen si le technicien n'est pas dans la liste; 0 = inconnu
+[couts]                          # taux de base des techniciens, pour estimer la rentabilité (modifiable dans Règles)
+defaut = 0.0                     # taux de base moyen si le technicien n'est pas dans la liste; 0 = inconnu
+das = 0.12                       # charges de l'employeur (RRQ, AE, RQAP, FSS, CNESST...), en fraction du taux de base
+vacances = 0.04                  # 0,06 après 3 ans
+feries = 0.042                   # 11 jours ÷ 260
 [couts.techniciens]
 [garde_fous]
 ecart_sous_total = 0.05

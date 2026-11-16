@@ -145,12 +145,14 @@ def alertes_inventaire(lignes: list[Ligne]) -> list[Alerte]:
 
 
 def cout_horaire(e, r: Regles | None) -> float | None:
-    """Coût horaire du technicien : celui de Progression, sinon celui inscrit dans Règles, sinon le coût moyen."""
+    """Coût horaire chargé : celui de Progression (déjà chargé), sinon le taux de base inscrit dans Règles
+    (ou le taux moyen) multiplié par les charges."""
     if e.cout_horaire is not None:
         return e.cout_horaire
     if r is None:
         return None
-    return r.couts_techniciens.get(e.technicien) or r.cout_horaire_defaut or None
+    base = r.couts_techniciens.get(e.technicien) or r.cout_horaire_defaut
+    return base * r.facteur_charges if base else None
 
 
 def estimer_marge(bon: Bon, lignes: list[Ligne], retirees: list[int], r: Regles | None = None) -> dict:

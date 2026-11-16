@@ -28,8 +28,16 @@ class Regles:
     tarifs: dict = field(default_factory=dict)          # type de bon -> {service, heure, transport}
     tarifs_autres: dict = field(default_factory=dict)   # services jamais appliqués automatiquement
     tarif_progression: str = "Appel de service"         # type dont Progression met les taux par défaut
-    cout_horaire_defaut: float = 0.0                    # coût horaire moyen d'un technicien; 0 = inconnu
-    couts_techniciens: dict = field(default_factory=dict)  # nom du technicien -> coût horaire
+    cout_horaire_defaut: float = 0.0                    # taux de base moyen d'un technicien; 0 = inconnu
+    couts_techniciens: dict = field(default_factory=dict)  # nom du technicien -> taux de base
+    charges_das: float = 0.12                           # charges de l'employeur, fraction du taux de base
+    charges_vacances: float = 0.04
+    charges_feries: float = 0.042
+
+    @property
+    def facteur_charges(self) -> float:
+        """Multiplicateur qui transforme un taux de base en coût chargé."""
+        return 1 + self.charges_das + self.charges_vacances + self.charges_feries
 
 
 def charger_regles(chemin: Path) -> Regles:
@@ -51,6 +59,9 @@ def charger_regles(chemin: Path) -> Regles:
         tarif_progression=str(d.get("tarif_progression", {}).get("type", "Appel de service")),
         cout_horaire_defaut=float(d.get("couts", {}).get("defaut", 0.0)),
         couts_techniciens={k: float(v) for k, v in d.get("couts", {}).get("techniciens", {}).items()},
+        charges_das=float(d.get("couts", {}).get("das", 0.12)),
+        charges_vacances=float(d.get("couts", {}).get("vacances", 0.04)),
+        charges_feries=float(d.get("couts", {}).get("feries", 0.042)),
     )
 
 

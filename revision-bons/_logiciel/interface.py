@@ -49,6 +49,9 @@ CHAMPS_REGLES = {
     "transport_max_minutes": ("heures", "transport_max_minutes", int),
     "marge_minimum": ("garde_fous", "marge_minimum", float),
     "cout_horaire_defaut": ("couts", "defaut", float),
+    "charges_das": ("couts", "das", float),
+    "charges_vacances": ("couts", "vacances", float),
+    "charges_feries": ("couts", "feries", float),
 }
 
 
@@ -106,7 +109,8 @@ def _nombre(valeur) -> float:
 REGLES_TRANSPORTS = {"un_par_visite"}   # quantité 1 par entrée de transport
 BORNES = {"pas_minutes": (1, 60), "marge": (0, 1), "ecart_sous_total": (0, 100), "jours_max_facture": (0, 365),
           "montant_max_ligne": (0, 1_000_000), "heures_max_jour": (1, 24),
-          "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9), "cout_horaire_defaut": (0, 500)}
+          "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9), "cout_horaire_defaut": (0, 500),
+          "charges_das": (0, 0.5), "charges_vacances": (0, 0.5), "charges_feries": (0, 0.5)}
 
 
 class Application:

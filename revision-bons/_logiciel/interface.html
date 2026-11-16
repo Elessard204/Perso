@@ -227,24 +227,22 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <small class="note">Le taux par défaut de Progression (Appel de service) est corrigé selon le type de bon; tout autre taux est gardé et le bon est signalé. Ces tarifs se modifient dans regles.toml.</small>
     </section>
     <section class="carte">
-      <p class="surtitre">Coût horaire des techniciens (rentabilité)</p>
-      <p class="note">Salaire horaire chargé de chaque technicien, pour estimer la marge de chaque bon. Les frais fixes (gestion, administration, logiciels, bureau) ne sont pas comptés : c'est une marge sur coûts directs. Sans taux, la marge du bon est affichée « inconnue ».</p>
+      <p class="surtitre">Coût horaire des techniciens (taux de base)</p>
+      <p class="note">Taux de base de chaque technicien, tel qu'il figure dans la liste de paie. Le coût chargé s'en déduit, pour estimer la marge de chaque bon. Sans taux, la marge du bon est affichée « inconnue ».</p>
       <details class="aide">
-        <summary>Quoi inclure dans le coût horaire d'un employé ?</summary>
-        <p class="note">Calcul : coût annuel total de l'employé ÷ heures inscrites sur des bons dans l'année. Ne rien oublier :</p>
+        <summary>Quoi inclure ?</summary>
         <ul>
-          <li>Salaire horaire de base, primes et temps supplémentaire habituel.</li>
-          <li>Vacances (4 % à 8 %) et jours fériés payés.</li>
-          <li>Charges de l'employeur : RRQ, assurance-emploi, RQAP, FSS, CNESST, normes du travail (souvent 12 % à 16 % du salaire).</li>
-          <li>Avantages : assurance collective, REER ou régime de retraite, allocation de cellulaire.</li>
-          <li>Véhicule : camion (location ou amortissement, assurance, immatriculation, entretien, essence) ou kilométrage remboursé.</li>
-          <li>Outils et équipement fournis, uniformes et équipement de protection, formation et cartes de compétence.</li>
-          <li>Heures payées mais pas inscrites sur un bon (atelier, magasin, attente, météo) : diviser par les heures sur bons, pas par les heures payées.</li>
+          <li>Le taux de base de la liste de paie.</li>
+          <li>Le DAS, les vacances et les fériés sont ajoutés automatiquement.</li>
+          <li>Le kilométrage est payé à part.</li>
+          <li>Les frais fixes (gestion, administration, logiciels, bureau) ne sont pas comptés : c'est une marge sur coûts directs.</li>
         </ul>
-        <p class="note">Exemple : 25 $/h × 2 080 h = 52 000 $, + charges et avantages 9 500 $, + camion 12 000 $, + outils et cellulaire 2 500 $ = 76 000 $ ÷ 1 700 h sur bons ≈ 44,70 $/h.</p>
       </details>
-      <div class="champ"><label for="r-cout-defaut">Coût moyen pour un technicien absent de la liste ($/h; 0 = inconnu)</label><input id="r-cout-defaut" name="cout_horaire_defaut" inputmode="decimal"></div>
-      <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Coût horaire ($)</th><th></th></tr></thead>
+      <div class="champ"><label for="r-das">DAS (ex. 0,12)</label><input id="r-das" name="charges_das" inputmode="decimal"></div>
+      <div class="champ"><label for="r-vacances">Vacances (ex. 0,04; 0,06 après 3 ans)</label><input id="r-vacances" name="charges_vacances" inputmode="decimal"></div>
+      <div class="champ"><label for="r-feries">Fériés (ex. 0,042 = 11 jours ÷ 260)</label><input id="r-feries" name="charges_feries" inputmode="decimal"></div>
+      <div class="champ"><label for="r-cout-defaut">Taux de base moyen pour un technicien absent de la liste ($/h; 0 = inconnu)</label><input id="r-cout-defaut" name="cout_horaire_defaut" inputmode="decimal"></div>
+      <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Taux de base ($/h)</th><th class="nombre">Coût chargé ($/h)</th><th></th></tr></thead>
         <tbody id="r-couts"></tbody></table></div>
       <button type="button" id="ajouter-cout">Ajouter un technicien</button>
       <small class="note">Les techniciens vus dans les bons chargés apparaissent d'eux-mêmes; laisser le taux vide pour ne pas l'inscrire.</small>
@@ -557,23 +555,44 @@ async function chargerRegles() {
     $("r-ecart").value = String(r.ecart_sous_total).replace(".", ","); $("r-jours").value = r.jours_max_facture;
     $("r-montant").value = String(r.montant_max_ligne).replace(".", ","); $("r-heures").value = String(r.heures_max_jour).replace(".", ",");
     $("r-cout-defaut").value = String(r.cout_horaire_defaut || 0).replace(".", ",");
+    $("r-das").value = String(r.charges_das).replace(".", ","); $("r-vacances").value = String(r.charges_vacances).replace(".", ",");
+    $("r-feries").value = String(r.charges_feries).replace(".", ",");
     $("r-couts").innerHTML = "";
     Object.entries(r.couts_techniciens || {}).forEach(([nom, taux]) => ligneCout(nom, taux));
     (r.techniciens_connus || []).forEach(nom => ligneCout(nom, ""));
+    majCoutsCharges();
   } catch (e) { message("message-regles", e.message); }
   afficherCles();
 }
 function ligneCout(nom, taux) {
   const tr = document.createElement("tr");
   tr.innerHTML = `<td><input class="cout-nom" aria-label="Technicien"></td>` +
-    `<td class="nombre"><input class="cout-taux" inputmode="decimal" aria-label="Coût horaire"></td>` +
+    `<td class="nombre"><input class="cout-taux" inputmode="decimal" aria-label="Taux de base"></td>` +
+    `<td class="nombre cout-charge"></td>` +
     `<td><button type="button" class="cout-retirer">Retirer</button></td>`;
   tr.querySelector(".cout-nom").value = nom;
   tr.querySelector(".cout-taux").value = taux === "" ? "" : String(taux).replace(".", ",");
   tr.querySelector(".cout-retirer").addEventListener("click", () => tr.remove());
+  tr.querySelector(".cout-taux").addEventListener("input", majCoutsCharges);
   $("r-couts").appendChild(tr);
+  majCoutsCharges();
   return tr;
 }
+function nombreFr(texte) {
+  const n = parseFloat(String(texte).split(" ").join("").split(String.fromCharCode(160)).join("").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+function facteurCharges() {
+  return 1 + ["r-das", "r-vacances", "r-feries"].reduce((t, id) => t + (nombreFr($(id).value) || 0), 0);
+}
+function majCoutsCharges() {
+  const f = facteurCharges();
+  $("r-couts").querySelectorAll("tr").forEach(tr => {
+    const base = nombreFr(tr.querySelector(".cout-taux").value);
+    tr.querySelector(".cout-charge").textContent = base === null ? "" : argent(base * f);
+  });
+}
+["r-das", "r-vacances", "r-feries"].forEach(id => $(id).addEventListener("input", majCoutsCharges));
 $("ajouter-cout").addEventListener("click", () => ligneCout("", "").querySelector(".cout-nom").focus());
 function coutsSaisis() {
   const couts = {};
@@ -588,7 +607,8 @@ $("enregistrer-regles").addEventListener("click", async () => {
     regle_transports: $("r-transports").value, ecart_sous_total: $("r-ecart").value, jours_max_facture: $("r-jours").value,
     montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value,
     transport_max_minutes: $("r-transport-max").value, marge_minimum: $("r-marge-min").value,
-    cout_horaire_defaut: $("r-cout-defaut").value, couts_techniciens: coutsSaisis() };
+    cout_horaire_defaut: $("r-cout-defaut").value, charges_das: $("r-das").value,
+    charges_vacances: $("r-vacances").value, charges_feries: $("r-feries").value, couts_techniciens: coutsSaisis() };
   try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
   catch (e) { message("message-regles", e.message); }
 });

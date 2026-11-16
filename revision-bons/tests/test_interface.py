@@ -117,6 +117,9 @@ def test_couts_horaires_des_techniciens(site):
     assert code == 200
     assert r2["cout_horaire_defaut"] == 32.5 and r2["couts_techniciens"] == {"Harry Charlette": 35.0}
     assert r2["tarifs"]["Maintenance"]["heure"] == 45.0          # tarifs toujours conservés
+    code, r3 = site("/regles", {**r2, "charges_feries": "0,042", "charges_das": "0,11"})
+    assert code == 200 and r3["charges_feries"] == 0.042 and r3["charges_das"] == 0.11
+    assert site("/regles", {**r3, "charges_das": "0,9"})[0] == 400
     assert site("/regles", {**r2, "couts_techniciens": {"Harry Charlette": "-3"}})[0] == 400
     assert site("/regles", {**r2, "couts_techniciens": ["pas", "un", "dict"]})[0] == 400
 
