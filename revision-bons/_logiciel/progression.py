@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from modele import Bon, EntreeTemps, Ligne, PieceJointe
 
@@ -209,6 +209,24 @@ class Progression:
         """La tâche et ses entrées de temps, telles que Progression les renvoie."""
         tache = self._appel("GET", f"/task/{identifiant}")
         return tache, _liste(self._appel("GET", f"/task/{identifiant}/timeEntries"))
+
+    def entrees_periode(self, debut: date, fin: date) -> list[dict]:
+        """Les entrées de temps de tous les bons entre deux dates (lecture seule, paginée).
+
+        La marge d'un jour de chaque côté compense l'absence de fuseau dans la requête;
+        km_calcul.journees refiltre par date locale.
+        """
+        periode = f"{(debut - timedelta(days=1)).isoformat()}T00:00:00-05,{(fin + timedelta(days=1)).isoformat()}T23:59:59-05"
+        entrees: list[dict] = []
+        decalage = 0
+        while True:
+            page = _liste(self._appel("GET", "/timeEntry/list", {
+                "start": periode, "maxResults": PAGE, "startResult": decalage,
+            }))
+            entrees.extend(page)
+            if len(page) < PAGE:
+                return entrees
+            decalage += PAGE
 
     def lire_bon(self, identifiant: int) -> Bon:
         tache, entrees = self.lire_tache(identifiant)

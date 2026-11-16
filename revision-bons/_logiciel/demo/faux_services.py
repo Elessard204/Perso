@@ -11,6 +11,7 @@ import math
 import re
 import struct
 import zlib
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from progression import bon_depuis_json
@@ -82,6 +83,10 @@ ACHATS = {1: "Robinet cuisine", 3: "Silicone", 6: "Non"}
 TYPES = {1: "Appel de service", 2: "Appel de service", 3: "Maintenance", 4: "Maintenance", 5: "Appel de service",
          6: "Maintenance", 7: "Maintenance"}
 IMMEUBLES = {1: 701, 2: 702, 3: 703, 4: 704, 5: 705, 6: 706, 7: 704}   # le bon 7 est dans le même immeuble que le 4
+# Une position fictive (autour de Montréal) par immeuble, et le « Km » écrit par les techniciens.
+POSITIONS = {701: (45.5017, -73.5673), 702: (45.5311, -73.6003), 703: (45.4765, -73.5844),
+             704: (45.5588, -73.5512), 705: (45.4420, -73.6150), 706: (45.6070, -73.6420)}
+KM_ECRITS = {1: "35 km", 2: "30 pour les deux jours", 3: "", 4: "52", 5: "12 km", 6: "", 7: "18,5 km"}
 
 
 def _tache(n: int, note: str, pieces: list[tuple[int, str, str]], travail: list[tuple[str, str, str]],
@@ -101,24 +106,26 @@ def _tache(n: int, note: str, pieces: list[tuple[int, str, str]], travail: list[
                       "price": prix_heure, "product": {"label": "Main d'oeuvre"}})
         entrees.append({"id": 30000 + n * 10 + 2 * k, "duration": transport, "start": f"2026-11-{jour:02d}T08:00:00-05:00",
                         "activity": {"label": "En route"}, "averageHourlyCost": 28.0, "humanResource": {"label": tech},
-                        "item": {"id": it_t}})
+                        "item": {"id": it_t}, "task": {"id": 2000 + n, "code": f"BS-{2000 + n}"}})
         entrees.append({"id": 30000 + n * 10 + 2 * k + 1, "duration": duree, "start": f"2026-11-{jour:02d}T09:00:00-05:00",
                         "activity": {"label": "En cours"}, "averageHourlyCost": 28.0, "humanResource": {"label": tech},
-                        "item": {"id": it_mo}})
+                        "item": {"id": it_mo}, "task": {"id": 2000 + n, "code": f"BS-{2000 + n}"}})
     if inventaire_vide:
         items.append({"id": 2000 + n * 10 + 9, "label": "Matériel", "description": "", "quantity": 1.0, "price": 0.0,
                       "product": {"label": "Matériel en inventaire"}})
     if non_facturee:
         entrees.append({"id": 30000 + n * 10 + 9, "duration": "PT45M", "start": f"2026-11-{jour:02d}T14:00:00-05:00",
                         "activity": {"label": "En cours"}, "averageHourlyCost": 28.0, "humanResource": {"label": "Max Roy"},
-                        "item": None})
+                        "item": None, "task": {"id": 2000 + n, "code": f"BS-{2000 + n}"}})
     tache = {
         "id": 2000 + n, "code": f"BS-{2000 + n}", "summary": "", "rv": f"2026-11-{jour:02d}T08:00:00-05:00",
         "updated": f"2026-11-{jour:02d}T17:00:00-05:00", "description": f"Intervention demandée au logement {n}.",
         "type": {"label": TYPES[n]}, "client": {"id": IMMEUBLES[n], "label": CLIENTS[n % len(CLIENTS)]},
         "location": {"id": n, "label": f"Logement {n}"},
+        "clientAddress": {"position": list(POSITIONS[IMMEUBLES[n]])},
         "currentState": {"label": "Terminé", "logicId": 600},
-        "properties": {"info.notes": note, "info.achat": ACHATS.get(n, "")},
+        "properties": {"info.notes": note, "info.achat": ACHATS.get(n, ""),
+                       "info.km": KM_ECRITS.get(n, "")},
         "itemList": {"items": items},
         "attachments": [{"id": pid, "name": nom, "contentType": mime} for pid, nom, mime in pieces],
     }
@@ -171,6 +178,19 @@ class FausseProgression:
 
     def tache_brute(self, identifiant: int) -> dict:
         return self.taches[identifiant][0]
+
+    def lire_tache(self, identifiant: int) -> tuple[dict, list[dict]]:
+        tache, entrees = self.taches[identifiant]
+        return tache, entrees
+
+    def entrees_periode(self, debut: date, fin: date) -> list[dict]:
+        """Les entrées du jeu de démo dans [debut - 1 jour, fin + 1 jour], au format /timeEntry/list."""
+        bas, haut = (debut - timedelta(days=1)).isoformat(), (fin + timedelta(days=1)).isoformat()
+        return [
+            {k: e[k] for k in ("id", "humanResource", "start", "duration", "activity", "task")}
+            for _, entrees in self.taches.values() for e in entrees
+            if bas <= e["start"][:10] <= haut
+        ]
 
     def telecharger_piece(self, piece_id: int) -> bytes:
         nom, mime = self._piece(piece_id)

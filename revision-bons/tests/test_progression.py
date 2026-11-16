@@ -190,3 +190,39 @@ def test_champs_personnalises_a_plat_comme_dans_progression():
     # Format réel observé à l'inspection : clés « info.notes », pas d'objet imbriqué.
     bon = bon_depuis_json(TACHE, ENTREES, {"champ_description": "properties.info.notes", "champ_achat": "properties.info.achat"})
     assert bon.description == "changé robinet cuisine, posé 2 raccord" and bon.achat == "Robinet cuisine"
+
+
+def test_entrees_periode_pagine_et_marge():
+    from datetime import date
+    from urllib.parse import unquote
+    http = FauxHttp([[{"id": i} for i in range(500)], [{"id": 500 + i} for i in range(3)]])
+    entrees = Progression("c", ouvrir=http).entrees_periode(date(2026, 11, 8), date(2026, 11, 21))
+    assert len(entrees) == 503
+    urls = [unquote(r.full_url).replace("+", " ") for r in http.requetes]
+    assert "/timeEntry/list" in urls[0]
+    assert "start=2026-11-07T00:00:00-05,2026-11-22T23:59:59-05" in urls[0]
+    assert "maxResults=500" in urls[0]
+    assert "startResult=0" in urls[0] and "startResult=500" in urls[1]
+
+
+def test_fausse_progression_entrees_periode():
+    from datetime import date
+    from demo.faux_services import FausseProgression, IMMEUBLES
+    faux = FausseProgression()
+    entrees = faux.entrees_periode(date(2026, 11, 1), date(2026, 11, 30))
+    assert entrees
+    for e in entrees:
+        assert e["task"]["id"] and e["task"]["code"]
+        assert e["humanResource"]["label"] and e["start"] and e["duration"] and e["activity"]
+    assert faux.entrees_periode(date(2026, 1, 1), date(2026, 1, 2)) == []
+    positions = {}
+    for n, immeuble in IMMEUBLES.items():
+        tache, ents = faux.lire_tache(2000 + n)
+        assert isinstance(ents, list)
+        assert len(tache["clientAddress"]["position"]) == 2
+        positions[n] = tuple(tache["clientAddress"]["position"])
+        assert "info.km" in tache["properties"]
+    assert positions[4] == positions[7]
+    assert len({positions[n] for n in (1, 2, 3, 4, 5, 6)}) == 6
+    km = [faux.lire_tache(2000 + n)[0]["properties"]["info.km"] for n in IMMEUBLES]
+    assert "35 km" in km and "30 pour les deux jours" in km and "" in km
