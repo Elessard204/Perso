@@ -7,6 +7,9 @@ marge = 0.15                     # coût avant taxes + 15 %
 refacturer_taxes = false
 [transports]
 regle = "un_par_visite"          # quantité 1 par entrée de transport
+salaire_fixe = []                # techniciens à salaire fixe : transport à 1, la route n'est jamais ajoutée en main-d'œuvre
+[forfaits]
+produits = []                    # produits forfaitaires (ex. bacs) : les heures du bon ne sont pas facturées
 [tarifs."Appel de service"]      # service SMMP
 service = "SMMP"
 heure = 65.0
@@ -33,6 +36,7 @@ jours_max_facture = 30
 montant_max_ligne = 1000.00
 heures_max_jour = 12
 marge_minimum = 0.0              # 0 = signaler seulement les bons à perte
+seuil_rabais = 50.0              # facturé sous la valeur du temps inscrit de plus de ce montant : rabais signalé
 [kilometrage]
 taux = 0.61                      # $ par km
 seuil_ecart_km = 10.0            # écart déclaré / payé signalé au-delà, par technicien et par période

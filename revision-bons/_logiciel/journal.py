@@ -47,6 +47,23 @@ class Journal:
             and maj in (e["maj"], (e.get("details") or {}).get("maj_apres"))
             for e in self._tous())
 
+    def rabais(self) -> list[dict]:
+        """Relevé des rabais : pour chaque bon, sa dernière approbation, si elle comportait un rabais."""
+        derniere: dict[int, dict] = {}
+        for e in self._tous():
+            if e["evenement"] == "approuve":
+                derniere[e["bon_id"]] = e
+        releve = []
+        for e in derniere.values():
+            d = e.get("details") or {}
+            r = d.get("rabais") or {}
+            if r.get("montant"):
+                releve.append({"horodatage": e.get("horodatage", ""), "personne": e.get("personne", ""),
+                               "bon_id": e["bon_id"], "code": d.get("code", ""), "client": d.get("client", ""),
+                               "montant": r["montant"], "valeur_temps": r.get("valeur_temps"),
+                               "facture": r.get("facture"), "raison": r.get("raison", "")})
+        return sorted(releve, key=lambda x: x["horodatage"], reverse=True)
+
     def factures_refacturees(self) -> dict[str, int]:
         """« fournisseur|numéro » -> bon où la facture a déjà été refacturée."""
         factures: dict[str, int] = {}

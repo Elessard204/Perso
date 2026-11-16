@@ -127,6 +127,11 @@ def test_achat_coherent_ou_champ_vide():
     assert garde_fou_achat("", 0) == [] and garde_fou_achat("", 2) == []   # champ non rempli : rien à comparer
 
 
+def test_achat_facture_en_inventaire_sans_facture_accepte():
+    """Le matériel en inventaire n'a jamais de facture : Hugo l'estime selon le travail."""
+    assert garde_fou_achat("Silicone", 0, en_inventaire=True) == []
+
+
 def test_regles_kilometrage():
     from datetime import date
     r = charger_regles(LOGICIEL / "regles.toml")

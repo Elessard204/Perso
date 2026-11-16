@@ -36,6 +36,9 @@ class Regles:
     km_taux: float = 0.61                               # $ par km
     km_seuil_ecart: float = 10.0                        # écart déclaré / payé signalé au-delà (km)
     km_debut_reference: date = date(2026, 11, 8)        # dimanche : début d'une période de paie
+    salaire_fixe: list = field(default_factory=list)    # techniciens à salaire fixe : route jamais refacturée
+    produits_forfait: list = field(default_factory=list)  # produits forfaitaires (ex. bacs) : heures non facturées
+    seuil_rabais: float = 50.0                          # écart signalé entre le temps inscrit et le facturé ($)
 
     @property
     def facteur_charges(self) -> float:
@@ -69,6 +72,9 @@ def charger_regles(chemin: Path) -> Regles:
         km_taux=float(d.get("kilometrage", {}).get("taux", 0.61)),
         km_seuil_ecart=float(d.get("kilometrage", {}).get("seuil_ecart_km", 10.0)),
         km_debut_reference=date.fromisoformat(str(d.get("kilometrage", {}).get("debut_reference", "2026-11-08"))),
+        salaire_fixe=[str(x) for x in d["transports"].get("salaire_fixe", [])],
+        produits_forfait=[str(x) for x in d.get("forfaits", {}).get("produits", [])],
+        seuil_rabais=float(g.get("seuil_rabais", 50.0)),
     )
 
 
@@ -163,13 +169,16 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
 REPONSES_SANS_ACHAT = {"non", "no", "aucun", "aucune", "rien", "0", "-", "n/a", "na"}
 
 
-def garde_fou_achat(achat: str, nb_factures: int) -> list[Alerte]:
-    """Compare le champ « Achat » du technicien aux factures trouvées dans les pièces jointes."""
+def garde_fou_achat(achat: str, nb_factures: int, en_inventaire: bool = False) -> list[Alerte]:
+    """Compare le champ « Achat » du technicien aux factures trouvées dans les pièces jointes.
+
+    Un achat facturé en « Matériel en inventaire » n'a jamais de facture (Hugo l'estime) : pas d'alerte.
+    """
     declare = (achat or "").strip()
     if not declare:
         return []  # champ non rempli : rien à comparer
     sans_achat = declare.lower() in REPONSES_SANS_ACHAT
-    if not sans_achat and nb_factures == 0:
+    if not sans_achat and nb_factures == 0 and not en_inventaire:
         return [Alerte("achat_sans_facture",
                        f"Le technicien déclare un achat (« {declare} »), mais aucune facture n'a été trouvée "
                        "dans les pièces jointes.")]

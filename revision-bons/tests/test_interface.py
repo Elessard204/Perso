@@ -130,6 +130,39 @@ def test_techniciens_connus_proposes(site):
     assert r["techniciens_connus"] and all(isinstance(t, str) and t for t in r["techniciens_connus"])
 
 
+def test_salaire_fixe_forfaits_et_seuil_rabais(site):
+    _, r = site("/regles")
+    code, r2 = site("/regles", {**r, "salaire_fixe": ["Harry Charlette", " ", "Harry Charlette"],
+                                "produits_forfait": "Bacs,  Ménage commun ,", "seuil_rabais": "75"})
+    assert code == 200
+    assert r2["salaire_fixe"] == ["Harry Charlette"] and r2["produits_forfait"] == ["Bacs", "Ménage commun"]
+    assert r2["seuil_rabais"] == 75.0 and r2["tarifs"]["Maintenance"]["heure"] == 45.0
+    assert site("/regles", {**r2, "salaire_fixe": {"pas": "une liste"}})[0] == 400
+    assert site("/regles", {**r2, "seuil_rabais": "-1"})[0] == 400
+
+
+def test_rabais_raison_et_releve(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    _, d = site(f"/bon/{bon['id']}")
+    assert not d["proposition"]["rabais"]
+    i = next(i for i, l in enumerate(d["proposition"]["lignes"]) if l["libelle"].startswith("Main"))
+    code, d = site(f"/bon/{bon['id']}/modifier", {"champ": f"ligne:{i}:quantite", "valeur": "0,25"})
+    assert code == 200 and d["proposition"]["rabais"]["montant"] > 50
+    assert "rabais" in [a["code"] for a in d["proposition"]["alertes"]]
+    code, d = site(f"/bon/{bon['id']}/modifier", {"champ": "raison_rabais", "valeur": "  Ramené au devis  "})
+    assert code == 200 and d["proposition"]["rabais"]["raison"] == "Ramené au devis"
+    assert site("/approuver", {"bon_ids": [bon["id"]]})[0] == 200
+    _, h = site("/historique")
+    [x] = h["rabais"]
+    assert (x["code"], x["raison"]) == ("BS-2001", "Ramené au devis") and x["montant"] == d["proposition"]["rabais"]["montant"]
+    site(f"/bon/{bon['id']}/modifier", {"champ": "raison_rabais", "valeur": "Client plafonné"})
+    assert site("/bons")[1]["bons"][[b["code"] for b in site("/bons")[1]["bons"]].index("BS-2001")]["approuve"]
+    assert site("/historique")[1]["rabais"][0]["raison"] == "Client plafonné"   # raison ajoutée après approbation
+    autre = next(b for b in bons.values() if b["statut"] != "bloque" and b["code"] != "BS-2001")
+    assert site(f"/bon/{autre['id']}/modifier", {"champ": "raison_rabais", "valeur": "x"})[0] == 400
+
+
 def test_regles_invalides_refusees(site):
     _, r = site("/regles")
     code, err = site("/regles", {**r, "marge": "beaucoup"})
@@ -300,7 +333,7 @@ def test_garde_fous_v2_en_demo(site):
     assert "transport_double" not in _codes(site, bons, "BS-2004")
     assert "tarif_non_standard" in _codes(site, bons, "BS-2007")         # 85 $/h (SRP) sur une maintenance
     assert "heures_non_facturees" in _codes(site, bons, "BS-2007") and bons["BS-2007"]["statut"] == "bloque"
-    assert "inventaire_a_zero" in _codes(site, bons, "BS-2005")
+    assert "inventaire_a_zero" not in _codes(site, bons, "BS-2005")       # 0 $ en inventaire = aucun matériel
     assert "transport_long" in _codes(site, bons, "BS-2001")
     _, d = site(f"/bon/{bons['BS-2003']['id']}")
     prix = {l["libelle"].split(" ")[0]: l["prix"] for l in d["proposition"]["lignes"]}

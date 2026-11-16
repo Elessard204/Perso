@@ -216,3 +216,45 @@ Passage automatique à l'état facturé; webhooks; version hébergée multi-post
 autres irritants Progression. La logique (`regles.py`, `pieces_jointes.py`,
 `redaction.py`) est écrite pour être réutilisée telle quelle dans une version
 hébergée.
+
+## 12. Réponses d'Hugo aux cas à valider (16 novembre 2026)
+
+Hugo a répondu au document « Cas à valider - Hugo.docx ». Les cas relevés à l'essai à blanc sont presque tous des
+choix voulus. L'outil les accepte maintenant au lieu de les signaler.
+
+**Journées fusionnées.** Hugo regroupe parfois plusieurs visites sur une seule ligne de main-d'œuvre. Il garde la même
+valeur : deux visites de 2 h deviennent 4,75 h et un transport (50 + 4,75 × 65 = 358,75 $, contre 360 $). Une ligne
+de main-d'œuvre qui ne correspond plus au temps créé par « Facturer », ni à ce temps arrondi au 0,25 h, est une ligne
+modifiée à la main. Une ligne sans entrée liée l'est aussi. L'outil n'y touche plus : ni arrondi, ni excédent de
+transport. Sur un bon fusionné (ligne modifiée, ou entrée dont la ligne a été retirée), l'alerte « transport
+manquant » par journée tombe. La valeur totale fait foi.
+
+**Rabais.** L'outil compare la main-d'œuvre et le transport facturés à la valeur du temps inscrit, calculée avec les
+règles : main-d'œuvre par technicien et par jour au 0,25 h supérieur, excédent de transport compris, et un transport
+par entrée « En route ». Au-delà du seuil (Règles, 50 $ par défaut), une alerte non bloquante donne le rabais. Hugo
+peut inscrire une raison facultative. Chaque approbation garde le rabais et sa raison. L'onglet Historique montre le
+relevé des rabais (dernière approbation de chaque bon). Ce relevé répond à la demande d'Éric de voir les rabais
+consentis (devis, client plafonné, anticipation).
+
+**Salaire fixe.** Un technicien coché « Salaire fixe » dans Règles (Harry) a des heures de route ajustées sur sa
+feuille de temps pour arriver à 40 h. Son transport reste à 1, et sa route n'est jamais ajoutée en main-d'œuvre
+(pas d'alerte « transport long »).
+
+**Forfaits.**
+- Un bon dont toutes les lignes sont à 0 $ est un bon d'information : ménage au forfait Immoblox, refacturé par la
+  comptabilité. L'outil ne le corrige pas et ne le signale pas (ni tarif, ni « sans revenu », ni « à perte »).
+- Un bon qui contient un produit au forfait inscrit dans Règles (bacs à 95 $ par semaine) n'a pas d'alerte
+  « heures non facturées », « transport manquant » ou rabais. Le nom exact du produit reste à confirmer dans
+  Progression.
+
+**Matériel.** Une ligne « Matériel en inventaire » à 0 $ veut dire qu'il n'y a pas de matériel : l'alerte est
+retirée. Un achat déclaré et facturé en inventaire n'a jamais de facture, puisqu'Hugo l'estime : il n'y a pas
+d'alerte « achat sans facture ».
+
+**Confirmé, sans changement.**
+- Hugo clique « Facturer » lui-même avant l'analyse : le blocage reste.
+- Il corrige les minuteries oubliées dans Progression : aucune réduction d'heures dans l'outil.
+- La « Note technicien » (`properties.info.notes`) est le champ réécrit. Les notes internes restent pour le bureau.
+- Un seul transport par immeuble et par jour.
+- Hugo inscrit lui-même les taux horaires.
+- Il est disponible pour l'essai dans l'environnement de test à partir du 27 novembre.

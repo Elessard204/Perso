@@ -29,6 +29,7 @@ sys.path.insert(0, str(ICI))
 
 import cles  # noqa: E402
 import profil  # noqa: E402
+from facturation import evaluer_rabais  # noqa: E402
 from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
                      proposition_vers_dict, transports_en_double)
 from claude_client import creer_client  # noqa: E402
@@ -56,6 +57,7 @@ CHAMPS_REGLES = {
     "charges_das": ("couts", "das", float),
     "charges_vacances": ("couts", "vacances", float),
     "charges_feries": ("couts", "feries", float),
+    "seuil_rabais": ("garde_fous", "seuil_rabais", float),
 }
 
 
@@ -65,6 +67,8 @@ def alerte_principale(alertes):
 
 
 def _valeur_toml(v) -> str:
+    if isinstance(v, list):
+        return "[" + ", ".join(_valeur_toml(x) for x in v) + "]"
     if isinstance(v, bool):
         return "true" if v else "false"
     if isinstance(v, (int, float)):
@@ -114,7 +118,8 @@ REGLES_TRANSPORTS = {"un_par_visite"}   # quantité 1 par entrée de transport
 BORNES = {"pas_minutes": (1, 60), "marge": (0, 1), "ecart_sous_total": (0, 100), "jours_max_facture": (0, 365),
           "montant_max_ligne": (0, 1_000_000), "heures_max_jour": (1, 24),
           "transport_max_minutes": (15, 240), "marge_minimum": (0, 0.9), "cout_horaire_defaut": (0, 500),
-          "charges_das": (0, 0.5), "charges_vacances": (0, 0.5), "charges_feries": (0, 0.5)}
+          "charges_das": (0, 0.5), "charges_vacances": (0, 0.5), "charges_feries": (0, 0.5),
+          "seuil_rabais": (0, 100_000)}
 
 
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre",
@@ -527,9 +532,16 @@ class Application:
         with self.verrou:
             b = self._bon(bon_id)
             p = b["proposition"]
-            if champ == "description":
+            if champ == "raison_rabais":
+                if not p.rabais:
+                    raise ErreurDemande("Ce bon n'a pas de rabais.")
+                p.rabais["raison"] = " ".join(str(valeur).split())[:300]
+                if b.get("approuve"):   # déjà approuvé : la raison rejoint le relevé des rabais
+                    self._journaliser_approbation(bon_id)
+            elif champ == "description":
                 p.description = str(valeur).strip()
                 p.origine["description"] = f"Modifié par {self.personne}"
+                b["approuve"] = False
             else:
                 m = re.fullmatch(r"ligne:(\d+):(quantite|prix|libelle)", champ or "")
                 if not m or int(m.group(1)) >= len(p.lignes):
@@ -547,11 +559,21 @@ class Application:
                     setattr(ligne, m.group(2), round(nombre, 4))
                 cle = str(ligne.id) if ligne.id is not None else ligne.external_id
                 p.origine[cle] = f"Modifié par {self.personne}"
-            b["approuve"] = False
-            fichier = chemin_cache(self.cache, b["bon"], b["regles"], self.cfg)
-            fichier.parent.mkdir(parents=True, exist_ok=True)
-            fichier.write_text(json.dumps(proposition_vers_dict(p), ensure_ascii=False, indent=1), encoding="utf-8")
+                raison = p.rabais.get("raison", "")
+                p.rabais, alertes = evaluer_rabais(b["bon"], p.lignes, b["regles"])
+                if p.rabais:
+                    p.rabais["raison"] = raison
+                p.alertes = [a for a in p.alertes if a.code != "rabais"] + alertes
+                b["approuve"] = False
+            self._garder(b)
         return self.detail(bon_id)
+
+    def _garder(self, b: dict) -> None:
+        """Garde la proposition modifiée dans le cache, pour la retrouver au prochain chargement."""
+        fichier = chemin_cache(self.cache, b["bon"], b["regles"], self.cfg)
+        fichier.parent.mkdir(parents=True, exist_ok=True)
+        fichier.write_text(json.dumps(proposition_vers_dict(b["proposition"]), ensure_ascii=False, indent=1),
+                           encoding="utf-8")
 
     def approuver(self, bon_ids: list[int]) -> dict:
         with self.verrou:
@@ -562,8 +584,15 @@ class Application:
             for bon_id in bon_ids:
                 b = self.bons[bon_id]
                 b["approuve"] = True
-                self.journal.inscrire("approuve", bon_id, b["proposition"].maj, {"code": b["code"]})
+                self._journaliser_approbation(bon_id)
         return self.liste()
+
+    def _journaliser_approbation(self, bon_id: int) -> None:
+        b = self.bons[bon_id]
+        details = {"code": b["code"], "client": b["client"]}
+        if b["proposition"].rabais:
+            details["rabais"] = dict(b["proposition"].rabais)
+        self.journal.inscrire("approuve", bon_id, b["proposition"].maj, details)
 
     def envoyer(self, mode: str) -> dict:
         if mode not in ("simulation", "reel"):
@@ -618,7 +647,23 @@ class Application:
         with self.verrou:
             vus = {e.technicien for b in self.bons.values() if b.get("bon") for e in b["bon"].entrees if e.technicien}
         return {**asdict(r), "km_debut_reference": r.km_debut_reference.isoformat(),
-                "techniciens_connus": sorted(vus - set(r.couts_techniciens))}
+                "techniciens_connus": sorted(vus - set(r.couts_techniciens) - set(r.salaire_fixe))}
+
+    @staticmethod
+    def _liste_noms(valeur, actuels: list, quoi: str) -> list:
+        """Liste de noms (techniciens à salaire fixe, produits au forfait) : sans doublon ni nom vide."""
+        if valeur is None:
+            return actuels
+        if isinstance(valeur, str):
+            valeur = valeur.split(",")
+        if not isinstance(valeur, list):
+            raise ErreurDemande(f"Liste des {quoi} invalide.")
+        noms = []
+        for nom in valeur:
+            nom = " ".join(str(nom).split())[:80]
+            if nom and nom not in noms:
+                noms.append(nom)
+        return noms[:50]
 
     @staticmethod
     def _couts_techniciens(valeur, actuels: dict) -> dict:
@@ -660,6 +705,8 @@ class Application:
             except ValueError:
                 raise ErreurDemande(f"Valeur invalide pour « {nom} ».") from None
         couts = self._couts_techniciens(valeurs.get("couts_techniciens"), actuelles["couts_techniciens"])
+        salaire_fixe = self._liste_noms(valeurs.get("salaire_fixe"), actuelles["salaire_fixe"], "techniciens à salaire fixe")
+        produits = self._liste_noms(valeurs.get("produits_forfait"), actuelles["produits_forfait"], "produits au forfait")
         if nouvelles["regle_transports"] not in REGLES_TRANSPORTS:
             raise ErreurDemande("Règle des transports inconnue.")
         # On repart du fichier actuel : les sections que la page ne modifie pas (tarifs) sont conservées.
@@ -667,13 +714,15 @@ class Application:
         for nom, (section, cle, _) in CHAMPS_REGLES.items():
             donnees.setdefault(section, {})[cle] = nouvelles[nom]
         donnees.setdefault("couts", {})["techniciens"] = couts
+        donnees.setdefault("transports", {})["salaire_fixe"] = salaire_fixe
+        donnees.setdefault("forfaits", {})["produits"] = produits
         contenu = "# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.\n"
         contenu += f"# Dernière modification : {self.personne}\n" + toml_texte(donnees)
         self.chemin_regles.write_text(contenu, encoding="utf-8")
         return self.lire_regles()
 
     def historique(self) -> dict:
-        return {"evenements": self.journal.historique()}
+        return {"evenements": self.journal.historique(), "rabais": self.journal.rabais()}
 
 
 dernier_signe_de_vie = time.monotonic()

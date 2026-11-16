@@ -127,6 +127,8 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 .aide { border: 1px solid var(--ligne); border-radius: var(--rayon-controle); padding: 8px 10px; background: var(--surface-lecture); display: grid; gap: 6px; }
 .aide summary { cursor: pointer; font-weight: 700; font-size: 13px; color: var(--info); }
 .aide[open] summary { margin-bottom: 4px; }
+.case-fixe { display: flex; gap: 6px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--discret); font-weight: 400; }
+.entete-releve { padding: 12px 16px 8px; display: grid; gap: 4px; }
 .cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 .carte { background: var(--surface); border: 1px solid var(--ligne); border-radius: var(--rayon-carte); padding: 14px 16px; display: grid; gap: 10px; align-content: start; }
 .carte h2 { font-size: 15px; }
@@ -273,6 +275,10 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
         <small>Au-delà, l'excédent passe en main-d'œuvre et le bon est signalé (possible oubli de changer le statut).</small></div>
       <div class="champ"><label for="r-transports">Nombre de transports</label>
         <select id="r-transports" name="regle_transports"><option value="un_par_visite">Quantité 1 par entrée de transport</option></select></div>
+      <p class="note">Une ligne de main-d'œuvre modifiée à la main (journées fusionnées, rabais) n'est plus touchée par l'outil : il compare plutôt la valeur totale du bon à celle du temps inscrit.</p>
+      <div class="champ"><label for="r-forfaits">Produits au forfait (séparés par des virgules, tels qu'écrits dans Progression)</label><input id="r-forfaits" name="produits_forfait">
+        <small>Un bon qui contient l'un de ces produits (ex. sortie des bacs à 95 $ par semaine) est facturé au forfait : ses heures non facturées ne sont pas signalées.</small></div>
+      <p class="note">Un bon dont toutes les lignes sont à 0 $ (ex. ménage au forfait facturé par la comptabilité) est joint pour information : l'outil ne corrige ni ne signale sa facturation.</p>
     </section>
     <section class="carte">
       <p class="surtitre">Matériel acheté</p>
@@ -305,7 +311,8 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Taux de base ($/h)</th><th class="nombre">Coût chargé ($/h)</th><th></th></tr></thead>
         <tbody id="r-couts"></tbody></table></div>
       <button type="button" id="ajouter-cout">Ajouter un technicien</button>
-      <small class="note">Les techniciens vus dans les bons chargés apparaissent d'eux-mêmes; laisser le taux vide pour ne pas l'inscrire.</small>
+      <small class="note">Les techniciens vus dans les bons chargés apparaissent d'eux-mêmes; laisser le taux vide pour ne pas l'inscrire.
+        « Salaire fixe » : ses heures de route sont ajustées sur sa feuille de temps; son transport reste à 1 et la route n'est jamais ajoutée en main-d'œuvre.</small>
     </section>
     <section class="carte">
       <p class="surtitre">Garde-fous : le bon passe « À vérifier »</p>
@@ -314,10 +321,11 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <div class="champ"><label for="r-montant">Ligne de matériel de plus de … $</label><input id="r-montant" name="montant_max_ligne" inputmode="decimal"></div>
       <div class="champ"><label for="r-heures">Technicien avec plus de … heures dans une journée</label><input id="r-heures" name="heures_max_jour" inputmode="decimal"></div>
       <div class="champ"><label for="r-marge-min">Marge minimale par bon (ex. 0,20 = 20 %; 0 = seulement les bons à perte)</label><input id="r-marge-min" name="marge_minimum" inputmode="decimal"></div>
+      <div class="champ"><label for="r-seuil-rabais">Rabais signalé au-delà de … $ (facturé sous la valeur du temps inscrit)</label><input id="r-seuil-rabais" name="seuil_rabais" inputmode="decimal"></div>
       <ul>
         <li>Transport de plus de la durée permise, transport manquant une journée de travail, ou transport possiblement en double (même technicien, même immeuble, même jour).</li>
         <li>Taux qui ne correspond pas au type de bon, ou type de bon sans tarif.</li>
-        <li>Matériel en inventaire à 0 $.</li>
+        <li>Main-d'œuvre et transport facturés sous la valeur du temps inscrit (rabais) : la raison peut être inscrite, elle est gardée dans le relevé des rabais (onglet Historique).</li>
         <li>Bon à perte, sous la marge minimale, ou sans aucun montant facturé.</li>
         <li>Pièce jointe illisible ou classement incertain.</li>
         <li>Achat déclaré par le technicien sans facture trouvée, ou facture trouvée alors qu'il a répondu « Non ».</li>
@@ -373,6 +381,14 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 <!-- ===== Historique ===== -->
 <main class="page" id="vue-historique" hidden>
   <section class="tableau-travail">
+    <div class="entete-releve"><p class="surtitre">Relevé des rabais</p>
+      <p class="note">Bons approuvés dont la main-d'œuvre et le transport sont facturés sous la valeur du temps inscrit. <span id="rabais-total"></span></p></div>
+    <div class="grille"><table>
+      <thead><tr><th>Approuvé le</th><th>Qui</th><th>Bon</th><th>Client</th><th class="nombre">Temps inscrit</th><th class="nombre">Facturé</th><th class="nombre">Rabais</th><th>Raison</th></tr></thead>
+      <tbody id="rabais-corps"></tbody>
+    </table><div class="vide" id="rabais-vide">Aucun rabais pour l'instant.</div></div>
+  </section>
+  <section class="tableau-travail">
     <div class="grille"><table>
       <thead><tr><th>Quand</th><th>Qui</th><th>Bon</th><th>Événement</th><th>Détail</th></tr></thead>
       <tbody id="historique-corps"></tbody>
@@ -386,6 +402,8 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
     <div class="fiche-tete"><h2 id="fiche-titre"></h2><span id="fiche-statut"></span><span class="note" id="fiche-client"></span></div>
     <div class="fiche-corps">
       <ul class="alertes" id="fiche-alertes"></ul>
+      <div class="champ" id="fiche-rabais" hidden><label for="fiche-raison-rabais">Raison du rabais (facultatif)</label>
+        <input id="fiche-raison-rabais" maxlength="300" placeholder="ex. ramené au devis approuvé par le client"></div>
       <fieldset>
         <legend>Description des travaux</legend>
         <div class="deux">
@@ -554,6 +572,8 @@ function afficherFiche() {
   $("fiche-statut").innerHTML = pastille(l.statut) + (l.approuve ? ' <span class="pastille oui">Approuvé</span>' : "");
   $("fiche-client").textContent = `${l.client} · ${l.date}`;
   $("fiche-alertes").innerHTML = p.alertes.map(a => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}</li>`).join("");
+  $("fiche-rabais").hidden = !(p.rabais && p.rabais.montant);
+  $("fiche-raison-rabais").value = (p.rabais && p.rabais.raison) || "";
   $("fiche-original").textContent = p.description_originale || "(vide : le technicien n'a rien écrit)";
   $("fiche-demande").textContent = d.bon.demande ? `Demande de départ : ${d.bon.demande}` : "";
   $("fiche-achat").textContent = d.bon.achat ? `Achat déclaré par le technicien : « ${d.bon.achat} »` : "Achat déclaré par le technicien : champ non rempli";
@@ -611,6 +631,7 @@ async function modifierChamp(champ, valeur) {
   } catch (e) { message("message-fiche", e.message); }
 }
 $("fiche-description").addEventListener("change", e => modifierChamp("description", e.target.value));
+$("fiche-raison-rabais").addEventListener("change", e => modifierChamp("raison_rabais", e.target.value));
 $("fiche-lignes").addEventListener("change", e => { if (e.target.dataset.champ) modifierChamp(e.target.dataset.champ, e.target.value); });
 $("fermer-fiche").addEventListener("click", () => $("fiche").close());
 $("approuver-fiche").addEventListener("click", async () => {
@@ -634,21 +655,27 @@ async function chargerRegles() {
     $("r-cout-defaut").value = String(r.cout_horaire_defaut || 0).replace(".", ",");
     $("r-das").value = String(r.charges_das).replace(".", ","); $("r-vacances").value = String(r.charges_vacances).replace(".", ",");
     $("r-feries").value = String(r.charges_feries).replace(".", ",");
+    $("r-forfaits").value = (r.produits_forfait || []).join(", ");
+    $("r-seuil-rabais").value = String(r.seuil_rabais).replace(".", ",");
+    const fixes = r.salaire_fixe || [];
     $("r-couts").innerHTML = "";
-    Object.entries(r.couts_techniciens || {}).forEach(([nom, taux]) => ligneCout(nom, taux));
-    (r.techniciens_connus || []).forEach(nom => ligneCout(nom, ""));
+    Object.entries(r.couts_techniciens || {}).forEach(([nom, taux]) => ligneCout(nom, taux, fixes.includes(nom)));
+    fixes.filter(nom => !(nom in (r.couts_techniciens || {}))).forEach(nom => ligneCout(nom, "", true));
+    (r.techniciens_connus || []).forEach(nom => ligneCout(nom, "", false));
     majCoutsCharges();
   } catch (e) { message("message-regles", e.message); }
   chargerKmReglages();
   afficherCles();
 }
-function ligneCout(nom, taux) {
+function ligneCout(nom, taux, fixe) {
   const tr = document.createElement("tr");
-  tr.innerHTML = `<td><input class="cout-nom" aria-label="Technicien"></td>` +
+  tr.innerHTML = `<td><input class="cout-nom" aria-label="Technicien">` +
+    `<label class="case-fixe"><input type="checkbox" class="cout-fixe"> Salaire fixe</label></td>` +
     `<td class="nombre"><input class="cout-taux" inputmode="decimal" aria-label="Taux de base"></td>` +
     `<td class="nombre cout-charge"></td>` +
     `<td><button type="button" class="cout-retirer">Retirer</button></td>`;
   tr.querySelector(".cout-nom").value = nom;
+  tr.querySelector(".cout-fixe").checked = !!fixe;
   tr.querySelector(".cout-taux").value = taux === "" ? "" : String(taux).replace(".", ",");
   tr.querySelector(".cout-retirer").addEventListener("click", () => tr.remove());
   tr.querySelector(".cout-taux").addEventListener("input", majCoutsCharges);
@@ -671,7 +698,12 @@ function majCoutsCharges() {
   });
 }
 ["r-das", "r-vacances", "r-feries"].forEach(id => $(id).addEventListener("input", majCoutsCharges));
-$("ajouter-cout").addEventListener("click", () => ligneCout("", "").querySelector(".cout-nom").focus());
+$("ajouter-cout").addEventListener("click", () => ligneCout("", "", false).querySelector(".cout-nom").focus());
+function salaireFixeSaisi() {
+  return [...$("r-couts").querySelectorAll("tr")]
+    .filter(tr => tr.querySelector(".cout-fixe").checked && tr.querySelector(".cout-nom").value.trim())
+    .map(tr => tr.querySelector(".cout-nom").value.trim());
+}
 function coutsSaisis() {
   const couts = {};
   $("r-couts").querySelectorAll("tr").forEach(tr => {
@@ -686,7 +718,8 @@ $("enregistrer-regles").addEventListener("click", async () => {
     montant_max_ligne: $("r-montant").value, heures_max_jour: $("r-heures").value,
     transport_max_minutes: $("r-transport-max").value, marge_minimum: $("r-marge-min").value,
     cout_horaire_defaut: $("r-cout-defaut").value, charges_das: $("r-das").value,
-    charges_vacances: $("r-vacances").value, charges_feries: $("r-feries").value, couts_techniciens: coutsSaisis() };
+    charges_vacances: $("r-vacances").value, charges_feries: $("r-feries").value, couts_techniciens: coutsSaisis(),
+    seuil_rabais: $("r-seuil-rabais").value, salaire_fixe: salaireFixeSaisi(), produits_forfait: $("r-forfaits").value };
   try { await api("/regles", valeurs); await chargerRegles(); message("message-regles", "Règles enregistrées.", true); }
   catch (e) { message("message-regles", e.message); }
 });
@@ -949,7 +982,13 @@ $("kmr-enregistrer").addEventListener("click", async () => {
 
 // ---------- historique ----------
 async function chargerHistorique() {
-  const h = (await api("/historique")).evenements;
+  const reponse = await api("/historique"), h = reponse.evenements, rabais = reponse.rabais || [];
+  $("rabais-vide").hidden = rabais.length > 0;
+  $("rabais-total").textContent = rabais.length ? `Total : ${argent(rabais.reduce((t, x) => t + x.montant, 0))} sur ${rabais.length} bon(s).` : "";
+  $("rabais-corps").innerHTML = rabais.map(x => `<tr><td class="discret">${echapper((x.horodatage || "").slice(0, 10))}</td>
+    <td>${echapper(x.personne)}</td><td class="code">${echapper(x.code || x.bon_id)}</td><td>${echapper(x.client)}</td>
+    <td class="nombre">${argent(x.valeur_temps)}</td><td class="nombre">${argent(x.facture)}</td>
+    <td class="nombre"><b>${argent(x.montant)}</b></td><td>${echapper(x.raison || "")}</td></tr>`).join("");
   $("historique-vide").hidden = h.length > 0;
   $("historique-corps").innerHTML = h.map(e => {
     const d = e.details || {};

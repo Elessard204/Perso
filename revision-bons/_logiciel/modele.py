@@ -106,6 +106,7 @@ class Proposition:
     origine: dict[str, str] = field(default_factory=dict)
     lignes_retirees: list[int] = field(default_factory=list)  # lignes vides que l'écriture supprime
     marge: dict = field(default_factory=dict)  # {"revenu", "cout", "marge", "cout_complet"}
+    rabais: dict = field(default_factory=dict)  # {"montant", "valeur_temps", "facture", "raison"} si facturé sous le temps
 
     @property
     def statut(self) -> Literal["pret", "a_verifier", "bloque"]:

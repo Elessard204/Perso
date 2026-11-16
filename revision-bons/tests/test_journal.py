@@ -44,3 +44,15 @@ def test_deja_ecrit_reconnait_la_date_apres_ecriture(tmp_path):
     j.inscrire("ecrit", 1, "avant", {"maj_apres": "apres"})
     assert j.deja_ecrit(1, "avant") and j.deja_ecrit(1, "apres")
     assert not j.deja_ecrit(1, "")
+
+
+def test_releve_des_rabais_derniere_approbation(tmp_path):
+    j = Journal(tmp_path, "hugo")
+    r = {"montant": 97.5, "valeur_temps": 212.5, "facture": 115.0, "raison": ""}
+    j.inscrire("approuve", 1, "m1", {"code": "AS1", "client": "C", "rabais": r})
+    j.inscrire("approuve", 1, "m1", {"code": "AS1", "client": "C", "rabais": {**r, "raison": "Devis"}})
+    j.inscrire("approuve", 2, "m2", {"code": "AS2", "client": "D", "rabais": r})
+    j.inscrire("approuve", 2, "m3", {"code": "AS2", "client": "D"})      # réapprouvé sans rabais
+    j.inscrire("approuve", 3, "m4", {"code": "AS3", "client": "E"})
+    [x] = j.rabais()
+    assert (x["code"], x["raison"], x["montant"], x["personne"]) == ("AS1", "Devis", 97.5, "hugo")

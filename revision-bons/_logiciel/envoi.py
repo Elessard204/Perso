@@ -166,6 +166,7 @@ def envoyer(propositions: list[Proposition], progression, journal, cfg: dict,
             "description": p.description,
             "lignes_avant": [l.__dict__ for l in bon_depuis_json(tache, [], cfg).lignes],
             "corps": corps,
+            "rabais": dict(p.rabais),
         })
         resultats.append({"bon_id": p.bon_id, "resultat": "ecrit", "message": "Écrit dans Progression."})
     return resultats

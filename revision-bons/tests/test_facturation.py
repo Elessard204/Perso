@@ -2,7 +2,8 @@ import copy
 from dataclasses import replace
 
 from conftest import LOGICIEL
-from facturation import ajuster_heures_transport, arrondir_quart, classer, estimer_marge, alertes_marge, alertes_inventaire
+from facturation import (ajuster_heures_transport, arrondir_quart, classer, estimer_marge, alertes_marge,
+                         evaluer_rabais, lignes_ajustees)
 from modele import EntreeTemps, Ligne
 from progression import bon_depuis_json
 from regles import charger_regles
@@ -32,6 +33,7 @@ def test_regles_v2():
     assert R.tarifs["Maintenance"] == {"service": "SELP", "heure": 45.0, "transport": 40.0}
     assert R.tarifs["Rénovation"] == {"service": "SRP", "heure": 85.0, "transport": 50.0}
     assert R.tarif_progression == "Appel de service"
+    assert (R.salaire_fixe, R.produits_forfait, R.seuil_rabais) == ([], [], 50.0)
 
 
 def test_classer():
@@ -141,10 +143,104 @@ def test_excedent_sans_main_d_oeuvre():
     assert "excedent_sans_main_oeuvre" in codes(alertes)
 
 
-def test_inventaire_a_zero():
-    lignes = [Ligne(9, "Matériel", "", 1.0, 0.0, produit="Matériel en inventaire"),
-              Ligne(10, "Matériel", "Vis", 2.0, 3.0, produit="Matériel en inventaire")]
-    assert codes(alertes_inventaire(lignes)) == ["inventaire_a_zero"]
+def test_ligne_modifiee_a_la_main_pas_touchee():
+    """Journées fusionnées par Hugo : la ligne ne correspond plus au temps de « Facturer », l'outil n'y touche plus."""
+    b = bon()
+    b.lignes[0].quantite = 4.75
+    lignes, origine, alertes = ajuster_heures_transport(b, R)
+    assert ligne(lignes, 501).quantite == 4.75 and "501" not in origine
+    assert "transport_long" not in codes(alertes) and "excedent_sans_main_oeuvre" not in codes(alertes)
+
+
+def test_ligne_arrondie_par_l_outil_reste_a_l_outil():
+    b = bon()
+    assert lignes_ajustees(b) == set()
+    b.lignes[0].quantite = 2.25          # 2 h 05 arrondies au 0,25 : c'est encore la ligne de « Facturer »
+    assert lignes_ajustees(b) == set()
+    b.lignes[0].quantite = 2.5
+    assert lignes_ajustees(b) == {501}
+
+
+def test_ligne_ajoutee_a_la_main_pas_touchee():
+    b = bon()
+    b.lignes.append(Ligne(503, "Main d'oeuvre (journée du 2)", "", 1.6, 65.0, produit="Main d'oeuvre"))
+    lignes, _, _ = ajuster_heures_transport(b, R)
+    assert 503 in lignes_ajustees(b) and ligne(lignes, 503).quantite == 1.6
+    assert ligne(lignes, 501).quantite == 2.5     # l'excédent va sur la ligne de « Facturer »
+
+
+def test_journee_fusionnee_pas_de_transport_manquant():
+    b = bon()
+    b.entrees = [e for e in b.entrees if e.activite != "En route"]
+    b.lignes[0].quantite = 4.75
+    _, _, alertes = ajuster_heures_transport(b, R)
+    assert "transport_manquant" not in codes(alertes)
+
+
+def test_ligne_retiree_compte_comme_fusion():
+    b = bon()
+    b.entrees = [e for e in b.entrees if e.activite != "En route"]
+    b.entrees[1].ligne_id = 999            # ligne créée par « Facturer » puis retirée par Hugo
+    _, _, alertes = ajuster_heures_transport(b, R)
+    assert "transport_manquant" not in codes(alertes)
+
+
+def test_salaire_fixe_route_jamais_en_main_d_oeuvre():
+    r = replace(R, salaire_fixe=["Luc Tremblay"])
+    lignes, _, alertes = ajuster_heures_transport(bon(), r)
+    assert ligne(lignes, 501).quantite == 2.25 and ligne(lignes, 502).quantite == 1
+    assert "transport_long" not in codes(alertes)
+
+
+def test_bon_informatif_a_zero_sans_correction():
+    b = bon("Maintenance")
+    for l in b.lignes:
+        l.prix = 0.0
+    lignes, origine, alertes = ajuster_heures_transport(b, R)
+    assert [(l.quantite, l.prix) for l in lignes] == [(l.quantite, 0.0) for l in b.lignes]
+    assert origine == {} and alertes == []
+    assert evaluer_rabais(b, lignes, R) == ({}, [])
+
+
+def test_bon_au_forfait_heures_non_facturees_acceptees():
+    r = replace(R, produits_forfait=["Bacs"])
+    b = bon()
+    b.lignes.append(Ligne(504, "Sortie des bacs", "", 4, 95.0, produit="Bacs"))
+    b.entrees[2].ligne_id = None
+    _, _, alertes = ajuster_heures_transport(b, r)
+    assert "heures_non_facturees" not in codes(alertes)
+    assert "heures_non_facturees" in codes(ajuster_heures_transport(b, R)[2])   # sans la règle : bloqué
+    assert evaluer_rabais(b, b.lignes, r) == ({}, [])
+
+
+def test_pas_de_rabais_quand_l_outil_corrige():
+    b = bon()
+    lignes, _, _ = ajuster_heures_transport(b, R)
+    assert evaluer_rabais(b, lignes, R) == ({}, [])   # 2,5 h × 65 + 50 = 212,50 des deux côtés
+
+
+def test_rabais_signale_avec_montant():
+    b = bon()
+    b.lignes[0].quantite = 1.0                        # Hugo ramène la main-d'œuvre à 1 h
+    lignes, _, _ = ajuster_heures_transport(b, R)
+    rabais, alertes = evaluer_rabais(b, lignes, R)
+    assert rabais == {"montant": 97.5, "valeur_temps": 212.5, "facture": 115.0, "raison": ""}
+    assert codes(alertes) == ["rabais"] and not alertes[0].bloquante and "97,50 $" in alertes[0].message
+    assert evaluer_rabais(b, lignes, replace(R, seuil_rabais=100.0)) == ({}, [])
+
+
+def test_fusion_a_valeur_egale_pas_de_rabais():
+    """Deux visites de 2 h fusionnées en 4,75 h et un transport : 358,75 $ contre 360 $, sous le seuil."""
+    from datetime import date
+    b = bon()
+    b.entrees = [EntreeTemps(1, "Luc", date(2026, 11, 3), 30, 502, "En route"),
+                 EntreeTemps(2, "Luc", date(2026, 11, 3), 120, 501, "En cours"),
+                 EntreeTemps(3, "Luc", date(2026, 11, 5), 30, 998, "En route"),
+                 EntreeTemps(4, "Luc", date(2026, 11, 5), 120, 999, "En cours")]
+    b.lignes[0].quantite = 4.75
+    lignes, _, alertes = ajuster_heures_transport(b, R)
+    assert ligne(lignes, 501).quantite == 4.75 and "transport_manquant" not in codes(alertes)
+    assert evaluer_rabais(b, lignes, R) == ({}, [])
 
 
 def test_marge_et_bon_a_perte():

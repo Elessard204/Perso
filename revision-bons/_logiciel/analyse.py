@@ -13,7 +13,8 @@ from modele import Alerte, AnalysePiece, Bon, Facture, Ligne, LigneFacture, Prop
 from pieces_jointes import analyser_piece
 from progression import ErreurProgression
 from redaction import rediger
-from facturation import (ajuster_heures_transport, alertes_inventaire, alertes_marge, classer, estimer_marge)
+from facturation import (ajuster_heures_transport, alertes_marge, bon_informatif, classer, estimer_marge,
+                         evaluer_rabais)
 from regles import Regles, garde_fou_achat, garde_fous_facture, garde_fous_temps, ligne_materiel
 
 
@@ -87,18 +88,22 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
     retirees = [l.id for l in vides]
     for i in retirees:
         origine[str(i)] = "Ligne « Matériel acheté » vide : retirée"
-    alertes += alertes_inventaire(lignes)
-    alertes += garde_fou_achat(bon.achat, sum(1 for a in analyses if a.genre == "facture"))
+    rabais, alertes_rabais = evaluer_rabais(bon, lignes, r)
+    alertes += alertes_rabais
+    en_inventaire = any(classer(l) == "inventaire" and l.prix > 0 and l.quantite > 0 for l in lignes)
+    alertes += garde_fou_achat(bon.achat, sum(1 for a in analyses if a.genre == "facture"), en_inventaire)
 
     description, alertes_texte = rediger(bon.description, client, cfg["claude"], photos=photos, demande=bon.demande)
     alertes += alertes_texte
 
     marge = estimer_marge(bon, lignes, retirees, r)
-    alertes += alertes_marge(marge, r)
+    if not bon_informatif(bon):   # bon à 0 $ joint pour information : ni « sans revenu » ni « à perte »
+        alertes += alertes_marge(marge, r)
 
     proposition = Proposition(
         bon_id=bon.id, maj=bon.maj, description=description, description_originale=bon.description,
-        lignes=lignes, analyses=analyses, alertes=alertes, origine=origine, lignes_retirees=retirees, marge=marge)
+        lignes=lignes, analyses=analyses, alertes=alertes, origine=origine, lignes_retirees=retirees, marge=marge,
+        rabais=rabais)
     if not any(a.raison.startswith("Téléchargement impossible") for a in analyses):
         # Un échec de téléchargement est passager : on ne le garde pas, la prochaine analyse réessaie.
         fichier.parent.mkdir(parents=True, exist_ok=True)
@@ -186,4 +191,5 @@ def proposition_depuis_dict(d: dict) -> Proposition:
         origine=dict(d["origine"]),
         lignes_retirees=list(d.get("lignes_retirees") or []),
         marge=dict(d.get("marge") or {}),
+        rabais=dict(d.get("rabais") or {}),
     )
