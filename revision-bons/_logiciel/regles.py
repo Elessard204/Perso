@@ -31,8 +31,8 @@ class Regles:
     cout_horaire_defaut: float = 0.0                    # taux de base moyen d'un technicien; 0 = inconnu
     couts_techniciens: dict = field(default_factory=dict)  # nom du technicien -> taux de base
     charges_das: float = 0.12                           # charges de l'employeur, fraction du taux de base
-    charges_vacances: float = 0.04
-    charges_feries: float = 0.042
+    charges_vacances: float = 0.06                      # 6 % pour tous les employés (paie Progim)
+    charges_feries: float = 0.05
     km_taux: float = 0.61                               # $ par km
     km_seuil_ecart: float = 10.0                        # écart déclaré / payé signalé au-delà (km)
     km_debut_reference: date = date(2026, 11, 8)        # dimanche : début d'une période de paie
@@ -40,7 +40,8 @@ class Regles:
     @property
     def facteur_charges(self) -> float:
         """Multiplicateur qui transforme un taux de base en coût chargé."""
-        return 1 + self.charges_das + self.charges_vacances + self.charges_feries
+        somme = sum(Decimal(str(x)) for x in (self.charges_das, self.charges_vacances, self.charges_feries))
+        return float(1 + somme)
 
 
 def charger_regles(chemin: Path) -> Regles:
@@ -63,8 +64,8 @@ def charger_regles(chemin: Path) -> Regles:
         cout_horaire_defaut=float(d.get("couts", {}).get("defaut", 0.0)),
         couts_techniciens={k: float(v) for k, v in d.get("couts", {}).get("techniciens", {}).items()},
         charges_das=float(d.get("couts", {}).get("das", 0.12)),
-        charges_vacances=float(d.get("couts", {}).get("vacances", 0.04)),
-        charges_feries=float(d.get("couts", {}).get("feries", 0.042)),
+        charges_vacances=float(d.get("couts", {}).get("vacances", 0.06)),
+        charges_feries=float(d.get("couts", {}).get("feries", 0.05)),
         km_taux=float(d.get("kilometrage", {}).get("taux", 0.61)),
         km_seuil_ecart=float(d.get("kilometrage", {}).get("seuil_ecart_km", 10.0)),
         km_debut_reference=date.fromisoformat(str(d.get("kilometrage", {}).get("debut_reference", "2026-11-08"))),
@@ -73,6 +74,11 @@ def charger_regles(chemin: Path) -> Regles:
 
 def cents(montant: float) -> float:
     return float(Decimal(str(montant)).quantize(Decimal("0.01"), ROUND_HALF_UP))
+
+
+def montant_km(km: float, taux: float) -> float:
+    """Km × taux arrondi au cent, demi vers le haut, calculé en décimal (17,5 × 0,61 = 10,68 $)."""
+    return float((Decimal(str(km)) * Decimal(str(taux))).quantize(Decimal("0.01"), ROUND_HALF_UP))
 
 
 def heures_fr(heures: float) -> str:

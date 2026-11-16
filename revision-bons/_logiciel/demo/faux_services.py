@@ -22,8 +22,8 @@ CLIENTS = ["Gestion Fictive inc.", "Immeubles Démo SENC", "Habitations Exemple 
 def _png(couleur: tuple[int, int, int], largeur: int = 320, hauteur: int = 200) -> bytes:
     def morceau(type_: bytes, donnees: bytes) -> bytes:
         return struct.pack(">I", len(donnees)) + type_ + donnees + struct.pack(">I", zlib.crc32(type_ + donnees))
-    ligne = b"\x00" + bytes(couleur) * largeur
-    return (b"\x89PNG\r\n\x1a\n" + morceau(b"IHDR", struct.pack(">IIBBBBB", largeur, hauteur, 8, 2, 0, 0, 0))
+    ligne = bytes([0]) + bytes(couleur) * largeur
+    return (bytes([0x89]) + b"PNG\r\n" + bytes([0x1A]) + b"\n" + morceau(b"IHDR", struct.pack(">IIBBBBB", largeur, hauteur, 8, 2, 0, 0, 0))
             + morceau(b"IDAT", zlib.compress(ligne * hauteur)) + morceau(b"IEND", b""))
 
 
@@ -201,7 +201,7 @@ class FausseProgression:
                         + [f"{l['quantite']} x {l['description']} {l['prix_unitaire']:.2f} $" for l in f.get("lignes", [])])
         if mime == "image/png":
             return _png((90 + piece_id % 120, 120, 150))
-        return b"\x00\x00\x00 ftypheic"
+        return bytes(3) + b" ftypheic"
 
     def bon_avec_ligne(self, external_id: str) -> int | None:
         for identifiant, corps in self.ecrits:

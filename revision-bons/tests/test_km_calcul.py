@@ -85,3 +85,33 @@ def test_montant_arrondi_demi_superieur():
         "bons": []}}}
     p = totaliser(base, {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": True}})
     assert p["techniciens"][0]["montant"] == 0.31 and p["total_montant"] == 0.31
+
+
+def _base_un_jour(km, a_verifier=(), **tech):
+    return {"debut": "2026-11-08", "fin": "2026-11-21", "techniciens": {"Vadim": {"jours": [
+        {"jour": "2026-11-10", "arrets": [], "troncons": [], "km": km, "a_verifier": list(a_verifier),
+         "domicile": True, "minutes": 0.0}], "bons": [], **tech}}}
+
+
+def test_montant_demi_superieur_sur_le_produit_exact():
+    p = totaliser(_base_un_jour(17.5), {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": True}})
+    assert p["techniciens"][0]["montant"] == 10.68 and p["total_montant"] == 10.68
+
+
+def test_jours_a_verifier_et_note():
+    base = _base_un_jour(10.0, ["BS-1 : immeuble sans position GPS"])
+    base["techniciens"]["Vadim"]["jours"].append({"jour": "2026-11-11", "arrets": [], "troncons": [], "km": 5.0,
+                                                  "a_verifier": [], "domicile": True, "minutes": 0.0})
+    v = totaliser(base, {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": True}})["techniciens"][0]
+    assert v["jours_a_verifier"] == 1 and v["note"] is None and v["paie"] is True
+
+
+def test_code_postal_introuvable_a_configurer():
+    base = _base_un_jour(10.0, code_introuvable=True)
+    p = totaliser(base, {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": True}})
+    v = p["techniciens"][0]
+    assert (v["statut"], v["montant"], v["ecart"], v["paie"]) == ("a_configurer", None, None, False)
+    assert v["note"] == "code postal introuvable" and p["total_montant"] == 0.0
+    # Devenu sous-traitant : la note ne sert plus.
+    s = totaliser(base, {}, 0.61, 10.0, {"Vadim": {"code_postal": "H2X 1Y4", "paye_km": False}})["techniciens"][0]
+    assert s["statut"] == "sous_traitant" and s["note"] is None

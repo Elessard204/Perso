@@ -219,11 +219,21 @@ def test_technicien_sans_code_postal_a_configurer(tmp_path):
 def test_code_postal_introuvable_a_verifier(tmp_path):
     km = _km(tmp_path, CartesEspionnes(introuvables=("H2B 2B2",)))
     km.calculer(DEBUT, FIN, TECHS)
-    max_roy = _ligne(km.periode(DEBUT, TECHS, R), "Max Roy")
+    resultat = km.periode(DEBUT, TECHS, R)
+    max_roy = _ligne(resultat, "Max Roy")
     assert max_roy["details"]
     for jour in max_roy["details"]:
         assert jour["domicile"] is False
         assert any("code postal introuvable" in note for note in jour["a_verifier"])
+    # Pas payé comme un trajet normal : à configurer, sans montant ni écart, avec la note sur la ligne.
+    assert (max_roy["statut"], max_roy["montant"], max_roy["ecart"], max_roy["paie"]) == (
+        "a_configurer", None, None, False)
+    assert max_roy["note"] == "code postal introuvable"
+    assert max_roy["jours_a_verifier"] == len(max_roy["details"])
+    luc = _ligne(resultat, "Luc Tremblay")
+    assert luc["note"] is None and resultat["total_montant"] == luc["montant"]
+    with pytest.raises(ValueError, match="À configurer avant de valider : Max Roy"):
+        km.valider(DEBUT, TECHS, R, "Hugo")
 
 
 def test_config_changee_depuis_le_calcul_recalcul_requis(tmp_path):
@@ -259,7 +269,8 @@ def test_code_introuvable_puis_corrige_recalcul_requis(tmp_path):
     km.calculer(DEBUT, FIN, TECHS)
     assert _ligne(km.periode(DEBUT, TECHS, R), "Max Roy")["statut"] != "recalcul_requis"
     corrige = {**TECHS, "Max Roy": {"code_postal": "H2B 2B3", "paye_km": True}}
-    assert _ligne(km.periode(DEBUT, corrige, R), "Max Roy")["statut"] == "recalcul_requis"
+    max_roy = _ligne(km.periode(DEBUT, corrige, R), "Max Roy")
+    assert max_roy["statut"] == "recalcul_requis" and max_roy["note"] is None
 
 
 def test_validation_pendant_le_calcul_gardee(tmp_path):
@@ -288,3 +299,90 @@ def test_ajustement_pendant_le_calcul_garde(tmp_path):
 
     km.calculer(DEBUT, FIN, TECHS, ajuster_pendant)
     assert _ligne(km.periode(DEBUT, TECHS, R), "Luc Tremblay")["km_magasin"] == 9
+
+
+def test_reouverture_garde_le_taux_de_la_validation(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+    plus_cher = replace(R, km_taux=0.70, km_seuil_ecart=99.0)
+    assert km.periode(DEBUT, TECHS, plus_cher)["taux"] == 0.70      # jamais validée : taux actuel
+    valide = km.valider(DEBUT, TECHS, R, "Hugo")
+    assert valide["taux"] == 0.61
+    donnees = json.loads((tmp_path / "kilometrage" / "2026-10-25.json").read_text(encoding="utf-8"))
+    assert (donnees["taux"], donnees["seuil_km"]) == (0.61, R.km_seuil_ecart)
+
+    km.rouvrir(DEBUT, "erreur de Hugo", "Hugo")                    # le taux a changé entre-temps
+    rouverte = km.periode(DEBUT, TECHS, plus_cher)
+    assert rouverte["taux"] == 0.61 and rouverte["seuil_km"] == R.km_seuil_ecart
+    for nom in TECHS:
+        assert _ligne(rouverte, nom)["montant"] == _ligne(valide, nom)["montant"]
+    assert rouverte["total_montant"] == valide["total_montant"]
+    km.calculer(DEBUT, FIN, TECHS)                                  # même après un recalcul
+    assert km.periode(DEBUT, TECHS, plus_cher)["taux"] == 0.61
+    assert km.valider(DEBUT, TECHS, plus_cher, "Hugo")["taux"] == 0.61
+
+
+def test_validation_refusee_si_technicien_a_configurer(tmp_path):
+    km = _km(tmp_path)
+    techs = {"Luc Tremblay": TECHS["Luc Tremblay"]}                # Max Roy jamais configuré
+    km.calculer(DEBUT, FIN, techs)
+    message = ("À configurer avant de valider : Max Roy — inscrire le code postal ou décocher "
+               "« Employé Progim » (sous-traitant).")
+    with pytest.raises(ValueError) as erreur:
+        km.valider(DEBUT, techs, R, "Hugo")
+    assert str(erreur.value) == message
+    sans_code = {**techs, "Max Roy": {"code_postal": "", "paye_km": True}}
+    with pytest.raises(ValueError, match="À configurer avant de valider : Max Roy"):
+        km.valider(DEBUT, sans_code, R, "Hugo")
+    assert km.periode(DEBUT, techs, R)["statut"] == "brouillon" and not _evenements(tmp_path, "km_validation")
+    sous_traitant = {**techs, "Max Roy": {"code_postal": "", "paye_km": False}}
+    assert km.valider(DEBUT, sous_traitant, R, "Hugo")["statut"] == "valide"
+
+
+def test_jours_a_verifier_par_technicien(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+    for ligne in km.periode(DEBUT, TECHS, R)["techniciens"]:
+        assert ligne["jours_a_verifier"] == sum(1 for d in ligne["details"] if d["a_verifier"])
+
+
+def test_pas_de_distances_pour_les_techniciens_non_admissibles(tmp_path):
+    cartes = CartesEspionnes()
+    km = _km(tmp_path, cartes)
+    techs = {"Luc Tremblay": {"code_postal": "", "paye_km": False}, "Max Roy": {"code_postal": "", "paye_km": True}}
+    km.calculer(DEBUT, FIN, techs)                                  # Max a une journée à plusieurs arrêts
+    assert cartes.distances == 0 and cartes.geocodages == []
+    base = json.loads((tmp_path / "kilometrage" / "2026-10-25.json").read_text(encoding="utf-8"))["base"]
+    for tech in base["techniciens"].values():
+        assert tech["jours"] and all(j["km"] == 0.0 and j["troncons"] == [] and j["arrets"] for j in tech["jours"])
+    km.calculer(DEBUT, FIN, TECHS)                                  # configurés plus tard : recalculés
+    assert cartes.distances > 0
+
+
+def test_erreur_google_dit_quel_technicien_et_quel_jour(tmp_path):
+    km = _km(tmp_path, CartesEspionnes(echec_distance_au=3))       # 3e tronçon : Luc, 2e journée
+    with pytest.raises(ErreurCartes) as erreur:
+        km.calculer(DEBUT, FIN, TECHS)
+    assert str(erreur.value) == "Google Maps ne répond pas. (technicien Luc Tremblay, jour 2026-11-04, bons BS-2002)"
+
+
+def test_magasin_arrondi_au_dixieme(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+    km.ajuster(DEBUT, "Luc Tremblay", "2026-11-03", False, 12.34, "Hugo")
+    luc = _ligne(km.periode(DEBUT, TECHS, R), "Luc Tremblay")
+    assert luc["km_magasin"] == 12.3
+    assert next(d for d in luc["details"] if d["jour"] == "2026-11-03")["magasin_km"] == 12.3
+    (evenement,) = _evenements(tmp_path, "km_ajustement")
+    assert evenement["details"]["apres"] == {"uhaul": False, "magasin_km": 12.3}
+    km.ajuster(DEBUT, "Luc Tremblay", "2026-11-03", False, 12.31, "Hugo")   # même valeur arrondie : rien
+    assert len(_evenements(tmp_path, "km_ajustement")) == 1
+
+
+def test_date_du_calcul_dans_la_periode(tmp_path):
+    km = _km(tmp_path)
+    km.calculer(DEBUT, FIN, TECHS)
+    donnees = json.loads((tmp_path / "kilometrage" / "2026-10-25.json").read_text(encoding="utf-8"))
+    brouillon = km.periode(DEBUT, TECHS, R)
+    assert brouillon["calcule_le"] == donnees["base"]["calcule_le"] and brouillon["calcule_le"]
+    assert km.valider(DEBUT, TECHS, R, "Hugo")["calcule_le"] == brouillon["calcule_le"]

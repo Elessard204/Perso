@@ -179,7 +179,8 @@ def test_marge_taux_inscrit_dans_les_regles():
     r = replace(R, couts_techniciens={"Luc Tremblay": 30.0})
     lignes, _, _ = ajuster_heures_transport(b, r)
     m = estimer_marge(b, lignes, [], r)
-    assert (m["cout"], m["cout_complet"], m["sans_cout"]) == (123.21, True, [])
+    # (80 + 80 + 45) min × 30 $ × 1,23 = 126,075 $ -> 126,08 $ (demi vers le haut)
+    assert (m["cout"], m["cout_complet"], m["sans_cout"]) == (126.08, True, [])
 
 
 def test_marge_taux_par_defaut():
@@ -188,7 +189,7 @@ def test_marge_taux_par_defaut():
         e.cout_horaire = None
     r = replace(R, cout_horaire_defaut=30.0, couts_techniciens={"Autre": 99.0})
     lignes, _, _ = ajuster_heures_transport(b, r)
-    assert estimer_marge(b, lignes, [], r)["cout"] == 123.21
+    assert estimer_marge(b, lignes, [], r)["cout"] == 126.08
 
 
 def test_cout_charge_depuis_taux_de_base():
@@ -196,7 +197,7 @@ def test_cout_charge_depuis_taux_de_base():
     for e in b.entrees:
         e.cout_horaire = None
     r = replace(R, couts_techniciens={"Luc Tremblay": 30.0})
-    assert round(r.facteur_charges, 3) == 1.202
+    assert r.facteur_charges == 1.23          # DAS 12 % + vacances 6 % + fériés 5 %
     lignes, _, _ = ajuster_heures_transport(b, r)
-    # (80 + 80 + 45) min × 30 $ × 1,202 = 123,21 $
-    assert abs(estimer_marge(b, lignes, [], r)["cout"] - 123.21) <= 0.01
+    # (80 + 80 + 45) min × 30 $ × 1,23 = 126,08 $
+    assert estimer_marge(b, lignes, [], r)["cout"] == 126.08

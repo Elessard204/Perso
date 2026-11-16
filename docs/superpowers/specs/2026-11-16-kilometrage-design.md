@@ -175,8 +175,8 @@ Détail — Vadim Z., mar. 10 nov. : domicile (J4W) → AS003195 → AS003258 �
 Sabrina fournit le taux horaire de base de chaque employé (liste de paie). Dans l'onglet Règles, Hugo inscrit
 ce taux de base par technicien; l'outil calcule le coût chargé :
 `coût chargé = taux de base × (1 + DAS + vacances + fériés)`, avec trois pourcentages communs réglables :
-DAS 12 %, vacances 4 % (moins de 3 ans d'ancienneté; 6 % ensuite), fériés 4,2 % (11 jours fériés chez Progim
-÷ 260 jours ouvrables). Exemple : 30 $ × 1,202 = 36,07 $. Le « coût moyen » pour un technicien absent de la
+DAS 12 %, vacances 6 % (tous les employés, chiffre de la paie fourni par Sabrina), fériés 5 %, soit un
+facteur de 1,23. Exemple : 35 $ × 1,23 = 43,05 $ (arrondi au cent, demi vers le haut). Le « coût moyen » pour un technicien absent de la
 liste est aussi un taux de base. Les taux ne sont pas inscrits par Claude : Hugo les entre et les modifie.
 Aucune donnée personnelle (NAS, date de naissance, adresse) n'est conservée; seulement nom, taux de base et
 code postal.

@@ -158,6 +158,7 @@ def test_page_html(site):
         page = r.read().decode("utf-8")
     assert "Révision des bons" in page and "À réviser" in page and "Règles" in page and "Historique" in page
     assert 'data-vue="kilometrage"' in page and "Seuil d'écart" in page
+    assert "Vacances (0,06 chez Progim)" in page and "Fériés (0,05 chez Progim)" in page
 
 
 def test_raison_montre_l_alerte_la_plus_importante(site):
@@ -449,3 +450,37 @@ def test_km_sans_jeton_refuse(site):
 def test_cles_accepte_google(km_site):
     code, etat = km_site("/cles", {"google": "AIza-fausse"})
     assert code == 200 and etat["cles"]["google"] is True
+
+
+def test_periodes_km_dans_le_profil_en_mode_reel(tmp_path, monkeypatch):
+    # Les fichiers de période contiennent les codes postaux : jamais dans le dossier partagé (SharePoint).
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    reel = Application(LOGICIEL, demo=False, personne="hugo", donnees=tmp_path / "partage")
+    assert reel.km().dossier == tmp_path / "appdata" / "ProgimRevisionBons" / "kilometrage"
+    demo = Application(LOGICIEL, demo=True, personne="hugo", donnees=tmp_path / "demo")
+    assert demo.km().dossier == tmp_path / "demo" / "kilometrage"
+
+
+def test_km_reglages_inscrits_au_journal_sans_codes_postaux(km_site):
+    assert reglages_km(km_site)[0] == 200
+    modifies = {"Luc Tremblay": {"code_postal": "H1A 1A2", "paye_km": True},
+                "Max Roy": {"code_postal": "H2B 2B2", "paye_km": False}}
+    assert km_site("/km/reglages", {"taux": "0,65", "seuil_km": 15, "debut_reference": "2026-11-22",
+                                    "techniciens": modifies})[0] == 200
+    assert km_site("/km/reglages", {"taux": "0,65", "seuil_km": 15, "debut_reference": "2026-11-22",
+                                    "techniciens": modifies})[0] == 200          # rien de changé : pas de ligne
+    evenements = [e for e in km_site("/historique")[1]["evenements"] if e["evenement"] == "km_reglages"]
+    assert len(evenements) == 2
+    dernier = evenements[0]
+    assert dernier["bon_id"] == 0 and dernier["maj"] == "" and dernier["personne"] == "hugo"
+    d = dernier["details"]
+    assert d["avant"] == {"taux": 0.61, "seuil_km": 15.0, "debut_reference": "2026-11-08"}
+    assert d["apres"] == {"taux": 0.65, "seuil_km": 15.0, "debut_reference": "2026-11-22"}
+    assert d["techniciens"] == {
+        "Luc Tremblay": {"paye_km_avant": True, "paye_km_apres": True, "code_postal_modifie": "oui"},
+        "Max Roy": {"paye_km_avant": True, "paye_km_apres": False, "code_postal_modifie": "non"}}
+    premier = evenements[1]["details"]["techniciens"]
+    assert premier["Luc Tremblay"] == {"paye_km_avant": None, "paye_km_apres": True, "code_postal_modifie": "oui"}
+    texte = json.dumps(evenements, ensure_ascii=False).upper()
+    for code in ("H1A", "H2B", "1A1", "1A2", "2B2"):
+        assert code not in texte

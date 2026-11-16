@@ -216,9 +216,12 @@ class Application:
 
     def km(self) -> Kilometrage:
         if self._km is None:
+            # Les fichiers de période contiennent les codes postaux : en mode réel, dans le profil Windows
+            # (comme techniciens.json), jamais dans le dossier partagé.
+            dossier = self.donnees / "kilometrage" if self.demo else profil.dossier() / "kilometrage"
             self._km = Kilometrage(_Paresseux(lambda: self.services()[0]), _Paresseux(self.cartes),
                                    _Paresseux(lambda: self.services()[1]), self.cfg["claude"],
-                                   self.donnees / "kilometrage", self.journal)
+                                   dossier, self.journal)
         return self._km
 
     def _aujourdhui(self) -> date:
@@ -362,9 +365,11 @@ class Application:
         if techniciens is not None and not (
                 isinstance(techniciens, dict) and all(isinstance(v, dict) for v in techniciens.values())):
             raise ErreurDemande("Liste des techniciens invalide.")
+        techs_avant = actuels["techniciens"]
+        techs_apres = techs_avant
         if techniciens is not None:
             try:
-                profil.ecrire_techniciens(techniciens)
+                techs_apres = profil.ecrire_techniciens(techniciens)
             except ValueError as e:
                 raise ErreurDemande(str(e)) from e
         donnees = tomllib.loads(self.chemin_regles.read_text(encoding="utf-8"))
@@ -373,7 +378,27 @@ class Application:
         contenu = "# Règles appliquées à chaque bon de service. Modifiables dans l'onglet Règles.\n"
         contenu += f"# Dernière modification : {self.personne}\n" + toml_texte(donnees)
         self.chemin_regles.write_text(contenu, encoding="utf-8")
+        self._journaliser_reglages_km(actuels, {"taux": taux, "seuil_km": seuil,
+                                                "debut_reference": reference.isoformat()}, techs_avant, techs_apres)
         return self.km_lire_reglages()
+
+    def _journaliser_reglages_km(self, actuels: dict, apres: dict, techs_avant: dict, techs_apres: dict) -> None:
+        """Journal des réglages du kilométrage : jamais les codes postaux, seulement s'ils ont changé."""
+        avant = {"taux": actuels["taux"], "seuil_km": actuels["seuil_km"],
+                 "debut_reference": actuels["debut_reference"]}
+        apres = {"taux": float(apres["taux"]), "seuil_km": float(apres["seuil_km"]),
+                 "debut_reference": apres["debut_reference"]}
+        techs, change = {}, avant != apres
+        for nom in sorted(set(techs_avant) | set(techs_apres)):
+            a, b = techs_avant.get(nom), techs_apres.get(nom)
+            ligne = {"paye_km_avant": a["paye_km"] if a else None, "paye_km_apres": b["paye_km"] if b else None,
+                     "code_postal_modifie": "oui" if (a or {}).get("code_postal", "") != (b or {}).get("code_postal", "")
+                     else "non"}
+            techs[nom] = ligne
+            change = change or ligne["paye_km_avant"] != ligne["paye_km_apres"] or ligne["code_postal_modifie"] == "oui"
+        if not change:
+            return
+        self.journal.inscrire("km_reglages", 0, "", {"avant": avant, "apres": apres, "techniciens": techs})
 
     # ---------- liste et analyse ----------
     def _ligne_liste(self, bon_id: int) -> dict:

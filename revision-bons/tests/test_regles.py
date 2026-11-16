@@ -131,3 +131,29 @@ def test_regles_kilometrage():
     from datetime import date
     r = charger_regles(LOGICIEL / "regles.toml")
     assert (r.km_taux, r.km_seuil_ecart, r.km_debut_reference) == (0.61, 10.0, date(2026, 11, 8))
+
+
+def test_montant_km_arrondi_demi_superieur_exact():
+    from regles import montant_km
+    assert 17.5 * 0.61 < 10.675                       # le produit en virgule flottante tombe sous la demie
+    assert montant_km(17.5, 0.61) == 10.68
+    assert montant_km(0.5, 0.61) == 0.31 and montant_km(0, 0.61) == 0.0
+
+
+def test_charges_de_la_paie_progim():
+    # Chiffres de la paie : vacances 6 % pour tous, fériés 5 %, DAS 12 %.
+    from regles import Regles, cents
+    assert (R.charges_das, R.charges_vacances, R.charges_feries) == (0.12, 0.06, 0.05)
+    defaut = Regles(15, 0.15, False, "un_par_visite", 0.05, 30, 1000.0, 12)
+    assert (defaut.charges_das, defaut.charges_vacances, defaut.charges_feries) == (0.12, 0.06, 0.05)
+    assert R.facteur_charges == 1.23
+    assert cents(35 * R.facteur_charges) == 43.05     # 35 $/h × 1,23 = 43,05 $
+
+
+def test_charges_par_defaut_sans_section_couts(tmp_path):
+    texte = (LOGICIEL / "regles.toml").read_text(encoding="utf-8")
+    debut = texte.index("[couts]")
+    fin = texte.index("[garde_fous]")
+    (tmp_path / "r.toml").write_text(texte[:debut] + texte[fin:], encoding="utf-8")
+    r = charger_regles(tmp_path / "r.toml")
+    assert (r.charges_das, r.charges_vacances, r.charges_feries) == (0.12, 0.06, 0.05)

@@ -24,8 +24,8 @@ type = "Appel de service"
 [couts]                          # taux de base des techniciens, pour estimer la rentabilité (modifiable dans Règles)
 defaut = 0.0                     # taux de base moyen si le technicien n'est pas dans la liste; 0 = inconnu
 das = 0.12                       # charges de l'employeur (RRQ, AE, RQAP, FSS, CNESST...), en fraction du taux de base
-vacances = 0.04                  # 0,06 après 3 ans
-feries = 0.042                   # 11 jours ÷ 260
+vacances = 0.06                  # 6 % pour tous les employés (paie Progim)
+feries = 0.05                    # 5 % (paie Progim)
 [couts.techniciens]
 [garde_fous]
 ecart_sous_total = 0.05

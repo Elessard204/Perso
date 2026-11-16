@@ -127,3 +127,34 @@ def test_montants_des_deux_semaines_somment_au_montant_de_la_periode():
     m2 = next(r for r in _lignes(z, 2) if r[0] == "Vadim")[10]
     assert (m1, m2) == (6.41, 6.4) and round(m1 + m2, 2) == 12.81
     assert _lignes(z, 2)[-1][10] == 6.4
+
+
+def test_montant_semaine_demi_superieur_exact():
+    p = _periode()
+    p["techniciens"] = [{"nom": "Vadim", "paie": True, "statut": "ok", "minutes_par_jour": {},
+                         "minutes_total": 0, "km_a_payer": 35.0, "montant": 21.35,
+                         "details": [_jour("2026-11-10", 17.5, 0), _jour("2026-11-17", 17.5, 0)]}]
+    z = zipfile.ZipFile(io.BytesIO(export_periode(p)[0]))
+    m1 = next(r for r in _lignes(z, 1) if r[0] == "Vadim")[10]
+    m2 = next(r for r in _lignes(z, 2) if r[0] == "Vadim")[10]
+    assert (m1, m2) == (10.68, 10.67)          # 17,5 × 0,61 = 10,675 -> 10,68; la semaine 2 complète 21,35
+
+
+def test_caracteres_de_controle_retires():
+    contenu = ecrire_xlsx({"F": [["a" + chr(1) + "b" + chr(0x1F) + "c" + chr(9) + "d"]]})
+    feuille = zipfile.ZipFile(io.BytesIO(contenu)).read("xl/worksheets/sheet1.xml").decode()
+    assert "ab" + "c" + chr(9) + "d" in feuille
+
+
+def test_sources_sans_sequences_d_echappement_hexadecimales_ou_unicode():
+    logiciel = Path(__file__).resolve().parent.parent / "_logiciel"
+    barre = chr(92)
+    fautifs = []
+    for f in sorted(logiciel.rglob("*")):
+        if f.suffix not in (".py", ".html", ".toml", ".cmd", ".js", ".css") or "__pycache__" in f.parts:
+            continue
+        texte = f.read_text(encoding="utf-8")
+        for n, ligne in enumerate(texte.splitlines(), 1):
+            if barre + "x" in ligne or barre + "u" in ligne or barre + "U" in ligne or barre + "N{" in ligne:
+                fautifs.append(f"{f.relative_to(logiciel)}:{n}")
+    assert fautifs == []

@@ -10,10 +10,11 @@ import zipfile
 from datetime import date, timedelta
 from xml.sax.saxutils import escape
 
-from regles import cents
+from regles import cents, montant_km
 
 _JOURS = ["Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam."]
-_ILLEGAL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Caractères de contrôle refusés par Excel (tout sauf tabulation, saut de ligne et retour chariot).
+_ILLEGAL = re.compile("[" + "".join(chr(i) for i in range(32) if i not in (9, 10, 13)) + "]")
 
 
 class Gras:
@@ -155,11 +156,11 @@ def _semaine(periode: dict, dimanche: date, premiere: bool) -> list[list]:
         minutes = [float(par_jour.get(j, 0)) for j in jours]
         km = round(sum(d.get("km_paye", 0.0) for d in t.get("details", []) if d.get("jour") in jours), 1)
         if premiere:
-            montant = cents(km * taux)
+            montant = montant_km(km, taux)
         else:
             jours1 = {(dimanche - timedelta(days=7 - i)).isoformat() for i in range(7)}
             km1 = round(sum(d.get("km_paye", 0.0) for d in t.get("details", []) if d.get("jour") in jours1), 1)
-            montant = cents((t.get("montant") or 0) - cents(km1 * taux))
+            montant = cents((t.get("montant") or 0) - montant_km(km1, taux))
         lignes.append([t["nom"]] + [h_mm(m) for m in minutes] + [h_mm(sum(minutes)), _entier_si_rond(km), montant])
         tot_min = [a + b for a, b in zip(tot_min, minutes)]
         tot_km += km

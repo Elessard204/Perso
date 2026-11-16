@@ -241,6 +241,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <button type="button" id="km-rouvrir" disabled>Rouvrir</button>
       <a class="lien-export" id="km-export" aria-disabled="true" download>Exporter Excel</a>
     </div>
+    <p class="note" id="km-infos"></p>
     <p class="message" id="km-message" role="status"></p>
   </section>
 
@@ -249,7 +250,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
       <table>
         <thead><tr>
           <th>Technicien</th><th class="nombre">Jours</th><th class="nombre">Heures</th><th class="nombre">Km calculé</th><th class="nombre">Magasin</th>
-          <th class="nombre">Km à payer</th><th class="nombre">Montant</th><th class="nombre">Km déclaré</th><th class="nombre">Écart</th><th>Statut</th>
+          <th class="nombre">Km à payer</th><th class="nombre">Montant</th><th class="nombre">Km déclaré</th><th class="nombre">Écart</th><th class="nombre">À vérifier</th><th>Statut</th>
         </tr></thead>
         <tbody id="km-corps"></tbody>
       </table>
@@ -298,8 +299,8 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
         </ul>
       </details>
       <div class="champ"><label for="r-das">DAS (ex. 0,12)</label><input id="r-das" name="charges_das" inputmode="decimal"></div>
-      <div class="champ"><label for="r-vacances">Vacances (ex. 0,04; 0,06 après 3 ans)</label><input id="r-vacances" name="charges_vacances" inputmode="decimal"></div>
-      <div class="champ"><label for="r-feries">Fériés (ex. 0,042 = 11 jours ÷ 260)</label><input id="r-feries" name="charges_feries" inputmode="decimal"></div>
+      <div class="champ"><label for="r-vacances">Vacances (0,06 chez Progim)</label><input id="r-vacances" name="charges_vacances" inputmode="decimal"></div>
+      <div class="champ"><label for="r-feries">Fériés (0,05 chez Progim)</label><input id="r-feries" name="charges_feries" inputmode="decimal"></div>
       <div class="champ"><label for="r-cout-defaut">Taux de base moyen pour un technicien absent de la liste ($/h; 0 = inconnu)</label><input id="r-cout-defaut" name="cout_horaire_defaut" inputmode="decimal"></div>
       <div class="grille"><table><thead><tr><th>Technicien</th><th class="nombre">Taux de base ($/h)</th><th class="nombre">Coût chargé ($/h)</th><th></th></tr></thead>
         <tbody id="r-couts"></tbody></table></div>
@@ -745,18 +746,35 @@ async function chargerPeriodeKm() {
   afficherKm();
 }
 
+function dateIso(texte) { return String(texte || "").slice(0, 10); }
+function infosKm(p) {
+  if (!p) return "";
+  const morceaux = [];
+  if (p.taux != null) morceaux.push("Taux : " + Number(p.taux).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + " $/km");
+  const suite = [];
+  if (p.calcule_le) suite.push("calculée le " + dateIso(p.calcule_le));
+  if (p.statut === "valide") suite.push("validée par " + (p.valide_par || "?") + " le " + dateIso(p.valide_le));
+  return morceaux.concat(suite.length ? [suite.join(", ")] : []).join(" — ");
+}
+
 function afficherKm() {
+  afficherTableKm();
+  afficherDetailKm();
+}
+
+function afficherTableKm() {
   const p = kmData, valide = !!p && p.statut === "valide";
+  $("km-infos").textContent = infosKm(p);
   $("km-vide").hidden = !!p;
   $("km-statut").innerHTML = !p ? '<span class="pastille km-brouillon">Pas encore calculée</span>'
     : valide ? `<span class="pastille km-valide">Validée, révision ${p.revision}</span>` : `<span class="pastille km-brouillon">Brouillon, révision ${p.revision}</span>`;
-  $("km-valider").disabled = !p || valide;
+  $("km-valider").disabled = !p || valide || kmEnCours;
   $("km-rouvrir").disabled = !valide;
   $("km-calculer").disabled = valide || kmEnCours;
   const lien = $("km-export");
   if (valide) { lien.href = `/km/export?debut=${encodeURIComponent(kmDebut)}&jeton=${encodeURIComponent(JETON)}`; lien.setAttribute("aria-disabled", "false"); }
   else { lien.removeAttribute("href"); lien.setAttribute("aria-disabled", "true"); }
-  if (!p) { $("km-corps").innerHTML = ""; $("km-detail").hidden = true; return; }
+  if (!p) { $("km-corps").innerHTML = ""; return; }
   const lignes = p.techniciens.map(t => {
     const gris = t.statut === "sous_traitant" ? " grise" : "";
     const sel = t.nom === kmOuvert ? " choisie" : "";
@@ -767,12 +785,13 @@ function afficherKm() {
       <td class="nombre">${nbKm(t.km_calcule)}</td><td class="nombre">${t.km_magasin ? nbKm(t.km_magasin) : ""}</td>
       <td class="nombre">${t.paie ? "<b>" + nbKm(t.km_a_payer) + "</b>" : ""}</td><td class="nombre">${t.paie ? argent(t.montant) : ""}</td>
       <td class="nombre">${t.statut === "non_declare" ? "—" : nbKm(t.km_declare)}</td>
-      <td class="nombre${ecartFort}">${ecart}</td><td>${pastilleKm(t)}</td></tr>`;
+      <td class="nombre${ecartFort}">${ecart}</td>
+      <td class="nombre">${t.jours_a_verifier ? `<span class="pastille a_verifier" title="Jours avec un point à vérifier">${t.jours_a_verifier} j</span>` : ""}</td>
+      <td>${pastilleKm(t)}${t.note ? `<div class="discret">${echapper(t.note)}</div>` : ""}</td></tr>`;
   });
   lignes.push(`<tr class="total"><td>Total</td><td></td><td></td><td></td><td></td><td class="nombre">${nbKm(p.total_km)}</td>
-    <td class="nombre">${argent(p.total_montant)}</td><td></td><td></td><td></td></tr>`);
+    <td class="nombre">${argent(p.total_montant)}</td><td></td><td></td><td></td><td></td></tr>`);
   $("km-corps").innerHTML = lignes.join("");
-  afficherDetailKm();
 }
 
 function trajetHtml(j) {
@@ -782,6 +801,20 @@ function trajetHtml(j) {
   }
   const codes = (j.arrets || []).map(a => a.code);
   return codes.length ? echapper(codes.join(" → ")) : '<span class="discret">Aucun arrêt localisé</span>';
+}
+
+function kmDuJourHtml(j) { return j.uhaul ? '<span class="discret">exclu</span>' : nbKm(j.km); }
+
+// Après un ajustement : seule la ligne du jour change dans le détail (pas de perte de focus ni de saisie).
+function majJourDetailKm(tr) {
+  const t = kmData && kmData.techniciens.find(x => x.nom === kmOuvert);
+  const j = t && t.details.find(d => d.jour === tr.dataset.jour);
+  if (!j || !tr.isConnected) return;
+  tr.querySelector(".km-du-jour").innerHTML = kmDuJourHtml(j);
+  tr.querySelector(".km-paye").innerHTML = `<b>${nbKm(j.km_paye)}</b>`;
+  tr.querySelector(".km-uhaul").checked = !!j.uhaul;
+  const magasin = tr.querySelector(".km-magasin");
+  if (document.activeElement !== magasin) magasin.value = j.magasin_km || "";
 }
 
 function afficherDetailKm() {
@@ -794,10 +827,10 @@ function afficherDetailKm() {
       <td class="code">${echapper(jourFr(j.jour))}</td>
       <td class="nombre">${heuresHMM(t.minutes_par_jour[j.jour])}</td>
       <td class="trajet">${trajetHtml(j)}${(j.a_verifier || []).map(a => `<div><span class="pastille a_verifier">À vérifier</span> <span class="discret">${echapper(a)}</span></div>`).join("")}</td>
-      <td class="nombre">${j.uhaul ? '<span class="discret">exclu</span>' : nbKm(j.km)}</td>
+      <td class="nombre km-du-jour">${kmDuJourHtml(j)}</td>
       <td><label class="case-seule"><input type="checkbox" class="km-uhaul" ${j.uhaul ? "checked" : ""} ${fige ? "disabled" : ""}> Uhaul (jour exclu)</label></td>
       <td class="nombre"><input type="number" class="km-magasin" min="0" step="0.1" value="${j.magasin_km || ""}" placeholder="0" ${fige ? "disabled" : ""} aria-label="+ km magasin"></td>
-      <td class="nombre"><b>${nbKm(j.km_paye)}</b></td></tr>`).join("");
+      <td class="nombre km-paye"><b>${nbKm(j.km_paye)}</b></td></tr>`).join("");
   const bons = t.bons.map(b => `<tr><td class="code">${echapper(b.code)}</td><td class="texte-bon">${echapper(b.texte || "")}</td>
       <td class="nombre">${b.km == null ? "" : nbKm(b.km)}</td>
       <td>${b.statut === "ok" ? '<span class="pastille pret">' : '<span class="pastille a_verifier">'}${echapper(BON_STATUTS[b.statut] || b.statut)}</span></td>
@@ -828,7 +861,8 @@ async function ajusterKm(tr) {
     uhaul: tr.querySelector(".km-uhaul").checked, magasin_km: tr.querySelector(".km-magasin").value };
   try { kmData = (await api("/km/ajuster", corps)).periode; message("km-message", ""); }
   catch (e) { message("km-message", e.message); }
-  afficherKm();
+  afficherTableKm();
+  majJourDetailKm(tr);
 }
 $("km-detail").addEventListener("change", e => {
   const tr = e.target.closest("tr[data-jour]");
@@ -843,6 +877,7 @@ $("km-calculer").addEventListener("click", async () => {
 });
 async function suivreKm() {
   kmEnCours = true; $("km-avancement").hidden = false; $("km-calculer").disabled = true; $("km-periode").disabled = true;
+  $("km-valider").disabled = true;
   let p;
   try { p = await api("/km/progres"); } catch (e) { p = { en_cours: false, message: e.message }; }
   $("km-barre").style.width = p.en_cours ? "60%" : "100%";
@@ -854,7 +889,12 @@ async function suivreKm() {
   setTimeout(() => $("km-avancement").hidden = true, 1500);
 }
 $("km-valider").addEventListener("click", async () => {
-  if (!confirm("Valider cette période ? Les chiffres seront figés pour l'export.")) return;
+  if (kmEnCours || !kmData) return;
+  const aVerifier = kmData.techniciens.filter(t => t.jours_a_verifier > 0)
+    .map(t => `- ${t.nom} : ${t.jours_a_verifier} jour${t.jours_a_verifier > 1 ? "s" : ""} à vérifier`);
+  const texte = "Valider cette période ? Les chiffres seront figés pour l'export."
+    + (aVerifier.length ? "\n\nJours à vérifier :\n" + aVerifier.join("\n") : "");
+  if (!confirm(texte)) return;
   try { kmData = (await api("/km/valider", { debut: kmDebut })).periode; message("km-message", "Période validée.", true); }
   catch (e) { message("km-message", e.message); }
   afficherKm();

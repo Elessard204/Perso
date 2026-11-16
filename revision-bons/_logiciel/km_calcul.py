@@ -10,12 +10,13 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from progression import minutes_iso
-from regles import cents
+from regles import cents, montant_km
 
 _NBSP = chr(0xA0)
 _RE_KM = re.compile(
     r"^\s*(\d{1,3}(?:[ " + _NBSP + r"]\d{3})*|\d+)(?:[.,](\d+))?\s*(?:km)?\s*$", re.IGNORECASE)
 _SANS_BON = "entrée sans bon"
+NOTE_INTROUVABLE = "code postal introuvable"
 
 
 def periode_contenant(jour: date, reference: date) -> tuple[date, date]:
@@ -125,10 +126,14 @@ def totaliser(base: dict, ajustements: dict, taux: float, seuil: float,
     for nom in sorted(base.get("techniciens", {})):
         donnees = base["techniciens"][nom]
         config = techniciens.get(nom)
+        note = None
         if config is not None and not config.get("paye_km"):
             statut_fixe = "sous_traitant"
         elif config is None or not (config.get("code_postal") or "").strip():
             statut_fixe = "a_configurer"
+        elif donnees.get("code_introuvable"):
+            # Google n'a pas trouvé le code postal : pas de trajet depuis le domicile, donc rien à payer.
+            statut_fixe, note = "a_configurer", NOTE_INTROUVABLE
         else:
             statut_fixe = None
         paie = statut_fixe is None
@@ -153,7 +158,7 @@ def totaliser(base: dict, ajustements: dict, taux: float, seuil: float,
 
         if paie:
             km_a_payer = round(km_a_payer, 1)
-            montant = cents(km_a_payer * taux)
+            montant = montant_km(km_a_payer, taux)
             ecart = round(km_declare - km_a_payer, 1)
             if not a_declare:
                 statut = "non_declare"
@@ -171,6 +176,7 @@ def totaliser(base: dict, ajustements: dict, taux: float, seuil: float,
             "km_magasin": round(km_magasin, 1), "km_a_payer": km_a_payer, "montant": montant,
             "km_declare": km_declare, "ecart": ecart, "statut": statut, "paie": paie,
             "minutes_par_jour": minutes_par_jour, "minutes_total": sum(minutes_par_jour.values()),
+            "jours_a_verifier": sum(1 for d in details if d.get("a_verifier")), "note": note,
             "details": details, "bons": bons,
         })
     return {"debut": base.get("debut"), "fin": base.get("fin"), "taux": taux, "seuil_km": seuil,
