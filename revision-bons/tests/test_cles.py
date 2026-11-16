@@ -22,5 +22,5 @@ def test_fichier_corrompu(tmp_path, monkeypatch):
 def test_etat_ne_revele_pas_les_cles(tmp_path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     cles.ecrire(progression="secret-p", claude=None)
-    assert cles.etat() == {"progression": True, "claude": False}
+    assert cles.etat() == {"progression": True, "claude": False, "google": False}
     assert "secret" not in json.dumps(cles.etat())

@@ -33,6 +33,9 @@ class Regles:
     charges_das: float = 0.12                           # charges de l'employeur, fraction du taux de base
     charges_vacances: float = 0.04
     charges_feries: float = 0.042
+    km_taux: float = 0.61                               # $ par km
+    km_seuil_ecart: float = 10.0                        # écart déclaré / payé signalé au-delà (km)
+    km_debut_reference: date = date(2026, 11, 8)        # dimanche : début d'une période de paie
 
     @property
     def facteur_charges(self) -> float:
@@ -62,6 +65,9 @@ def charger_regles(chemin: Path) -> Regles:
         charges_das=float(d.get("couts", {}).get("das", 0.12)),
         charges_vacances=float(d.get("couts", {}).get("vacances", 0.04)),
         charges_feries=float(d.get("couts", {}).get("feries", 0.042)),
+        km_taux=float(d.get("kilometrage", {}).get("taux", 0.61)),
+        km_seuil_ecart=float(d.get("kilometrage", {}).get("seuil_ecart_km", 10.0)),
+        km_debut_reference=date.fromisoformat(str(d.get("kilometrage", {}).get("debut_reference", "2026-11-08"))),
     )
 
 

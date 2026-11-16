@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-NOMS = ("progression", "claude")
+NOMS = ("progression", "claude", "google")
 
 
 def fichier() -> Path:
@@ -22,10 +22,10 @@ def lire() -> dict[str, str]:
     return {k: v for k, v in donnees.items() if k in NOMS and isinstance(v, str) and v}
 
 
-def ecrire(progression: str | None, claude: str | None) -> None:
+def ecrire(progression: str | None, claude: str | None, google: str | None = None) -> None:
     """Enregistre les clés fournies; None laisse la clé existante en place."""
     actuelles = lire()
-    for nom, valeur in (("progression", progression), ("claude", claude)):
+    for nom, valeur in (("progression", progression), ("claude", claude), ("google", google)):
         if valeur is not None:
             actuelles[nom] = valeur.strip()
     f = fichier()

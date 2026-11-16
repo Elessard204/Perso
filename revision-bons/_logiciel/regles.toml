@@ -33,3 +33,7 @@ jours_max_facture = 30
 montant_max_ligne = 1000.00
 heures_max_jour = 12
 marge_minimum = 0.0              # 0 = signaler seulement les bons à perte
+[kilometrage]
+taux = 0.61                      # $ par km
+seuil_ecart_km = 10.0            # écart déclaré / payé signalé au-delà, par technicien et par période
+debut_reference = "2026-11-08"   # un dimanche : début d'une période de paie de deux semaines

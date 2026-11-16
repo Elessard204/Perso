@@ -50,7 +50,7 @@ def charger_et_analyser(appel):
 def test_page_et_etat_sans_cles(site):
     code, etat = site("/etat")
     assert code == 200 and etat["demo"] is True and etat["mode_reel_permis"] is False
-    assert set(etat["cles"]) == {"progression", "claude"}
+    assert set(etat["cles"]) == {"progression", "claude", "google"}
     assert all(isinstance(v, bool) for v in etat["cles"].values())
 
 
@@ -304,3 +304,11 @@ def test_garde_fous_v2_en_demo(site):
     prix = {l["libelle"].split(" ")[0]: l["prix"] for l in d["proposition"]["lignes"]}
     assert prix == {"Transport": 40.0, "Main": 45.0}                    # tarifs SELP appliqués à une maintenance
     assert d["proposition"]["marge"]["revenu"] > 0
+
+
+def test_regles_kilometrage_survivent_a_la_reecriture(site):
+    _, r = site("/regles")
+    assert r["km_debut_reference"] == "2026-11-08" and r["km_taux"] == 0.61
+    assert site("/regles", {**r, "marge": 0.2})[0] == 200
+    _, r2 = site("/regles")
+    assert (r2["km_debut_reference"], r2["km_taux"], r2["km_seuil_ecart"]) == ("2026-11-08", 0.61, 10.0)

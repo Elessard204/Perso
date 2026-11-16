@@ -125,3 +125,9 @@ def test_achat_coherent_ou_champ_vide():
     assert garde_fou_achat("Robinet cuisine", 1) == []
     assert garde_fou_achat("non ", 0) == []
     assert garde_fou_achat("", 0) == [] and garde_fou_achat("", 2) == []   # champ non rempli : rien à comparer
+
+
+def test_regles_kilometrage():
+    from datetime import date
+    r = charger_regles(LOGICIEL / "regles.toml")
+    assert (r.km_taux, r.km_seuil_ecart, r.km_debut_reference) == (0.61, 10.0, date(2026, 11, 8))

@@ -377,7 +377,8 @@ class Application:
         r = charger_regles(self.chemin_regles)
         with self.verrou:
             vus = {e.technicien for b in self.bons.values() if b.get("bon") for e in b["bon"].entrees if e.technicien}
-        return {**asdict(r), "techniciens_connus": sorted(vus - set(r.couts_techniciens))}
+        return {**asdict(r), "km_debut_reference": r.km_debut_reference.isoformat(),
+                "techniciens_connus": sorted(vus - set(r.couts_techniciens))}
 
     @staticmethod
     def _couts_techniciens(valeur, actuels: dict) -> dict:
