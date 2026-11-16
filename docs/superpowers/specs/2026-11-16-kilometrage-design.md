@@ -32,8 +32,9 @@ Non-objectifs (version 1)
 - Aucune écriture dans Progression (lecture seule).
 - Pas d'intégration directe à Netris : un fichier Excel que Sabrina saisit ou importe.
 - Pas de déduction automatique des arrêts au magasin (trop de variables selon Hugo) : saisie manuelle.
-- Pas de consolidation des heures de paie (feuilles de temps) : à revoir quand on connaîtra le processus
-  Hugo-Sabrina. Le temps réel par jour peut être affiché à titre d'information seulement.
+- Pas de modification des heures : elles sont lues telles quelles dans Progression (Hugo les corrige dans
+  Progression lors de sa consolidation). L'export reprend la feuille de temps hebdomadaire de Progression
+  (vérifié : mêmes totaux à la minute près, semaine du 2026-10-04) en y ajoutant le km à payer.
 
 Anti-objectifs (échec même si « ça marche »)
 - Un montant à payer faux ou changé sans trace. Toute correction manuelle est inscrite à l'historique.
@@ -71,10 +72,12 @@ Domicile des techniciens
 - Stocké avec les clés, dans le profil Windows de la personne (`%APPDATA%\ProgimRevisionBons`), jamais
   dans le dossier SharePoint partagé ni dans Git. Conséquence acceptée : saisi sur chaque poste qui
   utilise l'onglet (en pratique, celui de Hugo).
-- Admissibilité (décision de l'outil, Hugo n'a nommé que l'exception Uhaul) : chaque technicien vu dans la
-  période apparaît dans Règles avec une case « payé au km » et son code postal. Un technicien sans code
-  postal ou non coché n'a aucun montant calculé : sa ligne est marquée « à configurer » (sous-traitant,
-  personnel de bureau ou camion de la compagnie se règlent ainsi). Rien n'est payé par défaut.
+- Admissibilité : chaque technicien vu dans la période apparaît dans Règles avec une case « Employé Progim
+  (sur la paie, payé au km) » et son code postal. Tous les employés sur la paie sont payés au km (seule
+  exception : les jours Uhaul). Les sous-traitants (rayés sur la feuille de temps de Hugo, ex. Toufik
+  Bessaci, Takfarinas Challal, Djamal Guenane) ont la case décochée : statut « sous-traitant », aucun km,
+  exclus de l'export. Un technicien jamais configuré, ou coché sans code postal : statut « à configurer »,
+  aucun montant. Rien n'est payé par défaut.
 
 Google Maps
 - Géocodage des codes postaux (Geocoding API), une fois par code, gardé en cache dans le profil.
@@ -127,9 +130,13 @@ Détail — Vadim Z., mar. 10 nov. : domicile (J4W) → AS003195 → AS003258 �
 - « Valider la période » : fige les chiffres de la période (copie conservée) et permet l'export.
   « Rouvrir » reste possible, inscrit à l'historique avec la raison; l'export suivant porte la mention
   « révisé » et la date. Pas de ligne d'ajustement reportée à la période suivante en version 1.
-- « Exporter Excel » : un fichier par période (une ligne par technicien : nom, km à payer, taux, montant;
-  une feuille de détail par jour). Format exact à confirmer avec Hugo et Sabrina (Netris). Si Netris exige un numéro d'employé pour
-  importer, une colonne « no Netris » par technicien s'ajoute dans Règles (profil, comme les codes postaux).
+- « Exporter Excel » : un fichier par période qui reprend la feuille de temps que Hugo envoie à Sabrina
+  (Netris) : une feuille par semaine « Semaine du AAAA-MM-JJ - AAAA-MM-JJ », colonnes
+  `Ressource humaine | Dim. | Lun. | Mar. | Mer. | Jeu. | Ven. | Sam. | Total | Km à payer | Montant km`,
+  heures au format H:MM (somme de toutes les entrées de temps du jour, « En route » et « En cours »),
+  une ligne par employé sur la paie seulement, ligne Total; plus une feuille « Détail » (trajets par jour).
+  Le km d'une semaine = somme des km payés de ses jours. Si Netris exige un numéro d'employé pour importer,
+  une colonne « no Netris » s'ajoute plus tard (profil, comme les codes postaux).
 - Onglet Règles : taux au km, seuil d'écart (km), date de début d'une période de référence, codes postaux
   des techniciens, clé Google.
 
@@ -154,11 +161,22 @@ Détail — Vadim Z., mar. 10 nov. : domicile (J4W) → AS003195 → AS003258 �
 
 ## 9. Décisions prises par Claude (à vérifier par Éric)
 
-- Admissibilité : case « payé au km » par technicien; rien n'est payé sans code postal et case cochée.
+- Admissibilité : case « Employé Progim (sur la paie, payé au km) »; sous-traitants décochés et exclus de
+  l'export; rien n'est payé sans code postal et case cochée.
 - Bons partagés : km déclaré exclu de la comparaison, affiché à part.
 - Arrêt sans position GPS : ignoré, jour marqué « à vérifier ».
 - Période validée : réouverture permise et tracée, export marqué « révisé »; pas de report d'ajustement.
 - Codes postaux (et numéros Netris éventuels) dans le profil Windows, jamais dans le dossier partagé.
-- Version 1 limitée au kilométrage; la consolidation des heures de paie viendra après avoir vu le
-  processus Hugo-Sabrina.
+- Export calqué sur la feuille de temps hebdomadaire de Progression (heures lues, non modifiées) + km.
 - Seuil d'écart en km seulement (demande d'Éric), défaut 10 km par technicien et par période.
+
+## 10. Changement lié dans l'outil de révision : coût horaire à partir du taux de base
+
+Sabrina fournit le taux horaire de base de chaque employé (liste de paie). Dans l'onglet Règles, Hugo inscrit
+ce taux de base par technicien; l'outil calcule le coût chargé :
+`coût chargé = taux de base × (1 + DAS + vacances + fériés)`, avec trois pourcentages communs réglables :
+DAS 12 %, vacances 4 % (moins de 3 ans d'ancienneté; 6 % ensuite), fériés 4,2 % (11 jours fériés chez Progim
+÷ 260 jours ouvrables). Exemple : 30 $ × 1,202 = 36,07 $. Le « coût moyen » pour un technicien absent de la
+liste est aussi un taux de base. Les taux ne sont pas inscrits par Claude : Hugo les entre et les modifie.
+Aucune donnée personnelle (NAS, date de naissance, adresse) n'est conservée; seulement nom, taux de base et
+code postal.

@@ -18,7 +18,8 @@
 - Taux par défaut 0,61 $/km; seuil d'écart par défaut 10 km par technicien et par période; période de deux semaines du dimanche au samedi; date de référence par défaut 2026-11-08 (un dimanche).
 - Codes postaux des techniciens et clé Google : dans le profil Windows (`%APPDATA%\ProgimRevisionBons\`), jamais dans le dossier partagé ni dans Git.
 - Code postal accepté : 6 caractères canadiens complets (`A1A 1A1`, espace facultatif à la saisie), enregistré en majuscules avec une espace; un code à 3 caractères est refusé.
-- Rien n'est payé à un technicien sans code postal ET sans la case « payé au km » cochée (statut `a_configurer`, montant absent).
+- Rien n'est payé à un technicien sans code postal ET sans la case « Employé Progim (sur la paie, payé au km) » cochée. Technicien configuré avec la case décochée = sous-traitant (statut `sous_traitant`, aucun km, exclu de l'export); jamais configuré ou coché sans code postal = `a_configurer` (montant absent).
+- Aucune donnée personnelle dans Git : ni taux horaires réels, ni codes postaux réels, ni NAS; les tests utilisent des valeurs fictives.
 - Jour coché Uhaul : km du jour = 0.
 - Toute validation, réouverture (avec raison), case Uhaul et km magasin est inscrite au journal existant (`Journal.inscrire`, `bon_id=0`, `maj=""`).
 - Textes de l'interface en français québécois, même style que l'outil actuel (jetons CSS existants).
@@ -32,6 +33,42 @@
 3. Entrée à 23 h 30 un samedi (décalage -05) : appartient au samedi, donc à la période qui finit ce samedi. → test `test_jour_selon_horodatage_local` (Task 2).
 4. Hugo change un code postal ou le taux après avoir validé une période : la période validée garde ses chiffres. → test `test_periode_validee_figee` (Task 6).
 5. Km déclaré écrit avec virgule ou espace (« 12,5 km », « 1 200 km », « 25 KM ») : lu directement sans l'IA. → test `test_lire_km_simple` (Task 2).
+
+---
+
+### Task 0: Coût chargé à partir du taux de base (outil de révision existant)
+
+**Files:**
+- Modify: `revision-bons/_logiciel/regles.toml` (section `[couts]`), `revision-bons/_logiciel/regles.py`, `revision-bons/_logiciel/facturation.py` (`cout_horaire`), `revision-bons/_logiciel/interface.py` (`CHAMPS_REGLES`, `BORNES`), `revision-bons/_logiciel/interface.html` (carte « Coût horaire des techniciens »)
+- Test: `revision-bons/tests/test_facturation.py`, `revision-bons/tests/test_interface.py`
+
+**Interfaces:**
+- Produces:
+  - `regles.toml` `[couts]` : `defaut = 0.0`, `das = 0.12`, `vacances = 0.04`, `feries = 0.042` (+ `[couts.techniciens]` = **taux de base**).
+  - `Regles.charges_das: float = 0.12`, `Regles.charges_vacances: float = 0.04`, `Regles.charges_feries: float = 0.042`; `Regles.facteur_charges -> float` (propriété) = `1 + das + vacances + feries`.
+  - `facturation.cout_horaire(e, r)` : coût de Progression si présent (déjà chargé), sinon `(taux de base du technicien ou défaut) × r.facteur_charges`, sinon `None`.
+  - `CHAMPS_REGLES` gagne `charges_das` / `charges_vacances` / `charges_feries` (section `couts`, clés `das` / `vacances` / `feries`, bornes 0–0,5).
+  - Page : la carte devient « Coût horaire des techniciens (taux de base) »; champs « DAS (ex. 0,12) », « Vacances (ex. 0,04; 0,06 après 3 ans) », « Fériés (ex. 0,042 = 11 jours ÷ 260) »; colonne « Taux de base ($/h) » et colonne calculée « Coût chargé »; l'aide « Quoi inclure » est réduite à : taux de base de la liste de paie; DAS, vacances et fériés ajoutés automatiquement; le kilométrage est payé à part; les frais fixes ne sont pas comptés.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+def test_cout_charge_depuis_taux_de_base():
+    b = bon()
+    for e in b.entrees:
+        e.cout_horaire = None
+    r = replace(R, couts_techniciens={"Luc Tremblay": 30.0})
+    assert round(r.facteur_charges, 3) == 1.202
+    lignes, _, _ = ajuster_heures_transport(b, r)
+    # (80 + 80 + 45) min × 30 $ × 1,202 = 123,21 $
+    assert estimer_marge(b, lignes, [], r)["cout"] == 123.21
+```
+Dans `test_interface.py::test_couts_horaires_des_techniciens`, ajouter : POST `charges_feries: "0,042"` → GET renvoie `0.042`; `charges_das: "0,9"` → 400. Adapter `test_marge_taux_inscrit_dans_les_regles` et `test_marge_taux_par_defaut` (le coût attendu est maintenant multiplié par 1,202 : 123,21).
+
+- [ ] **Step 2: Run** `cd revision-bons && ../.venv/bin/python -m pytest tests -q` → FAIL sur ces tests.
+- [ ] **Step 3: Implement** per Interfaces.
+- [ ] **Step 4: Run** → PASS; vérification Playwright de la carte en démo (champs et colonne « Coût chargé » mise à jour à la saisie).
+- [ ] **Step 5: Commit** — `git commit -m "Révision des bons : coût chargé calculé depuis le taux de base (DAS, vacances, fériés)"`
 
 ---
 
@@ -126,7 +163,7 @@ Expected: all pass. Update `tests/test_interface.py::test_page_et_etat_sans_cles
   - `periode_contenant(jour: date, reference: date) -> tuple[date, date]` : début = `reference + 14*k` ≤ jour; fin = début + 13 jours.
   - `periodes_proposees(aujourdhui: date, reference: date, nombre: int = 4) -> list[tuple[date, date]]` : la période courante puis les précédentes.
   - `@dataclass Arret: tache_id: int; code: str; lat: float | None; lng: float | None`
-  - `@dataclass Journee: technicien: str; jour: date; arrets: list[Arret]; a_verifier: list[str]`
+  - `@dataclass Journee: technicien: str; jour: date; arrets: list[Arret]; a_verifier: list[str]; minutes: float` (somme des durées de toutes les entrées du jour, `En route` et `En cours`, via `progression.minutes_iso(duration)`).
   - `journees(entrees: list[dict], taches: dict[int, dict], debut: date, fin: date) -> list[Journee]` : `entrees` au format de `/timeEntry/list` (`humanResource.label`, `start`, `task.id`, `task.code`); `taches[id]` = tâche brute (`clientAddress.position.latitude/longitude`, sinon `locationAddress.position`). Jour = `date.fromisoformat(start[:10])`; entrées hors [debut, fin] ignorées; triées par `start`; arrêts consécutifs à la même tâche-position fusionnés (même lat/lng arrondis à 5 décimales); une entrée sans tâche ou sans position n'est pas un arrêt et ajoute à `a_verifier` : `"<code ou 'entrée sans bon'> : immeuble sans position GPS"`.
   - `km_journee(domicile: tuple[float, float] | None, arrets: list[Arret], distance: Callable[[tuple, tuple], float]) -> tuple[float, list[dict]]` : tronçons `{"de": str, "a": str, "km": float}` pour domicile → arrêts → domicile (libellés `"domicile"` et `code`); seulement les arrêts avec position; `domicile=None` → pas de tronçon domicile; aucun arrêt avec position → `(0.0, [])`. Total arrondi à 0,1 km.
   - `lire_km_simple(texte: str) -> float | None` : accepte un seul nombre avec unité facultative (« 60km », « 25 KM », « 49 », « 12,5 km », « 1 200 km ») ; tout autre texte → `None`; vide → `None`.
@@ -137,18 +174,19 @@ Format de la base (produite par la Task 6, consommée ici) :
 base = {"debut": "2026-11-08", "fin": "2026-11-21",
         "techniciens": {"Vadim Zubco": {
             "jours": [{"jour": "2026-11-10", "arrets": [{"code": "AS003195", "tache_id": 1}], "troncons": [...],
-                       "km": 132.0, "a_verifier": [], "domicile": True}],
+                       "km": 132.0, "a_verifier": [], "domicile": True, "minutes": 512.0}],
             "bons": [{"code": "AS003195", "texte": "60km", "km": 60.0, "statut": "ok" | "a_verifier" | "vide" | "partage", "part": 1.0}]}}}
 ```
 Format renvoyé par `totaliser` (envoyé tel quel à la page et à l'export) :
 ```python
 {"debut", "fin", "taux", "seuil_km",
  "techniciens": [{"nom", "jours": int, "km_calcule", "km_magasin", "km_a_payer", "montant": float | None,
-                  "km_declare", "ecart": float | None, "statut": "ok" | "ecart" | "non_declare" | "a_configurer",
+                  "km_declare", "ecart": float | None, "statut": "ok" | "ecart" | "non_declare" | "a_configurer" | "sous_traitant",
+                  "paie": bool, "minutes_par_jour": {"AAAA-MM-JJ": float}, "minutes_total": float,
                   "details": [<jour de la base> + {"uhaul": bool, "magasin_km": float, "km_paye": float}], "bons": [...]}],
  "total_km", "total_montant"}
 ```
-Règles de `totaliser` : km payé d'un jour = 0 si Uhaul, sinon `km + magasin_km`; `km_declare` = somme `km × part` des bons au statut `ok`; `ecart = km_declare - km_a_payer` (arrondi 0,1); statut `a_configurer` si le technicien n'a pas de code postal ou `paye_km` faux (montant `None`, écart `None`); sinon `non_declare` si aucun bon `ok`; sinon `ecart` si `abs(ecart) > seuil`; sinon `ok`. Montant = `round(km_a_payer × taux, 2)`. Techniciens triés par nom.
+Règles de `totaliser` : km payé d'un jour = 0 si Uhaul, sinon `km + magasin_km`; `km_declare` = somme `km × part` des bons au statut `ok`; `ecart = km_declare - km_a_payer` (arrondi 0,1); statut `sous_traitant` si le technicien est configuré avec `paye_km` faux (km à payer 0, montant `None`, écart `None`, `paie` faux); `a_configurer` s'il est absent de `techniciens` ou coché sans code postal (montant `None`, écart `None`, `paie` faux); `paie` vrai seulement pour les admissibles; sinon `non_declare` si aucun bon `ok`; sinon `ecart` si `abs(ecart) > seuil`; sinon `ok`. Montant = `round(km_a_payer × taux, 2)`. Techniciens triés par nom.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -167,7 +205,7 @@ def test_periode_contenant():
                                                               (date(2026, 10, 25), date(2026, 11, 7))]
 
 def _e(tech, start, tache_id, code):
-    return {"humanResource": {"label": tech}, "start": start, "task": {"id": tache_id, "code": code}}
+    return {"humanResource": {"label": tech}, "start": start, "task": {"id": tache_id, "code": code}, "duration": "PT30M"}
 
 def _t(lat, lng):
     return {"clientAddress": {"position": {"latitude": lat, "longitude": lng}}}
@@ -177,6 +215,7 @@ def test_journees_ordre_et_fusion():
                _e("V", "2026-11-10T09:00:00-05", 1, "A"), _e("V", "2026-11-10T15:00:00-05", 1, "A")]
     [j] = journees(entrees, {1: _t(45.5, -73.5), 2: _t(45.6, -73.6)}, date(2026, 11, 8), date(2026, 11, 21))
     assert [a.code for a in j.arrets] == ["A", "B", "A"] and j.a_verifier == []
+    assert j.minutes == 4 * 30.0          # chaque entrée _e dure PT30M
 
 def test_jour_selon_horodatage_local():
     entrees = [_e("V", "2026-11-21T23:30:00-05", 1, "A"), _e("V", "2026-11-22T07:00:00-05", 1, "A")]
@@ -200,10 +239,10 @@ def test_lire_km_simple():
 
 def _base():
     return {"debut": "2026-11-08", "fin": "2026-11-21", "techniciens": {
-        "Vadim": {"jours": [{"jour": "2026-11-10", "arrets": [], "troncons": [], "km": 100.0, "a_verifier": [], "domicile": True},
-                            {"jour": "2026-11-11", "arrets": [], "troncons": [], "km": 50.0, "a_verifier": [], "domicile": True}],
+        "Vadim": {"jours": [{"jour": "2026-11-10", "arrets": [], "troncons": [], "km": 100.0, "a_verifier": [], "domicile": True, "minutes": 300.0},
+                            {"jour": "2026-11-11", "arrets": [], "troncons": [], "km": 50.0, "a_verifier": [], "domicile": True, "minutes": 240.0}],
                   "bons": [{"code": "A", "texte": "200", "km": 200.0, "statut": "ok", "part": 1.0}]},
-        "Hugo": {"jours": [{"jour": "2026-11-10", "arrets": [], "troncons": [], "km": 20.0, "a_verifier": [], "domicile": False}],
+        "Hugo": {"jours": [{"jour": "2026-11-10", "arrets": [], "troncons": [], "km": 20.0, "a_verifier": [], "domicile": False, "minutes": 60.0}],
                  "bons": []}}}
 
 def test_totaliser_ecart_uhaul_magasin_et_admissibilite():
@@ -214,7 +253,10 @@ def test_totaliser_ecart_uhaul_magasin_et_admissibilite():
     assert (v["km_calcule"], v["km_magasin"], v["km_a_payer"], v["montant"]) == (150.0, 12.0, 112.0, 68.32)
     assert (v["km_declare"], v["ecart"], v["statut"]) == (200.0, 88.0, "ecart")
     h = next(t for t in p["techniciens"] if t["nom"] == "Hugo")
-    assert (h["statut"], h["montant"]) == ("a_configurer", None)
+    assert (h["statut"], h["montant"], h["paie"]) == ("a_configurer", None, False)
+    p2 = totaliser(_base(), {}, 0.61, 10.0, {**techs, "Hugo": {"code_postal": "", "paye_km": False}})
+    assert next(t for t in p2["techniciens"] if t["nom"] == "Hugo")["statut"] == "sous_traitant"
+    assert v["minutes_par_jour"] == {"2026-11-10": 300.0, "2026-11-11": 240.0} and v["minutes_total"] == 540.0
     assert p["total_montant"] == 68.32
 
 def test_totaliser_seuil_et_non_declare():
@@ -377,7 +419,8 @@ def test_technicien_sans_code_postal_a_configurer(tmp_path): ...  # statut "a_co
 - Consumes: le dict renvoyé par `Kilometrage.periode` (format `totaliser`).
 - Produces:
   - `ecrire_xlsx(feuilles: dict[str, list[list]]) -> bytes` : classeur `.xlsx` minimal écrit avec `zipfile` (`[Content_Types].xml`, `_rels/.rels`, `xl/workbook.xml`, `xl/_rels/workbook.xml.rels`, `xl/styles.xml`, `xl/worksheets/sheetN.xml`); nombres en cellules numériques, textes en chaînes en ligne (`t="inlineStr"`), caractères XML échappés; noms de feuilles ≤ 31 caractères.
-  - `export_periode(periode: dict) -> tuple[bytes, str]` : nom `f"Kilometrage {debut} au {fin}{' (revise ' + str(revision) + ')' if revision else ''}.xlsx"`; feuille « Sommaire » : en-tête `["Technicien", "Km à payer", "Taux ($/km)", "Montant ($)", "Km déclaré", "Écart (km)", "Statut"]`, une ligne par technicien (montant vide si `a_configurer`), ligne « Total »; ligne d'en-tête du fichier : période, statut, validé par / le. Feuille « Détail » : `["Technicien", "Jour", "Trajet", "Km calculé", "Uhaul", "Km magasin", "Km payé", "À vérifier"]`, trajet = codes reliés par « → ».
+  - `export_periode(periode: dict) -> tuple[bytes, str]` : nom `f"Feuille de temps et km {debut} au {fin}{' (revise ' + str(revision) + ')' if revision else ''}.xlsx"`. Reprend la feuille de temps hebdomadaire que Hugo envoie à Sabrina : une feuille par semaine nommée `f"Semaine du {dimanche}"`, première ligne `f"Semaine du {dimanche} - {samedi}"` + statut / validé par / le; en-tête `["Ressource humaine", "Dim.", "Lun.", "Mar.", "Mer.", "Jeu.", "Ven.", "Sam.", "Total", "Km à payer", "Montant km ($)"]`; une ligne par technicien dont `paie` est vrai (sous-traitants et « à configurer » exclus), heures au format texte `H:MM` (ex. 405 min → `"6:45"`, 0 → `"0:00"`), km de la semaine = somme des `km_paye` de ses jours, montant = km × taux arrondi au cent; ligne « Total » (heures par jour, km, montant). Feuille « Détail » : `["Technicien", "Jour", "Trajet", "Km calculé", "Uhaul", "Km magasin", "Km payé", "À vérifier"]`, trajet = codes reliés par « → ».
+  - `h_mm(minutes: float) -> str` : arrondi à la minute; `404.6` → `"6:45"`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -390,9 +433,14 @@ def test_xlsx_valide():
     assert "Vadim &amp; fils &lt;test&gt;" in feuille and "<v>112.5</v>" in feuille
     ET.fromstring(feuille); ET.fromstring(z.read("xl/workbook.xml"))   # XML bien formé
 
-def test_export_periode_nom_et_lignes():
-    # periode minimale validée revision 1 -> nom "Kilometrage 2026-11-08 au 2026-11-21 (revise 1).xlsx",
-    # la feuille Sommaire contient "Total" et le montant 68.32 ; a_configurer -> cellule montant vide
+def test_export_feuille_de_temps():
+    # periode validée revision 1 (format totaliser, 2 techniciens : "Vadim" paie=True, "Toufik" sous_traitant)
+    # -> nom "Feuille de temps et km 2026-11-08 au 2026-11-21 (revise 1).xlsx"
+    # -> 3 feuilles : "Semaine du 2026-11-08", "Semaine du 2026-11-15", "Détail"
+    # -> feuille 1 : en-tête exact ci-dessus ; ligne Vadim : Mar. "5:00", Mer. "4:00", Total "9:00", km 112, montant 68.32
+    # -> "Toufik" absent des feuilles de semaine ; ligne "Total" présente
+def test_h_mm():
+    assert [h_mm(m) for m in (0, 59.6, 405, 404.6, 600)] == ["0:00", "1:00", "6:45", "6:45", "10:00"]
 ```
 
 - [ ] **Step 2: Run to verify they fail** → FAIL.
@@ -457,10 +505,10 @@ def test_km_sans_jeton_refuse(site): ...              # GET /km/periode sans X-J
 - [ ] **Step 2: Implement the tab** (structure et libellés fixés) :
   - Onglet `<button data-vue="kilometrage">Kilométrage</button>` entre « À réviser » et « Règles »; `montrer()` gère la vue `kilometrage`.
   - Barre : sélecteur de période (`/km/periodes`), bouton « Calculer », avancement (même composant que l'analyse), pastille de statut (Brouillon / Validée, révision n).
-  - Tableau : colonnes `Technicien | Jours | Km calculé | Magasin | Km à payer | Montant | Km déclaré | Écart | Statut`; pastilles : `ok` « Conforme », `ecart` « Écart » (couleur `--bloque`), `non_declare` « Non déclaré », `a_configurer` « À configurer » (lien vers Règles). Ligne Total.
+  - Tableau : colonnes `Technicien | Jours | Heures | Km calculé | Magasin | Km à payer | Montant | Km déclaré | Écart | Statut`; pastilles : `ok` « Conforme », `ecart` « Écart » (couleur `--bloque`), `non_declare` « Non déclaré », `a_configurer` « À configurer » (lien vers Règles), `sous_traitant` « Sous-traitant » (ligne grisée). Ligne Total.
   - Clic sur une ligne : détail jour par jour (trajet « domicile → AS003195 → AS003258 → domicile », km par tronçon au survol, km du jour, case « Uhaul (jour exclu) », champ « + km magasin », mentions « à vérifier »), puis la liste des bons avec le km déclaré, le statut (« partagé, non attribué », « à vérifier »), et la part au prorata.
   - Boutons « Valider la période » (confirmation), « Rouvrir » (demande la raison), « Exporter Excel » (lien `/km/export?debut=…&jeton=…`, actif seulement si validée).
-  - Onglet Règles, nouvelle carte « Kilométrage » : taux ($/km), « Seuil d'écart (km par technicien et par période) » avec l'aide « Hugo peut l'augmenter pour éviter les alertes inutiles », date de début d'une période (un dimanche), tableau `Technicien | Code postal | Payé au km` (techniciens connus ajoutés vides), bouton « Enregistrer ». Note : « Codes postaux gardés dans votre profil Windows, jamais dans le dossier partagé. »
+  - Onglet Règles, nouvelle carte « Kilométrage » : taux ($/km), « Seuil d'écart (km par technicien et par période) » avec l'aide « Hugo peut l'augmenter pour éviter les alertes inutiles », date de début d'une période (un dimanche), tableau `Technicien | Code postal | Employé Progim (sur la paie, payé au km)` (techniciens connus ajoutés vides; case décochée = sous-traitant), bouton « Enregistrer ». Note : « Codes postaux gardés dans votre profil Windows, jamais dans le dossier partagé. »
   - Carte Connexions : champ « Clé API Google Maps » avec son état.
 - [ ] **Step 3: Run** `../.venv/bin/python -m pytest tests -q` → PASS.
 - [ ] **Step 4: Visual check** — lancer `interface.py --demo --sans-navigateur --sans-arret` dans une copie du dossier (APPDATA temporaire), avec Playwright : régler deux techniciens démo dans Règles, calculer la période du 2026-11-08 (le jeu de démo est en novembre 2026), ouvrir un détail, cocher Uhaul, ajouter 12 km magasin, valider, télécharger l'Excel; captures à 1280 px et 390 px de large; aucune erreur JS; pas de défilement horizontal de page à 390 px.
