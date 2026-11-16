@@ -207,6 +207,7 @@ def test_entrees_periode_pagine_et_marge():
 
 def test_fausse_progression_entrees_periode():
     from datetime import date
+    import km_calcul
     from demo.faux_services import FausseProgression, IMMEUBLES
     faux = FausseProgression()
     entrees = faux.entrees_periode(date(2026, 11, 1), date(2026, 11, 30))
@@ -219,8 +220,10 @@ def test_fausse_progression_entrees_periode():
     for n, immeuble in IMMEUBLES.items():
         tache, ents = faux.lire_tache(2000 + n)
         assert isinstance(ents, list)
-        assert len(tache["clientAddress"]["position"]) == 2
-        positions[n] = tuple(tache["clientAddress"]["position"])
+        pos = tache["clientAddress"]["position"]
+        assert isinstance(pos["latitude"], float) and isinstance(pos["longitude"], float)
+        positions[n] = km_calcul._position(tache)
+        assert positions[n] == (pos["latitude"], pos["longitude"])
         assert "info.km" in tache["properties"]
     assert positions[4] == positions[7]
     assert len({positions[n] for n in (1, 2, 3, 4, 5, 6)}) == 6

@@ -122,7 +122,8 @@ def _tache(n: int, note: str, pieces: list[tuple[int, str, str]], travail: list[
         "updated": f"2026-11-{jour:02d}T17:00:00-05:00", "description": f"Intervention demandée au logement {n}.",
         "type": {"label": TYPES[n]}, "client": {"id": IMMEUBLES[n], "label": CLIENTS[n % len(CLIENTS)]},
         "location": {"id": n, "label": f"Logement {n}"},
-        "clientAddress": {"position": list(POSITIONS[IMMEUBLES[n]])},
+        "clientAddress": {"address": f"{100 + n} rue Fictive", "position": {
+            "latitude": POSITIONS[IMMEUBLES[n]][0], "longitude": POSITIONS[IMMEUBLES[n]][1]}},
         "currentState": {"label": "Terminé", "logicId": 600},
         "properties": {"info.notes": note, "info.achat": ACHATS.get(n, ""),
                        "info.km": KM_ECRITS.get(n, "")},
