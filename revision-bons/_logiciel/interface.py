@@ -557,6 +557,9 @@ class Application:
                     if nombre < 0:
                         raise ErreurDemande("Le nombre ne peut pas être négatif.")
                     setattr(ligne, m.group(2), round(nombre, 4))
+                    if m.group(2) == "quantite" and ligne.id is not None:
+                        # Hugo a fixé lui-même la quantité : l'alerte sur l'excédent ajouté à cette ligne ne tient plus.
+                        p.alertes = [a for a in p.alertes if not (a.code == "transport_long" and a.ligne_id == ligne.id)]
                 cle = str(ligne.id) if ligne.id is not None else ligne.external_id
                 p.origine[cle] = f"Modifié par {self.personne}"
                 raison = p.rabais.get("raison", "")

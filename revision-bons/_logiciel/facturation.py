@@ -159,7 +159,7 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
             alertes.append(Alerte("transport_long",
                                   f"Transport de {e.technicien} de {heures_fr(e.minutes / 60)} h le {e.jour or '?'} : "
                                   f"l'excédent passe en main-d'œuvre. Vérifier que ce n'est pas un oubli de changer le "
-                                  "statut à « Travaux commencés »."))
+                                  "statut à « Travaux commencés ».", ligne_id=cibles[-1]))
         elif not lignes_mo_par_tech.get(e.technicien) and not forfait:
             alertes.append(Alerte("excedent_sans_main_oeuvre",
                                   f"{heures_fr(minutes / 60)} h d'excédent de transport de {e.technicien} le "

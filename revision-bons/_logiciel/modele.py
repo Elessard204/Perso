@@ -92,6 +92,7 @@ class Alerte:
     code: str
     message: str
     bloquante: bool = False
+    ligne_id: int | None = None   # ligne corrigée que l'alerte explique, s'il y a lieu
 
 
 @dataclass

@@ -517,3 +517,19 @@ def test_km_reglages_inscrits_au_journal_sans_codes_postaux(km_site):
     texte = json.dumps(evenements, ensure_ascii=False).upper()
     for code in ("H1A", "H2B", "1A1", "1A2", "2B2"):
         assert code not in texte
+
+
+def test_transport_long_disparait_quand_hugo_modifie_la_ligne(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    _, d = site(f"/bon/{bon['id']}")
+    [alerte] = [a for a in d["proposition"]["alertes"] if a["code"] == "transport_long"]
+    lignes = d["proposition"]["lignes"]
+    cible = next(i for i, l in enumerate(lignes) if l["id"] == alerte["ligne_id"])
+    autre = next(i for i, l in enumerate(lignes) if i != cible)
+    _, d = site(f"/bon/{bon['id']}/modifier", {"champ": f"ligne:{autre}:libelle", "valeur": "Autre texte"})
+    assert "transport_long" in [a["code"] for a in d["proposition"]["alertes"]]   # autre ligne : l'alerte reste
+    _, d = site(f"/bon/{bon['id']}/modifier", {"champ": f"ligne:{cible}:quantite", "valeur": "3"})
+    assert "transport_long" not in [a["code"] for a in d["proposition"]["alertes"]]
+    _, d = site(f"/bon/{bon['id']}")                                               # gardé dans le cache
+    assert "transport_long" not in [a["code"] for a in d["proposition"]["alertes"]]
