@@ -3,7 +3,7 @@ from dataclasses import replace
 
 from conftest import LOGICIEL
 from facturation import (ajuster_heures_transport, arrondir_quart, classer, estimer_marge, alertes_marge,
-                         evaluer_rabais, lignes_ajustees)
+                         evaluer_rabais, lignes_ajustees, valeur_du_temps)
 from modele import EntreeTemps, Ligne
 from progression import bon_depuis_json
 from regles import charger_regles
@@ -122,7 +122,8 @@ def test_type_sans_tarif():
 
 def test_heures_non_facturees_bloquant():
     b = bon()
-    b.entrees[2].ligne_id = None
+    b.entrees[2].ligne_id = None   # entrée ajoutée après « Facturer » : la ligne ne compte que la première
+    ligne(b.lignes, 501).quantite = 1.3333
     _, _, alertes = ajuster_heures_transport(b, R)
     a = next(a for a in alertes if a.code == "heures_non_facturees")
     assert a.bloquante and "Facturer" in a.message
@@ -206,7 +207,8 @@ def test_bon_au_forfait_heures_non_facturees_acceptees():
     r = replace(R, produits_forfait=["Bacs"])
     b = bon()
     b.lignes.append(Ligne(504, "Sortie des bacs", "", 4, 95.0, produit="Bacs"))
-    b.entrees[2].ligne_id = None
+    b.entrees[2].ligne_id = None   # entrée ajoutée après « Facturer » : la ligne ne compte que la première
+    ligne(b.lignes, 501).quantite = 1.3333
     _, _, alertes = ajuster_heures_transport(b, r)
     assert "heures_non_facturees" not in codes(alertes)
     assert "heures_non_facturees" in codes(ajuster_heures_transport(b, R)[2])   # sans la règle : bloqué
@@ -297,3 +299,77 @@ def test_cout_charge_depuis_taux_de_base():
     lignes, _, _ = ajuster_heures_transport(b, r)
     # (80 + 80 + 45) min × 30 $ × 1,23 = 126,08 $
     assert estimer_marge(b, lignes, [], r)["cout"] == 126.08
+
+
+# --- Test d'acceptation sur les bons d'octobre 2026 (17 novembre) ---
+
+def _luc(*entrees, lignes):
+    from datetime import date
+    b = bon()
+    b.entrees = [EntreeTemps(i, tech, date(2026, 11, j), m, lid, act) for i, (tech, j, m, lid, act) in enumerate(entrees, 1)]
+    b.lignes = lignes
+    return b
+
+
+def T(id_, q):
+    return Ligne(id_, "Transport (En route)", "", q, 50.0, produit="Transport")
+
+
+def MO(id_, q):
+    return Ligne(id_, "Main d'oeuvre (En cours)", "", q, 65.0, produit="Main d'oeuvre")
+
+
+def test_un_seul_transport_par_technicien_et_par_jour():
+    # Luc fait un aller-retour au magasin le 3 : deux trajets, un seul transport. Le 4, un autre transport.
+    b = _luc(("Luc", 3, 30, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), ("Luc", 3, 20, 503, "En route"),
+             ("Luc", 4, 25, 504, "En route"), ("Luc", 4, 60, 505, "En cours"), ("Paul", 3, 15, 506, "En route"),
+             ("Paul", 3, 60, 507, "En cours"),
+             lignes=[MO(501, 2), T(502, 0.5), T(503, 0.3333), T(504, 0.4167), MO(505, 1), T(506, 0.25), MO(507, 1)])
+    lignes, origine, alertes = ajuster_heures_transport(b, R)
+    assert [ligne(lignes, i).quantite for i in (502, 503, 504, 506)] == [1, 0, 1, 1]
+    assert "un seul transport" in origine["503"]
+    assert "transport_manquant" not in codes(alertes)
+    # la valeur du temps compte aussi un transport par technicien et par jour
+    assert valeur_du_temps(b, R) == (2 + 1 + 1) * 65 + 3 * 50
+
+
+def test_ligne_de_transport_en_trop_retiree_a_l_analyse(tmp_path):
+    from test_analyse import analyser, FauxClaude, TEXTE
+    b = _luc(("Luc", 3, 30, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), ("Luc", 3, 20, 503, "En route"),
+             lignes=[MO(501, 2), T(502, 0.5), T(503, 0.3333)])
+    b.pieces = []
+    p = analyser(b, FauxClaude(TEXTE), tmp_path)
+    assert p.lignes_retirees == [503] and ligne(p.lignes, 502).quantite == 1
+
+
+def test_entrees_de_moins_d_une_minute_ignorees():
+    # Une entrée « En cours » de 0 min non liée, sur une journée sans trajet : ni blocage, ni transport manquant.
+    b = _luc(("Luc", 3, 30, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), ("Luc", 4, 0, None, "En cours"),
+             lignes=[MO(501, 2), T(502, 0.5)])
+    _, _, alertes = ajuster_heures_transport(b, R)
+    assert "heures_non_facturees" not in codes(alertes) and "transport_manquant" not in codes(alertes)
+
+
+def test_trajet_de_zero_minute_compte_comme_transport():
+    # Octobre 2026 : Hugo facture le transport même quand le trajet est inscrit à 0 min (mal poinçonné).
+    b = _luc(("Luc", 3, 0, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), lignes=[MO(501, 2), T(502, 0)])
+    lignes, _, alertes = ajuster_heures_transport(b, R)
+    assert ligne(lignes, 502).quantite == 1 and "transport_manquant" not in codes(alertes)
+
+
+def test_fusion_faite_dans_progression_ne_bloque_pas():
+    # Hugo a fusionné deux visites dans Progression : la ligne du 5 a été supprimée (le lien de l'entrée tombe)
+    # et la ligne du 3 porte 4,75 h. Pas de blocage « Facturer » : la valeur totale fait foi.
+    b = _luc(("Luc", 3, 30, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), ("Luc", 5, 30, None, "En route"),
+             ("Luc", 5, 120, None, "En cours"), lignes=[MO(501, 4.75), T(502, 1)])
+    _, _, alertes = ajuster_heures_transport(b, R)
+    assert "heures_non_facturees" not in codes(alertes)
+    rabais, _ = evaluer_rabais(b, b.lignes, R)
+    assert not rabais
+
+
+def test_temps_ajoute_apres_facturer_bloque_encore():
+    b = _luc(("Luc", 3, 30, 502, "En route"), ("Luc", 3, 120, 501, "En cours"), ("Luc", 5, 45, None, "En cours"),
+             lignes=[MO(501, 2), T(502, 0.5)])
+    _, _, alertes = ajuster_heures_transport(b, R)
+    assert "heures_non_facturees" in codes(alertes)

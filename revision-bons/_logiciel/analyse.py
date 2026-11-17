@@ -88,6 +88,8 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
     retirees = [l.id for l in vides]
     for i in retirees:
         origine[str(i)] = "Ligne « Matériel acheté » vide : retirée"
+    # Transport en trop (deuxième trajet du jour, trajet de 0 min) : passé à 0 par ajuster_heures_transport.
+    retirees += [l.id for l in lignes if classer(l) == "transport" and l.id is not None and l.quantite == 0]
     rabais, alertes_rabais = evaluer_rabais(bon, lignes, r)
     alertes += alertes_rabais
     en_inventaire = any(classer(l) == "inventaire" and l.prix > 0 and l.quantite > 0 for l in lignes)

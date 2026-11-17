@@ -26,9 +26,13 @@ Toutes sont visibles et réglables dans l'onglet Règles (`_logiciel/regles.toml
 
 - **Main-d'œuvre** : chaque ligne au 0,25 h supérieur, minimum 0,25 h; jamais réduite. Les entrées de temps (paie)
   ne sont jamais modifiées.
-- **Transport** : quantité 1 par entrée « En route ». Au-delà de 60 min, l'excédent passe en main-d'œuvre, sur la
-  dernière ligne non modifiée du technicien (alerte : possible oubli de changer le statut). Un seul transport par
-  immeuble et par jour.
+- **Transport** : un seul par technicien et par jour sur le bon. Un aller-retour au magasin n'en ajoute pas : la
+  ligne de transport en trop est retirée (Hugo peut la remettre). Un trajet inscrit à 0 min compte quand même (le
+  technicien s'est déplacé). Au-delà de 60 min, l'excédent passe en main-d'œuvre, sur la dernière ligne non modifiée
+  du technicien (alerte : possible oubli de changer le statut). Le même immeuble le même jour sur deux bons est
+  signalé (transport en double).
+- **Entrées de travail de moins d'une minute** (clic par erreur) : ignorées pour le blocage « Facturer » et pour
+  l'alerte « transport manquant ».
 - **Tarifs selon le type de bon** : Appel de service = SMMP (65 $/h, 50 $ le transport); Maintenance = SELP (45 $/h,
   40 $). SRP (rénovations, 85 $/h, 50 $) n'est jamais appliqué automatiquement. Seul le taux que Progression met par
   défaut est corrigé; tout autre taux a été choisi par quelqu'un : il est gardé et signalé s'il est hors grille.
@@ -46,7 +50,9 @@ Toutes sont visibles et réglables dans l'onglet Règles (`_logiciel/regles.toml
   visites de 2 h → 4,75 h et un transport). Une ligne de main-d'œuvre dont la quantité ne correspond ni au temps
   créé par « Facturer » ni à ce temps arrondi au 0,25 h (tolérance 0,01 h), ou qui n'a aucune entrée liée, est une
   ligne modifiée à la main : l'outil n'y touche plus (ni arrondi, ni excédent de transport). Sur un bon fusionné,
-  l'alerte « transport manquant » tombe; la valeur totale fait foi.
+  l'alerte « transport manquant » tombe; la valeur totale fait foi. Quand Hugo supprime une ligne dans Progression,
+  ses entrées perdent leur lien : sur un bon qui a une ligne modifiée à la main, ces entrées ne bloquent pas (cliquer
+  « Facturer » recréerait les lignes en double).
 - **Salaire fixe** (case dans Règles; Harry) : transport à 1, la route n'est jamais ajoutée en main-d'œuvre.
 - **Bon d'information** : toutes les lignes à 0 $ (ménage au forfait Immoblox, refacturé par la comptabilité).
   Aucune correction ni alerte de facturation.
@@ -74,7 +80,8 @@ Ils passent le bon « À vérifier », avec la raison :
 
 Ils bloquent le bon :
 
-- entrées de temps pas encore envoyées à la facture (cliquer « Facturer », puis réanalyser);
+- entrées de temps pas encore envoyées à la facture, sur un bon sans ligne modifiée à la main (cliquer « Facturer »,
+  puis réanalyser);
 - bon sans aucune heure;
 - même facture jointe deux fois au bon, ou déjà refacturée dans un autre bon (journal local + `externalId` dans
   Progression).
@@ -137,3 +144,12 @@ garde son lien une fois recréée.
 En simulation sur un mois de bons déjà facturés par Hugo, comparer les propositions de l'outil avec ce qu'il a
 réellement envoyé (lignes de matériel, heures, transports, alertes). Passage au mode réel quand l'écart est jugé
 acceptable par la direction et Hugo.
+
+**Essai sur octobre 2026 (17 novembre).** 154 bons transférés, reconstitués tels qu'après « Facturer », passés dans
+l'outil (lecture seule, IA simulée : matériel et description non évalués). Corrections apportées : un transport par
+technicien et par jour, entrées de travail de moins d'une minute ignorées, fusion faite dans Progression sans
+blocage. Résultat sur les 115 bons facturés à l'heure : 46 identiques à Hugo, 10 à 0,25 h près (Hugo laisse parfois
+quelques minutes sans arrondir), 9 où Hugo ajoute un transport signalé par l'outil, et environ 50 où Hugo s'appuie sur
+de l'information absente des feuilles de temps : rabais et fusions (25 bons), heures ajoutées (19), aide qui n'a pas
+poinçonné sur le bon (5 bons, 4 636 $). Les 7 bons de bacs et les 32 bons à 0 $ passent sans alerte. Sur les bons tels
+que facturés par Hugo, l'outil ne change que 3 lignes (excédent de transport) et en bloque 6 (temps non facturé).

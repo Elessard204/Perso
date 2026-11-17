@@ -16,6 +16,8 @@ from regles import Regles, argent_fr, cents, heures_fr
 
 ACTIVITE_TRANSPORT = "en route"
 ACTIVITE_MAIN_OEUVRE = "en cours"
+MINUTES_MIN = 1.0   # une entrée de travail de moins d'une minute (clic par erreur) ne compte pas comme travail.
+# Un trajet compte toujours, même à 0 min : le technicien s'est déplacé (Hugo facture alors le transport).
 
 
 def classer(ligne: Ligne) -> str:
@@ -103,8 +105,11 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
     alertes: list[Alerte] = []
     forfait = bon_forfait(bon, r)
 
-    non_facturees = [e for e in bon.entrees if e.ligne_id is None]
-    if non_facturees and not forfait:
+    # Entrées pas encore envoyées à la facture. Si Hugo a déjà fusionné des journées dans Progression (ligne
+    # modifiée ou ajoutée à la main), les entrées de la ligne supprimée ont perdu leur lien : cliquer « Facturer »
+    # recréerait ces lignes en double. La valeur totale fait foi (evaluer_rabais).
+    non_facturees = [e for e in bon.entrees if e.ligne_id is None and e.minutes >= MINUTES_MIN]
+    if non_facturees and not forfait and not lignes_ajustees(bon):
         alertes.append(Alerte("heures_non_facturees",
                               f"{len(non_facturees)} entrée(s) de temps pas encore envoyée(s) à la facture : cliquer sur "
                               "« Facturer » dans l'onglet Feuille de temps du bon, puis réanalyser.", bloquante=True))
@@ -133,10 +138,27 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
                                   + (f" (tarif {service})" if service else "")
                                   + f", alors qu'un bon « {bon.type_bon} » est à {argent_fr(tarif[genre])} : à confirmer."))
 
+    # Transport : un seul par technicien et par jour sur le bon (un aller-retour au magasin n'en ajoute pas). Une
+    # ligne dont les trajets sont déjà couverts passe à 0 et est retirée à l'analyse.
+    trajets: dict[int, set] = defaultdict(set)
+    liees: set[int] = set()
+    for e in bon.entrees:
+        if _activite(e) == "transport" and e.ligne_id is not None:
+            liees.add(e.ligne_id)
+            trajets[e.ligne_id].add((e.technicien, e.jour))
+    couverts: set = set()
     for l in lignes:
-        if classer(l) == "transport" and l.id is not None and l.quantite != 1:
-            origine[str(l.id)] = (origine.get(str(l.id), "") + " · " if str(l.id) in origine else "") + "Transport : quantité 1"
-            l.quantite = 1.0
+        if classer(l) != "transport" or l.id is None:
+            continue
+        cible, raison = 1.0, "Transport : quantité 1"
+        if l.id in liees:
+            if trajets[l.id] <= couverts:
+                tech, jour = sorted(trajets[l.id], key=str)[0]
+                cible, raison = 0.0, f"Déjà un transport pour {tech} le {jour or '?'} : un seul transport par jour (retiré)"
+            couverts |= trajets[l.id]
+        if l.quantite != cible:
+            origine[str(l.id)] = (origine.get(str(l.id), "") + " · " if str(l.id) in origine else "") + raison
+            l.quantite = cible
 
     # Lignes de main-d'œuvre de chaque technicien, et celles qu'Hugo a modifiées à la main.
     ajustees = lignes_ajustees(bon)
@@ -181,7 +203,8 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
     # (ligne modifiée ou retirée), le transport est souvent sur la journée fusionnée : la valeur totale fait foi.
     fusionne = bool(ajustees) or any(e.ligne_id is not None and e.ligne_id not in par_id for e in bon.entrees)
     if not forfait and not fusionne:
-        jours_travail = {(e.technicien, e.jour) for e in bon.entrees if _activite(e) == "main_oeuvre"}
+        jours_travail = {(e.technicien, e.jour) for e in bon.entrees
+                         if _activite(e) == "main_oeuvre" and e.minutes >= MINUTES_MIN}
         jours_transport = {(e.technicien, e.jour) for e in bon.entrees if _activite(e) == "transport"}
         for tech, jour in sorted(jours_travail - jours_transport, key=str):
             alertes.append(Alerte("transport_manquant", f"{tech} a travaillé le {jour or '?'} sans transport inscrit : "
@@ -191,22 +214,22 @@ def ajuster_heures_transport(bon: Bon, r: Regles) -> tuple[list[Ligne], dict[str
 
 def valeur_du_temps(bon: Bon, r: Regles) -> Decimal | None:
     """Ce que vaudrait le temps inscrit avec les règles : main-d'œuvre par technicien et par jour au 0,25 h
-    supérieur (excédent de transport compris, sauf salaire fixe), un transport par entrée « En route »."""
+    supérieur (excédent de transport compris, sauf salaire fixe), un transport par technicien et par jour."""
     tarif = _tarif_attendu(bon.type_bon, r)
     if tarif is None:
         return None
     heures: dict[tuple, Decimal] = defaultdict(Decimal)
-    transports = 0
+    trajets: set = set()
     for e in bon.entrees:
         cle = (e.technicien, e.jour)
         if _activite(e) == "main_oeuvre":
             heures[cle] += Decimal(str(e.minutes)) / 60
         elif _activite(e) == "transport":
-            transports += 1
+            trajets.add(cle)
             if e.minutes > r.transport_max_minutes and e.technicien not in r.salaire_fixe:
                 heures[cle] += Decimal(str(e.minutes - r.transport_max_minutes)) / 60
     mo = sum((Decimal(str(arrondir_quart(float(h)))) for h in heures.values()), Decimal(0))
-    return mo * Decimal(str(tarif["heure"])) + transports * Decimal(str(tarif["transport"]))
+    return mo * Decimal(str(tarif["heure"])) + len(trajets) * Decimal(str(tarif["transport"]))
 
 
 def evaluer_rabais(bon: Bon, lignes: list[Ligne], r: Regles) -> tuple[dict, list[Alerte]]:

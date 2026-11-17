@@ -533,3 +533,14 @@ def test_transport_long_disparait_quand_hugo_modifie_la_ligne(site):
     assert "transport_long" not in [a["code"] for a in d["proposition"]["alertes"]]
     _, d = site(f"/bon/{bon['id']}")                                               # gardé dans le cache
     assert "transport_long" not in [a["code"] for a in d["proposition"]["alertes"]]
+
+
+def test_ligne_retiree_revient_si_hugo_lui_donne_une_quantite(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    p = site.app.bons[bon["id"]]["proposition"]
+    i, l = next((i, l) for i, l in enumerate(p.lignes) if l.libelle.startswith("Transport"))
+    l.quantite = 0.0
+    p.lignes_retirees = [l.id]
+    _, d = site(f"/bon/{bon['id']}/modifier", {"champ": f"ligne:{i}:quantite", "valeur": "1"})
+    assert l.id not in d["proposition"]["lignes_retirees"]
