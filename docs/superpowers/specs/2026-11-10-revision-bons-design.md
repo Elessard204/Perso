@@ -244,8 +244,8 @@ feuille de temps pour arriver à 40 h. Son transport reste à 1, et sa route n'e
 - Un bon dont toutes les lignes sont à 0 $ est un bon d'information : ménage au forfait Immoblox, refacturé par la
   comptabilité. L'outil ne le corrige pas et ne le signale pas (ni tarif, ni « sans revenu », ni « à perte »).
 - Un bon qui contient un produit au forfait inscrit dans Règles (bacs à 95 $ par semaine) n'a pas d'alerte
-  « heures non facturées », « transport manquant » ou rabais. Le nom exact du produit reste à confirmer dans
-  Progression.
+  « heures non facturées », « transport manquant » ou rabais. Dans Progression, le produit s'appelle
+  « Bacs ordures / recyclage » (95 $, confirmé le 17 novembre 2026).
 
 **Matériel.** Une ligne « Matériel en inventaire » à 0 $ veut dire qu'il n'y a pas de matériel : l'alerte est
 retirée. Un achat déclaré et facturé en inventaire n'a jamais de facture, puisqu'Hugo l'estime : il n'y a pas
