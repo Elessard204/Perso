@@ -571,15 +571,17 @@ class Application:
                                       "date": (t.get("rv") or "")[:10]}
         return self.liste()
 
-    def analyser(self, bon_ids: list[int], forcer: bool = False) -> dict:
+    def analyser(self, bon_ids: list[int], forcer: bool = False, forcer_ids: list[int] | None = None) -> dict:
+        """Analyse seulement les bons demandés (cochés). forcer_ids : bons déjà analysés à refaire au complet."""
         with self.verrou:
             if self.progres["en_cours"] or self.envoi_en_cours:
                 raise ErreurDemande("Une analyse ou un envoi est déjà en cours.")
             ids = [i for i in bon_ids if i in self.bons]
+            if not ids:
+                raise ErreurDemande("Cocher les bons à analyser (la case du haut les coche tous), puis « Analyser ».")
             self.progres = {"en_cours": True, "fait": 0, "total": len(ids), "message": ""}
-        if forcer:
-            for bon_id in ids:
-                effacer_cache(self.cache, bon_id)
+        for bon_id in (ids if forcer else [i for i in (forcer_ids or []) if i in ids]):
+            effacer_cache(self.cache, bon_id)
         threading.Thread(target=self._analyser, args=(ids,), daemon=True).start()
         return dict(self.progres)
 
@@ -979,7 +981,8 @@ def creer_gestionnaire(app: Application):
             if chemin == "/charger":
                 self.json(app.charger(corps.get("debut", ""), corps.get("fin", "")))
             elif chemin == "/analyser":
-                self.json(app.analyser([int(i) for i in corps.get("bon_ids", [])], bool(corps.get("forcer"))))
+                self.json(app.analyser([int(i) for i in corps.get("bon_ids", [])], bool(corps.get("forcer")),
+                                       [int(i) for i in corps.get("forcer_ids", [])]))
             elif chemin == "/approuver":
                 self.json(app.approuver([int(i) for i in corps.get("bon_ids", [])]))
             elif chemin == "/envoyer":

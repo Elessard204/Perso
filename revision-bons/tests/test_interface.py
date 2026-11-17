@@ -603,3 +603,23 @@ def test_recommandations_brouillon_enregistrement_statut_export(site):
 def test_brouillon_sans_conversation_est_vide(site):
     code, b = site("/recommandation/brouillon", {"historique": []})
     assert code == 200 and b == {"titre": "", "probleme": "", "cas": "", "solutions": []}
+
+
+def test_analyser_sans_bon_coche_ne_fait_rien(site):
+    # Essai d'Éric le 17 novembre : « Analyser » sans rien cocher analysait toute la période (et coûtait).
+    code, liste = site("/charger", {"debut": "2026-11-01", "fin": "2026-11-30"})
+    assert code == 200
+    code, r = site("/analyser", {"bon_ids": []})
+    assert code == 400 and "Cocher" in r["erreur"]
+    assert all(b["statut"] == "a_analyser" for b in site("/bons")[1]["bons"])
+
+
+def test_reanalyser_seulement_les_bons_demandes(site, monkeypatch):
+    import interface
+    bons = charger_et_analyser(site)
+    effaces = []
+    monkeypatch.setattr(interface, "effacer_cache", lambda cache, bon_id: effaces.append(bon_id))
+    ids = [bons["BS-2001"]["id"], bons["BS-2003"]["id"]]
+    site("/analyser", {"bon_ids": ids, "forcer_ids": [ids[0]]})
+    attendre(site)
+    assert effaces == [ids[0]]

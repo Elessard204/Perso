@@ -233,7 +233,7 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
     <div class="grille" id="grille">
       <table>
         <thead><tr>
-          <th><input type="checkbox" id="tout-cocher" title="Cocher tous les bons prêts" aria-label="Cocher tous les bons prêts"></th>
+          <th><input type="checkbox" id="tout-cocher" title="Cocher les bons à analyser et les bons prêts" aria-label="Cocher les bons à analyser et les bons prêts"></th>
           <th>Bon</th><th>Client</th><th>Date</th><th>Statut</th><th>Raison</th><th>Approuvé</th>
         </tr></thead>
         <tbody id="corps"></tbody>
@@ -558,7 +558,7 @@ function afficherListe() {
   $("vide").hidden = bons.length > 0;
   $("corps").innerHTML = bons.map(b => `
     <tr class="cliquable" data-id="${b.id}" tabindex="0">
-      <td><input type="checkbox" class="choix" data-id="${b.id}" ${b.statut === "bloque" || b.statut === "a_analyser" || b.statut === "envoye" ? "disabled" : ""} aria-label="Choisir ${echapper(b.code)}"></td>
+      <td><input type="checkbox" class="choix" data-id="${b.id}" ${b.statut === "envoye" ? "disabled" : ""} aria-label="Choisir ${echapper(b.code)}"></td>
       <td class="code">${echapper(b.code)}</td><td>${echapper(b.client)}</td><td class="discret">${echapper(b.date)}</td>
       <td>${pastille(b.statut)}</td>
       <td>${echapper(b.raison)}${b.nb_alertes > 1 ? ` <span class="discret">(+${b.nb_alertes - 1})</span>` : ""}</td>
@@ -567,11 +567,19 @@ function afficherListe() {
   const compte = {};
   bons.forEach(b => compte[b.statut] = (compte[b.statut] || 0) + 1);
   $("compteurs").innerHTML = Object.entries(compte).map(([s, n]) => `${pastille(s)} <b>${n}</b>`).join(" ");
-  $("analyser").disabled = !bons.length;
   $("envoyer").disabled = !bons.some(b => b.approuve);
   majSelection();
 }
-function majSelection() { $("approuver").disabled = !document.querySelectorAll(".choix:checked").length; }
+// Les cases servent à analyser (bons cochés seulement) et à approuver (bons prêts ou à vérifier seulement).
+function cochesIds() { return [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id)); }
+function approuvables() {
+  return cochesIds().filter(id => { const b = bons.find(x => x.id === id); return b && (b.statut === "pret" || b.statut === "a_verifier"); });
+}
+function majSelection() {
+  const n = cochesIds().length;
+  $("analyser").disabled = !n; $("analyser").textContent = n ? `Analyser (${n})` : "Analyser";
+  $("approuver").disabled = !approuvables().length;
+}
 $("corps").addEventListener("change", e => { if (e.target.classList.contains("choix")) majSelection(); });
 $("corps").addEventListener("click", e => {
   if (e.target.closest("input")) return;
@@ -583,7 +591,7 @@ $("corps").addEventListener("keydown", e => {
 $("tout-cocher").addEventListener("change", e => {
   document.querySelectorAll(".choix").forEach(c => {
     const b = bons.find(x => x.id === Number(c.dataset.id));
-    c.checked = e.target.checked && b && b.statut === "pret";
+    c.checked = e.target.checked && b && (b.statut === "a_analyser" || b.statut === "pret");
   });
   majSelection();
 });
@@ -593,15 +601,18 @@ $("charger").addEventListener("click", async () => {
   try {
     bons = (await api("/charger", { debut: $("debut").value, fin: $("fin").value })).bons;
     afficherListe();
-    message("message-liste", bons.length ? `${bons.length} bon(s) chargé(s). Cliquer « Analyser ».` : "Aucun bon terminé pour cette période.", true);
+    message("message-liste", bons.length ? `${bons.length} bon(s) chargé(s). Cocher les bons à analyser (la case du haut les coche tous), puis « Analyser ».` : "Aucun bon terminé pour cette période.", true);
   } catch (e) { message("message-liste", e.message); }
 });
 
 $("analyser").addEventListener("click", async () => {
-  const coches = [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id));
-  const ids = coches.length ? coches : bons.filter(b => b.statut !== "envoye").map(b => b.id);
-  // Bons cochés : on refait l'analyse au complet (le cache est ignoré).
-  try { await api("/analyser", { bon_ids: ids, forcer: coches.length > 0 }); suivreAnalyse(); }
+  const ids = cochesIds();
+  if (!ids.length) { message("message-liste", "Cocher d'abord les bons à analyser."); return; }
+  if (ids.length > 10 && !confirm(`Analyser ${ids.length} bons ? L'IA lit chaque pièce jointe : ça prend quelques `
+      + "minutes et coûte quelques cents par bon.")) return;
+  // Un bon déjà analysé et coché de nouveau est refait au complet; les autres réutilisent l'analyse gardée.
+  const forcer_ids = ids.filter(id => { const b = bons.find(x => x.id === id); return b && b.statut !== "a_analyser"; });
+  try { await api("/analyser", { bon_ids: ids, forcer_ids }); $("tout-cocher").checked = false; suivreAnalyse(); }
   catch (e) { message("message-liste", e.message); }
 });
 
@@ -618,7 +629,7 @@ async function suivreAnalyse() {
 }
 
 $("approuver").addEventListener("click", async () => {
-  const ids = [...document.querySelectorAll(".choix:checked")].map(c => Number(c.dataset.id));
+  const ids = approuvables();
   try { bons = (await api("/approuver", { bon_ids: ids })).bons; afficherListe(); $("tout-cocher").checked = false;
         message("message-liste", `${ids.length} bon(s) approuvé(s).`, true); }
   catch (e) { message("message-liste", e.message); }
