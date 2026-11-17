@@ -3,16 +3,30 @@ RÉVISION DES BONS DE SERVICE – mode d'emploi
 Double-cliquer sur « Révision des bons.bat ». L'outil s'ouvre dans le navigateur.
 Pour essayer sans toucher à Progression : « Essai (démo).bat » (bons fictifs).
 
+AVANT D'ANALYSER : cliquer « Facturer » dans l'onglet Feuille de temps de chaque bon
+dans Progression. Sinon l'outil bloque le bon.
+
 1. Onglet À réviser : choisir la période, cliquer « Charger les bons », puis « Analyser ».
-   L'outil lit les pièces jointes, prépare les lignes de matériel (coût + 10 %),
-   arrondit les heures facturées au 15 minutes et propose une description corrigée.
+   L'outil lit les pièces jointes, prépare une ligne de matériel par facture (sous-total
+   avant taxes + 15 %), arrondit chaque ligne de main-d'œuvre au 0,25 h, met le transport
+   à 1, applique le tarif du type de bon et propose une description corrigée.
 2. Cliquer sur un bon pour comparer l'original et la proposition. Tout se modifie.
    « Prêt » : rien à signaler. « À vérifier » : lire la raison. « Bloqué » : corriger
-   dans Progression puis réanalyser.
+   dans Progression puis réanalyser. Une ligne que vous avez modifiée vous-même (journées
+   fusionnées, rabais) n'est plus touchée par l'outil. Si un bon est facturé sous la valeur
+   du temps inscrit, inscrire la raison du rabais (facultatif).
 3. Cocher les bons, « Approuver la sélection », puis « Envoyer les bons approuvés ».
    La simulation n'écrit rien. L'écriture dans Progression reste verrouillée tant que
-   l'essai sur un bon de test n'a pas été validé.
+   l'essai dans l'environnement de test n'a pas été validé.
 
-L'onglet Règles montre toutes les règles et tous les garde-fous. Les clés API se
-saisissent dans sa section Connexions (gardées dans votre profil Windows).
+Onglet Kilométrage : km à payer de chaque technicien par période de paie, à côté du km
+déclaré; « Valider la période », puis « Exporter Excel » pour la paie.
+
+Onglet Règles : toutes les règles et tous les garde-fous. À y inscrire : les taux de base
+des techniciens (cocher « Salaire fixe » pour Harry), les produits au forfait
+(« Bacs ordures / recyclage ») et, au besoin, le seuil de rabais. Les clés API se saisissent
+dans la section Connexions (gardées dans votre profil Windows).
+
+Onglet Historique : ce qui a été approuvé et écrit, et le relevé des rabais.
+
 Les heures des feuilles de temps (paie) ne sont jamais modifiées.

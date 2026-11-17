@@ -1,6 +1,7 @@
 # Volet 2 : validation du kilométrage des techniciens (notes de départ)
 
-État : réponses de Hugo reçues (voir plus bas). Aucun code écrit; approche à choisir avec Éric.
+Notes de départ et réponses de Hugo, gardées comme référence. Le module est construit : voir
+`2026-11-16-kilometrage-design.md`.
 
 ## But (selon Éric)
 Garde-fou avant la paie : contre-vérifier le kilométrage inscrit par les techniciens pour détecter
