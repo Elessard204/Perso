@@ -23,9 +23,9 @@ Onglet Kilométrage : km à payer de chaque technicien par période de paie, à 
 déclaré; « Valider la période », puis « Exporter Excel » pour la paie.
 
 Onglet Règles : toutes les règles et tous les garde-fous. Déjà inscrits : Harry à salaire
-fixe et le produit « Bacs ordures / recyclage » au forfait. À inscrire : les taux de base des
-techniciens (pour la rentabilité). Les clés API se saisissent dans la section Connexions
-(gardées dans votre profil Windows).
+fixe, le produit « Bacs ordures / recyclage » au forfait et les taux de base des techniciens
+de la liste de paie (à ajouter pour un nouvel employé). Les clés API se saisissent dans la
+section Connexions (gardées dans votre profil Windows).
 
 Onglet Historique : ce qui a été approuvé et écrit, et le relevé des rabais.
 

@@ -58,8 +58,9 @@ Toutes sont visibles et réglables dans l'onglet Règles (`_logiciel/regles.toml
   Aucune correction ni alerte de facturation.
 - **Produit au forfait** (liste dans Règles; « Bacs ordures / recyclage », 95 $ par semaine) : pas d'alerte « heures
   non facturées », « transport manquant » ni rabais.
-- **Taux de base des techniciens** : inscrits par Hugo dans Règles, pour estimer la rentabilité (avec charges,
-  vacances et fériés).
+- **Taux de base des techniciens** : pour estimer la rentabilité (avec charges, vacances et fériés). Inscrits le
+  17 novembre 2026 à partir de la liste de paie, seulement dans le `regles.toml` de SharePoint, jamais dans Git :
+  ce fichier ne doit plus être écrasé par la version du dépôt. Hugo les modifie dans Règles au besoin.
 
 ## 4. Garde-fous
 
