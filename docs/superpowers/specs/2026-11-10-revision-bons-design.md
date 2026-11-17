@@ -140,7 +140,19 @@ L'écriture réelle reste verrouillée (`ecriture_validee = false`) jusqu'à l'e
 Progression, à partir du 27 novembre 2026, avec Hugo. À y vérifier : qu'une ligne générée par une entrée de temps
 garde son lien une fois recréée.
 
-## 9. Acceptation
+## 9. Assistant
+
+Bouton « Assistant » dans le bandeau, et « Pourquoi ? » à côté de chaque alerte de la fiche. L'assistant
+(`assistant.py`) répond aux questions sur l'usage et les règles à partir de `assistant_guide.md`, des règles en
+vigueur (sans les taux des employés) et, quand une fiche est ouverte, du contexte du bon : lignes, règle qui a
+produit chaque valeur, alertes, entrées de temps. Il explique et conseille; il ne modifie jamais un bon ni les
+règles, et dit quand la réponse n'est pas dans ses sources. Même modèle que le reste de l'outil; le guide et
+les règles sont mis en cache entre les questions (environ 2 à 5 cents par question). Chaque question et sa
+réponse sont notées dans `_logiciel/questions/` (hors Git) et affichées dans l'onglet Historique : celles qui
+reviennent montrent où une règle ou l'outil n'est pas clair. `assistant_guide.md` se met à jour à chaque
+changement de règle.
+
+## 10. Acceptation
 
 En simulation sur un mois de bons déjà facturés par Hugo, comparer les propositions de l'outil avec ce qu'il a
 réellement envoyé (lignes de matériel, heures, transports, alertes). Passage au mode réel quand l'écart est jugé

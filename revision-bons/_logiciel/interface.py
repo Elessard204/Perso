@@ -32,6 +32,7 @@ import profil  # noqa: E402
 from facturation import evaluer_rabais  # noqa: E402
 from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
                      proposition_vers_dict, transports_en_double)
+from assistant import contexte_bon, contexte_regles, repondre  # noqa: E402
 from claude_client import creer_client  # noqa: E402
 from envoi import envoyer  # noqa: E402
 from journal import Journal  # noqa: E402
@@ -41,6 +42,7 @@ from progression import ErreurProgression, Progression  # noqa: E402
 from regles import charger_regles  # noqa: E402
 
 TYPES_PIECES = {"application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"}
+LONGUEUR_MAX_QUESTION = 2000
 CHAMPS_REGLES = {
     # nom: (section, clé, type)
     "pas_minutes": ("heures", "pas_minutes", int),
@@ -170,6 +172,7 @@ class Application:
         self.chemin_regles = Path(chemin_regles) if chemin_regles else self.logiciel / "regles.toml"
         self.cfg = tomllib.loads((self.logiciel / "config.toml").read_text(encoding="utf-8"))
         self.journal = Journal(self.donnees / "journal", personne)
+        self.questions = Journal(self.donnees / "questions", personne)   # questions posées à l'assistant
         self.cache = self.donnees / "cache"
         self.verrou = threading.Lock()
         self.bons: dict[int, dict] = {}   # id -> {code, client, date, statut, raison, bon, proposition, approuve}
@@ -197,6 +200,48 @@ class Application:
                     Progression(c["progression"], self.cfg["progression"]["base"], cfg=self.cfg["progression"]),
                     creer_client(c["claude"]))
         return self._services
+
+    def client_claude(self):
+        """Le client de Claude seul : l'assistant n'a pas besoin de Progression."""
+        if self.demo:
+            from demo.faux_services import FauxClaude
+            return FauxClaude()
+        if self._services is not None:
+            return self._services[1]
+        cle = cles.lire().get("claude")
+        if not cle:
+            raise ErreurDemande("Clé Claude manquante : l'inscrire dans l'onglet Règles, section Connexions.")
+        return creer_client(cle)
+
+    def assistant(self, question, bon_id=None, historique=None) -> dict:
+        """Répond à une question sur l'usage ou les règles. Ne modifie jamais un bon ni les règles."""
+        question = str(question or "").strip()
+        if not question:
+            raise ErreurDemande("Écrire une question.")
+        if len(question) > LONGUEUR_MAX_QUESTION:
+            raise ErreurDemande(f"Question trop longue ({LONGUEUR_MAX_QUESTION} caractères au plus).")
+        if historique is None:
+            historique = []
+        if not isinstance(historique, list) or not all(isinstance(e, dict) for e in historique):
+            raise ErreurDemande("Historique de conversation invalide.")
+        regles = contexte_regles(charger_regles(self.chemin_regles))
+        contexte, code = "", ""
+        with self.verrou:
+            b = self.bons.get(int(bon_id)) if str(bon_id or "").isdigit() else None
+            if b and b.get("proposition") and b.get("bon"):
+                p = b["proposition"]
+                code = b["code"]
+                contexte = contexte_bon(b["bon"], p, b.get("statut_force") or p.statut, bool(b.get("approuve")))
+        try:
+            reponse = repondre(self.client_claude(), self.cfg["claude"], question, historique, regles, contexte)
+        except ErreurDemande:
+            raise
+        except Exception as e:  # réseau, clé refusée, limite d'usage : message clair plutôt qu'une erreur brute
+            raise ErreurDemande(f"L'assistant ne répond pas pour l'instant ({type(e).__name__}). Réessayer dans "
+                                "un moment; si ça persiste, vérifier la clé Claude dans Règles, section Connexions.") from e
+        self.questions.inscrire("question", int(bon_id) if code else 0, "", {"question": question, "reponse": reponse,
+                                                                             "code": code})
+        return {"reponse": reponse}
 
     def etat(self) -> dict:
         return {"demo": self.demo, "personne": self.personne, "cles": cles.etat(),
@@ -727,7 +772,8 @@ class Application:
         return self.lire_regles()
 
     def historique(self) -> dict:
-        return {"evenements": self.journal.historique(), "rabais": self.journal.rabais()}
+        return {"questions": self.questions.historique(100), "evenements": self.journal.historique(),
+                "rabais": self.journal.rabais()}
 
 
 dernier_signe_de_vie = time.monotonic()
@@ -861,6 +907,8 @@ def creer_gestionnaire(app: Application):
                 self.json(app.km_rouvrir(corps.get("debut", ""), corps.get("raison", "")))
             elif chemin == "/km/reglages":
                 self.json(app.km_ecrire_reglages(corps))
+            elif chemin == "/assistant":
+                self.json(app.assistant(corps.get("question"), corps.get("bon_id"), corps.get("historique")))
             elif m := re.fullmatch(r"/bon/(\d+)/modifier", chemin):
                 self.json(app.modifier(int(m.group(1)), corps.get("champ", ""), corps.get("valeur", "")))
             else:

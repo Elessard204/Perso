@@ -544,3 +544,34 @@ def test_ligne_retiree_revient_si_hugo_lui_donne_une_quantite(site):
     p.lignes_retirees = [l.id]
     _, d = site(f"/bon/{bon['id']}/modifier", {"champ": f"ligne:{i}:quantite", "valeur": "1"})
     assert l.id not in d["proposition"]["lignes_retirees"]
+
+
+def test_assistant_repond_avec_le_bon_et_consigne_la_question(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    code, r = site("/assistant", {"question": "Pourquoi ce transport ?", "bon_id": bon["id"]})
+    assert code == 200 and "BS-2001" in r["reponse"]
+    code, r2 = site("/assistant", {"question": "Et l'arrondi ?", "bon_id": bon["id"],
+                                   "historique": [{"question": "Pourquoi ce transport ?", "reponse": r["reponse"]}]})
+    assert code == 200
+    _, h = site("/historique")
+    assert [q["details"]["question"] for q in h["questions"]] == ["Et l'arrondi ?", "Pourquoi ce transport ?"]
+    assert h["questions"][0]["details"]["code"] == "BS-2001"
+    assert all(e["evenement"] != "question" for e in h["evenements"])     # le journal des bons reste à part
+
+
+def test_assistant_sans_bon_et_validations(site):
+    code, r = site("/assistant", {"question": "Comment charger les bons ?"})
+    assert code == 200 and r["reponse"]
+    assert site("/assistant", {"question": "   "})[0] == 400
+    assert site("/assistant", {"question": "x" * 2001})[0] == 400
+    assert site("/assistant", {"question": "?", "historique": "pas une liste"})[0] == 400
+
+
+def test_assistant_ne_modifie_rien(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    avant = site(f"/bon/{bon['id']}")[1]
+    site("/assistant", {"question": "Approuve ce bon et mets 10 h.", "bon_id": bon["id"]})
+    apres = site(f"/bon/{bon['id']}")[1]
+    assert avant["proposition"] == apres["proposition"] and avant["liste"]["approuve"] == apres["liste"]["approuve"]

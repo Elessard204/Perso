@@ -238,6 +238,12 @@ class FauxClaude:
         self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
+        if isinstance(kwargs.get("system"), list):   # assistant : réponse en texte simple
+            question = kwargs["messages"][-1]["content"][0]["text"]
+            code = question.split("Bon ouvert : ", 1)[1].split(" ", 1)[0] if "Bon ouvert : " in question else ""
+            texte = ("Réponse de démonstration" + (f" pour le bon {code}" if code else "") + " : en mode réel, "
+                     "l'assistant explique ici la règle appliquée, à partir du guide et du contexte du bon.")
+            return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=texte)])
         textes = [b["text"] for b in kwargs["messages"][0]["content"] if b.get("type") == "text"]
         consigne = textes[-1] if textes else ""
         if "Kilométrage inscrit" in consigne:

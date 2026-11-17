@@ -19,6 +19,10 @@ dans Progression. Sinon l'outil bloque le bon.
    La simulation n'écrit rien. L'écriture dans Progression reste verrouillée tant que
    l'essai dans l'environnement de test n'a pas été validé.
 
+Bouton Assistant (en haut à droite) : poser une question sur une règle, une alerte ou
+l'utilisation de l'outil. Dans la fiche d'un bon, « Pourquoi ? » à côté d'une alerte explique ce
+qui se passe sur ce bon. L'assistant ne modifie rien; les questions sont notées dans Historique.
+
 Onglet Kilométrage : km à payer de chaque technicien par période de paie, à côté du km
 déclaré; « Valider la période », puis « Exporter Excel » pour la paie.
 
@@ -27,6 +31,7 @@ fixe, le produit « Bacs ordures / recyclage » au forfait et les taux de base d
 de la liste de paie (à ajouter pour un nouvel employé). Les clés API se saisissent dans la
 section Connexions (gardées dans votre profil Windows).
 
-Onglet Historique : ce qui a été approuvé et écrit, et le relevé des rabais.
+Onglet Historique : ce qui a été approuvé et écrit, le relevé des rabais et les questions
+posées à l'assistant.
 
 Les heures des feuilles de temps (paie) ne sont jamais modifiées.

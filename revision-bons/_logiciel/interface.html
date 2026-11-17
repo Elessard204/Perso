@@ -159,6 +159,24 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
 .km-detail .texte-bon { max-width: 38em; white-space: pre-wrap; }
 .km-reglage-tech input[type=text] { width: 100%; min-width: 8em; }
 .km-reglage-tech .code-postal { width: 8em; }
+/* Assistant : panneau latéral, au-dessus de la fiche si elle est ouverte */
+dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+.assistant { display: grid; grid-template-rows: auto auto 1fr auto; height: 100%; }
+.assistant-tete { padding: 14px 18px; border-bottom: 3px solid var(--orange); display: flex; align-items: center; gap: 10px; }
+.assistant-tete h2 { font-size: 17px; margin: 0; flex: 1; }
+.assistant-contexte { padding: 8px 18px; background: var(--surface-lecture); border-bottom: 1px solid var(--ligne); }
+.conversation { overflow: auto; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.bulle { padding: 9px 12px; border-radius: var(--rayon-carte); white-space: pre-wrap; font-size: 14px; line-height: 21px; max-width: 92%; }
+.bulle.question { align-self: flex-end; background: var(--marine); color: #FFFFFF; }
+.bulle.reponse { align-self: flex-start; background: var(--surface-lecture); border: 1px solid var(--ligne); }
+.bulle.attente { color: var(--discret); font-style: italic; }
+.assistant-saisie { padding: 12px 18px 16px; border-top: 1px solid var(--ligne); display: grid; gap: 8px; }
+.assistant-saisie textarea { min-height: 70px; }
+.assistant-saisie .rangee { display: flex; gap: 8px; align-items: center; }
+.assistant-saisie .rangee .message { flex: 1; }
+.assistant-saisie .rangee button { margin-left: auto; }
+.alertes li .pourquoi { margin-left: 8px; color: inherit; text-decoration: underline; font-size: 12px; padding: 0; }
+.questions td.texte { max-width: 420px; white-space: pre-wrap; }
 @media (max-width: 860px) {
   .entete { padding: 0 8px; }
   .onglets { gap: 0; }
@@ -175,6 +193,7 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
   <img src="/logo.png" alt="Progim">
   <div class="bandeau-titre"><b>Révision des bons</b><span>Bons de service Progression avant facturation</span></div>
   <span class="espace"></span>
+  <button type="button" class="engageant" id="ouvrir-assistant">Assistant</button>
   <span class="note" id="qui"></span>
 </div></div>
 <div class="demo" id="bandeau-demo" hidden>Mode démo : bons fictifs, rien n'est lu ni écrit dans Progression.</div>
@@ -389,6 +408,14 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
     </table><div class="vide" id="rabais-vide">Aucun rabais pour l'instant.</div></div>
   </section>
   <section class="tableau-travail">
+    <div class="entete-releve"><p class="surtitre">Questions à l'assistant</p>
+      <p class="note">Les 100 dernières questions. Celles qui reviennent montrent où une règle ou l'outil n'est pas clair.</p></div>
+    <div class="grille questions"><table>
+      <thead><tr><th>Quand</th><th>Qui</th><th>Bon</th><th>Question</th><th>Réponse</th></tr></thead>
+      <tbody id="questions-corps"></tbody>
+    </table><div class="vide" id="questions-vide">Aucune question pour l'instant.</div></div>
+  </section>
+  <section class="tableau-travail">
     <div class="grille"><table>
       <thead><tr><th>Quand</th><th>Qui</th><th>Bon</th><th>Événement</th><th>Détail</th></tr></thead>
       <tbody id="historique-corps"></tbody>
@@ -430,9 +457,27 @@ legend { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--
     </div>
     <div class="fiche-pied">
       <p class="message" id="message-fiche" role="status"></p>
+      <button type="button" id="assistant-fiche">Demander à l'assistant</button>
       <button type="button" id="fermer-fiche">Fermer</button>
       <button type="button" class="principal" id="approuver-fiche">Approuver ce bon</button>
     </div>
+  </div>
+</dialog>
+
+<!-- ===== Assistant ===== -->
+<dialog id="assistant" aria-labelledby="assistant-titre">
+  <div class="assistant">
+    <div class="assistant-tete"><h2 id="assistant-titre">Assistant</h2>
+      <button type="button" class="lien-bouton" id="nouvelle-conversation">Nouvelle conversation</button>
+      <button type="button" id="fermer-assistant">Fermer</button></div>
+    <div class="assistant-contexte"><p class="note" id="assistant-contexte"></p></div>
+    <div class="conversation" id="conversation" aria-live="polite"></div>
+    <form class="assistant-saisie" id="assistant-formulaire">
+      <label class="note" for="assistant-question">L'assistant explique les règles et l'usage de l'outil. Il ne modifie rien.</label>
+      <textarea id="assistant-question" maxlength="2000" placeholder="ex. Pourquoi ce transport est barré ?"></textarea>
+      <div class="rangee"><p class="message" id="message-assistant" role="status"></p>
+        <button type="submit" class="principal" id="envoyer-question">Envoyer</button></div>
+    </form>
   </div>
 </dialog>
 
@@ -571,7 +616,8 @@ function afficherFiche() {
   $("fiche-titre").textContent = `Bon ${l.code}`;
   $("fiche-statut").innerHTML = pastille(l.statut) + (l.approuve ? ' <span class="pastille oui">Approuvé</span>' : "");
   $("fiche-client").textContent = `${l.client} · ${l.date}`;
-  $("fiche-alertes").innerHTML = p.alertes.map(a => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}</li>`).join("");
+  $("fiche-alertes").innerHTML = p.alertes.map((a, i) => `<li class="${a.bloquante ? "bloquante" : ""}">${echapper(a.message)}`
+    + `<button type="button" class="lien-bouton pourquoi" data-i="${i}">Pourquoi ?</button></li>`).join("");
   $("fiche-rabais").hidden = !(p.rabais && p.rabais.montant);
   $("fiche-raison-rabais").value = (p.rabais && p.rabais.raison) || "";
   $("fiche-original").textContent = p.description_originale || "(vide : le technicien n'a rien écrit)";
@@ -989,6 +1035,14 @@ async function chargerHistorique() {
     <td>${echapper(x.personne)}</td><td class="code">${echapper(x.code || x.bon_id)}</td><td>${echapper(x.client)}</td>
     <td class="nombre">${argent(x.valeur_temps)}</td><td class="nombre">${argent(x.facture)}</td>
     <td class="nombre"><b>${argent(x.montant)}</b></td><td>${echapper(x.raison || "")}</td></tr>`).join("");
+  const questions = reponse.questions || [];
+  $("questions-vide").hidden = questions.length > 0;
+  $("questions-corps").innerHTML = questions.map(q => {
+    const d = q.details || {}, r = d.reponse || "";
+    return `<tr><td class="discret">${echapper((q.horodatage || "").slice(0, 16).replace("T", " "))}</td><td>${echapper(q.personne)}</td>
+      <td class="code">${echapper(d.code || "")}</td><td class="texte">${echapper(d.question)}</td>
+      <td class="texte" title="${echapper(r)}">${echapper(r.length > 280 ? r.slice(0, 280) + "…" : r)}</td></tr>`;
+  }).join("");
   $("historique-vide").hidden = h.length > 0;
   $("historique-corps").innerHTML = h.map(e => {
     const d = e.details || {};
@@ -997,6 +1051,53 @@ async function chargerHistorique() {
       <td class="code">${echapper(d.code || e.bon_id)}</td><td>${echapper(EVENEMENTS[e.evenement] || e.evenement)}</td><td>${echapper(detail)}</td></tr>`;
   }).join("");
 }
+
+// ---------- assistant ----------
+let conversation = [];
+function bonOuvert() { return $("fiche").open && ficheDetail ? { id: ficheId, code: ficheDetail.liste.code } : null; }
+function afficherConversation(enAttente) {
+  const bulles = conversation.map(e => `<div class="bulle question">${echapper(e.question)}</div>`
+    + (e.reponse ? `<div class="bulle reponse">${echapper(e.reponse)}</div>` : ""));
+  if (enAttente) bulles.push('<div class="bulle reponse attente">L’assistant réfléchit…</div>');
+  $("conversation").innerHTML = bulles.join("") || '<p class="note">Posez une question sur une règle, une alerte ou '
+    + "l'utilisation de l'outil. Ouvert depuis la fiche d'un bon, l'assistant explique ce qui se passe sur ce bon.</p>";
+  $("conversation").scrollTop = $("conversation").scrollHeight;
+}
+function ouvrirAssistant(question) {
+  const b = bonOuvert();
+  $("assistant-contexte").textContent = b ? `Contexte : bon ${b.code} (ses lignes, ses alertes et son temps inscrit).`
+    : "Contexte : aucun bon ouvert. Pour une question sur un bon, ouvrez sa fiche puis l'assistant.";
+  afficherConversation(false); message("message-assistant", "");
+  if (!$("assistant").open) $("assistant").showModal();
+  if (question) { $("assistant-question").value = question; envoyerQuestion(); } else $("assistant-question").focus();
+}
+async function envoyerQuestion() {
+  const question = $("assistant-question").value.trim();
+  if (!question || $("envoyer-question").disabled) return;
+  const b = bonOuvert(), historique = conversation.filter(e => e.reponse).map(e => ({ question: e.question, reponse: e.reponse }));
+  const echange = { question, reponse: "" };
+  conversation.push(echange); $("assistant-question").value = ""; $("envoyer-question").disabled = true;
+  message("message-assistant", ""); afficherConversation(true);
+  try {
+    echange.reponse = (await api("/assistant", { question, bon_id: b ? b.id : null, historique })).reponse;
+  } catch (e) {
+    conversation.pop(); $("assistant-question").value = question; message("message-assistant", e.message);
+  } finally { $("envoyer-question").disabled = false; afficherConversation(false); $("assistant-question").focus(); }
+}
+$("ouvrir-assistant").addEventListener("click", () => ouvrirAssistant());
+$("assistant-fiche").addEventListener("click", () => ouvrirAssistant());
+$("fermer-assistant").addEventListener("click", () => $("assistant").close());
+$("nouvelle-conversation").addEventListener("click", () => { conversation = []; afficherConversation(false); $("assistant-question").focus(); });
+$("assistant-formulaire").addEventListener("submit", ev => { ev.preventDefault(); envoyerQuestion(); });
+$("assistant-question").addEventListener("keydown", ev => {
+  if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); envoyerQuestion(); }
+});
+$("fiche-alertes").addEventListener("click", ev => {
+  const bouton = ev.target.closest(".pourquoi");
+  if (!bouton) return;
+  const alerte = ficheDetail.proposition.alertes[Number(bouton.dataset.i)];
+  ouvrirAssistant(`Pourquoi cette alerte sur ce bon : « ${alerte.message} » ? Que dois-je faire ?`);
+});
 
 // ---------- démarrage ----------
 (async function demarrer() {
