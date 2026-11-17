@@ -215,3 +215,17 @@ def test_pas_de_double_si_autre_immeuble_ou_autre_jour():
     pa, pb, pc = (Proposition(i, "m", "", "") for i in (1, 2, 3))
     transports_en_double([(_bon_le("BS-1", 77), pa), (_bon_le("BS-2", 88), pb), (_bon_le("BS-3", 77, "2026-11-04"), pc)])
     assert not pa.alertes and not pb.alertes and not pc.alertes
+
+
+def test_bon_pas_encore_facture_montre_seulement_le_blocage(tmp_path):
+    # Essai réel du 17 novembre : avant « Facturer », le bon affichait aussi un rabais de 701 $ et « bon à perte »,
+    # simples conséquences des lignes pas encore créées.
+    b = nouveau_bon()
+    b.lignes = [l for l in b.lignes if l.id not in (501, 502)]   # « Facturer » pas encore cliqué
+    for e in b.entrees:
+        e.ligne_id = None
+    p = analyser(b, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert "heures_non_facturees" in codes(p)
+    bruit = {"rabais", "bon_a_perte", "bon_sans_revenu", "marge_faible", "excedent_sans_main_oeuvre",
+             "transport_manquant", "transport_long"}
+    assert not bruit & set(codes(p)) and p.rabais == {}

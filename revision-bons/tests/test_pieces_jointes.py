@@ -148,3 +148,13 @@ def test_type_mime_en_majuscules():
     c = FauxClaude()
     analyser_piece(PieceJointe(1, "P.JPG", "IMAGE/JPEG"), b"x", c, CFG)
     assert bloc(c)["source"]["media_type"] == "image/jpeg"
+
+
+def test_note_texte_ou_video_jointe_n_est_pas_une_facture_ni_une_alerte():
+    # Essai réel du 17 novembre : une note « .txt » jointe au bon déclenchait une alerte « pièce incertaine ».
+    class SansAppel:
+        beta = SimpleNamespace(messages=SimpleNamespace(create=lambda **k: (_ for _ in ()).throw(AssertionError("appel"))))
+    for nom, mime in (("2026-11-15 11:05.txt", "text/plain;charset=utf-8"), ("visite.mp4", "video/mp4"),
+                      ("clip.mov", "video/quicktime")):
+        a = analyser_piece(PieceJointe(1, nom, mime), b"x", SansAppel(), CFG)
+        assert a.genre == "photo" and "pas une facture" in a.raison

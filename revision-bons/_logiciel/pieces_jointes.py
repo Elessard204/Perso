@@ -86,6 +86,9 @@ def _date(texte: str) -> date | None:
 
 def analyser_piece(piece: PieceJointe, contenu: bytes, client, cfg: dict) -> AnalysePiece:
     type_mime = (piece.type_mime or "").lower()
+    if type_mime.startswith(("text/", "video/")):
+        # Note écrite ou vidéo jointe au bon : jamais une facture, inutile de la signaler.
+        return AnalysePiece(piece.id, "photo", None, f"Note ou vidéo jointe ({type_mime.split(';')[0]}) : pas une facture.")
     if type_mime not in TYPES_LISIBLES:
         return _incertain(piece, f"Format non lisible ({piece.type_mime or 'inconnu'})")
     limite = TAILLE_MAX if type_mime == "application/pdf" else TAILLE_MAX_IMAGE

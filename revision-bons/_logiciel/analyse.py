@@ -30,6 +30,11 @@ def effacer_cache(cache: Path, bon_id: int) -> None:
         fichier.unlink(missing_ok=True)
 
 
+# Alertes qui découlent des lignes de temps : sans objet tant que « Facturer » n'a pas été cliqué.
+EN_ATTENTE_DE_FACTURER = {"rabais", "bon_a_perte", "bon_sans_revenu", "marge_faible", "excedent_sans_main_oeuvre",
+                          "transport_manquant", "transport_long"}
+
+
 def _ligne_vide(l: Ligne) -> bool:
     return classer(l) == "materiel" and l.id is not None and not l.external_id and l.quantite == 0 and l.prix == 0
 
@@ -98,8 +103,14 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
     description, alertes_texte = rediger(bon.description, client, cfg["claude"], photos=photos, demande=bon.demande)
     alertes += alertes_texte
 
+    # « Facturer » pas encore cliqué : les lignes de temps n'existent pas encore. Rabais, rentabilité et transports
+    # ne veulent rien dire tant que le bon est bloqué; ils seront calculés à la réanalyse.
+    en_attente = any(a.code == "heures_non_facturees" for a in alertes)
+    if en_attente:
+        alertes = [a for a in alertes if a.code not in EN_ATTENTE_DE_FACTURER]
+        rabais = {}
     marge = estimer_marge(bon, lignes, retirees, r)
-    if not bon_informatif(bon):   # bon à 0 $ joint pour information : ni « sans revenu » ni « à perte »
+    if not bon_informatif(bon) and not en_attente:   # bon à 0 $ joint pour information : ni « sans revenu » ni « à perte »
         alertes += alertes_marge(marge, r)
 
     proposition = Proposition(
