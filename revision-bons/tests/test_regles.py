@@ -52,7 +52,8 @@ def test_une_ligne_par_facture_sous_total_plus_marge():
     l = ligne_materiel(f, 0.15)
     assert (l.id, l.quantite, l.cout_unitaire, l.prix) == (None, 1, 31.48, 36.2)   # 31,48 × 1,15 = 36,20
     assert l.libelle == "Matériel acheté" and l.produit == "Matériel acheté"
-    assert l.description == "Rona – facture A-1 : Robinet de cuisine (1), Raccord 1/2 po (2)"
+    # Comme Hugo : seulement les articles (le fournisseur et le numéro restent dans la colonne Origine)
+    assert l.description == "Robinet de cuisine (1)\nRaccord 1/2 po (2)"
     assert l.external_id == "rona|A-1|1"
 
 
@@ -162,3 +163,39 @@ def test_charges_par_defaut_sans_section_couts(tmp_path):
     (tmp_path / "r.toml").write_text(texte[:debut] + texte[fin:], encoding="utf-8")
     r = charger_regles(tmp_path / "r.toml")
     assert (r.charges_das, r.charges_vacances, r.charges_feries) == (0.12, 0.06, 0.05)
+
+
+
+# --- Essai réel du 17 novembre (32 bons analysés avec la vraie IA) ---
+
+def test_description_sans_code_sku():
+    f = Facture("RONA", "7601", J, 88.38, [LigneFacture("APPRET IMPRES.BULL. 3.7LT BC (SKU 122164)", 2, 44.19)])
+    assert ligne_materiel(f, 0.15).description == "APPRET IMPRES.BULL. 3.7LT BC (2)"
+
+
+def test_facture_sans_sous_total_ou_sans_numero_signalee():
+    from regles import garde_fous_facture
+    f = Facture("RONA", "76100-01401397-01", J, None, [LigneFacture("Vis", 2, 10.0)])
+    assert "facture_incomplete" in [a.code for a in garde_fous_facture(f, J, R)]
+    f = Facture("Sherwin-Williams", "piece-13784", J, 20.0, [LigneFacture("Vis", 2, 10.0)])
+    assert "facture_sans_numero" in [a.code for a in garde_fous_facture(f, J, R)]
+
+
+def test_date_de_facture_jour_et_mois_inverses_corrigee():
+    from datetime import date
+    from regles import corriger_date_facture, garde_fous_facture
+    auj = date(2026, 11, 17)
+    assert corriger_date_facture(date(2026, 4, 11), date(2026, 11, 5), 30, auj) == date(2026, 11, 4)
+    assert corriger_date_facture(date(2026, 3, 11), date(2026, 11, 3), 30, auj) == date(2026, 11, 3)
+    assert corriger_date_facture(date(2026, 12, 11), date(2026, 11, 12), 30, auj) == date(2026, 11, 12)  # futur
+    assert corriger_date_facture(date(2026, 11, 2), date(2026, 11, 5), 30, auj) == date(2026, 11, 2)    # plausible
+    assert corriger_date_facture(date(2026, 9, 1), date(2026, 11, 5), 30, auj) == date(2026, 9, 1)      # vraiment ancienne
+    assert corriger_date_facture(None, date(2026, 11, 5), 30, auj) is None
+    futur = Facture("RONA", "1", date(2026, 12, 25), 20.0, [LigneFacture("Vis", 2, 10.0)])
+    assert "facture_future" in [a.code for a in garde_fous_facture(futur, date(2026, 11, 20), R, auj)]
+
+
+def test_reponses_sans_achat_du_terrain():
+    from regles import garde_fou_achat
+    for reponse in ("S/o", "S/0", "s/o.", "Nou", "Non.", "N/A", "aucun achat", "Pas d'achat"):
+        assert garde_fou_achat(reponse, 0) == [], reponse

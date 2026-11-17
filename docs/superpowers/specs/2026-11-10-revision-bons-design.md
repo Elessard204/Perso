@@ -62,6 +62,17 @@ Toutes sont visibles et réglables dans l'onglet Règles (`_logiciel/regles.toml
   17 novembre 2026 à partir de la liste de paie, seulement dans le `regles.toml` de SharePoint, jamais dans Git :
   ce fichier ne doit plus être écrasé par la version du dépôt. Hugo les modifie dans Règles au besoin.
 
+### Ajustements après les premiers résultats réels (17 novembre 2026, 32 bons, vraie IA)
+
+Sur les 28 factures lues, extraction et majoration de 15 % exactes. Corrections : description du matériel
+limitée aux articles (fournisseur, numéro et SKU dans la colonne Origine); ligne « Matériel acheté » à 0 $ du
+technicien remplacée par la facture; date jour/mois inversée remise à l'endroit; alertes « facture incomplète »
+(sans sous-total), « facture sans numéro » et « facture dans le futur »; « S/o », « Nou » = pas d'achat; tant que
+« Facturer » n'est pas cliqué, seul le blocage s'affiche; notes texte et vidéos jointes ignorées sans alerte;
+consignes de rédaction resserrées (pas de demande transformée en travail fait, pas de description des photos,
+pas de formule creuse); raison courte pour les photos (coût). Question pour Hugo : les reçus de stationnement
+se refacturent-ils ?
+
 ## 4. Garde-fous
 
 Ils passent le bon « À vérifier », avec la raison :

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import tomllib
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -125,15 +126,39 @@ def total_avant_taxes(facture: Facture) -> float:
     return cents(sum(Decimal(str(l.quantite)) * Decimal(str(l.prix_unitaire)) for l in facture.lignes))
 
 
+SKU = re.compile(r"\s*\((?:SKU|UGS|CUP|UPC|#)\s*[:#]?\s*[\w-]+\)", re.IGNORECASE)
+
+
+def corriger_date_facture(d: date | None, date_bon: date | None, jours_max: int,
+                          aujourdhui: date | None = None) -> date | None:
+    """Date lue avec le jour et le mois inversés (11-04 lu 04-11) : la remet à l'endroit si la date lue est
+    impossible (future) ou loin du bon, et que l'inversion tombe près du bon."""
+    if d is None or date_bon is None:
+        return d
+    aujourdhui = aujourdhui or date.today()
+
+    def plausible(x: date) -> bool:
+        return x <= aujourdhui and abs((date_bon - x).days) <= jours_max
+
+    if plausible(d) or d.day > 12:
+        return d
+    try:
+        inverse = date(d.year, d.day, d.month)
+    except ValueError:
+        return d
+    return inverse if plausible(inverse) else d
+
+
 def ligne_materiel(facture: Facture, marge: float) -> Ligne:
     """Comme Hugo : une ligne « Matériel acheté » par facture, quantité 1, articles en description,
     prix = total avant taxes + marge."""
-    articles = ", ".join(f"{l.description} ({l.quantite:g})" for l in facture.lignes)
+    # Seulement les articles, comme Hugo : fournisseur et numéro de facture restent dans la colonne Origine.
+    articles = "\n".join(f"{SKU.sub('', l.description).strip()} ({l.quantite:g})" for l in facture.lignes)
     total = total_avant_taxes(facture)
     return Ligne(
         id=None,
         libelle=PRODUIT_MATERIEL,
-        description=f"{facture.fournisseur} – facture {facture.numero} : {articles}",
+        description=articles,
         quantite=1,
         prix=prix_avec_marge(total, marge),
         cout_unitaire=total,
@@ -142,9 +167,23 @@ def ligne_materiel(facture: Facture, marge: float) -> Ligne:
     )
 
 
-def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> list[Alerte]:
+def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles,
+                       aujourdhui: date | None = None) -> list[Alerte]:
     alertes = []
     nom = f"{facture.fournisseur} {facture.numero}"
+    if facture.sous_total is None:
+        alertes.append(Alerte(
+            "facture_incomplete",
+            f"Facture {nom} : aucun sous-total lu (page manquante ?). Le montant vient de la somme des lignes lues : "
+            "vérifier la facture complète."))
+    if facture.numero.startswith("piece-"):
+        alertes.append(Alerte(
+            "facture_sans_numero",
+            f"Facture {facture.fournisseur} sans numéro lisible : la détection des factures refacturées en double "
+            "ne peut pas la reconnaître."))
+    if facture.date and facture.date > (aujourdhui or date.today()):
+        alertes.append(Alerte("facture_future", f"Facture {nom} datée du {facture.date:%Y-%m-%d}, dans le futur : "
+                                                "vérifier la date lue."))
     if facture.sous_total is not None:
         total = sum(Decimal(str(l.quantite)) * Decimal(str(l.prix_unitaire)) for l in facture.lignes)
         ecart = abs(total - Decimal(str(facture.sous_total)))
@@ -166,7 +205,8 @@ def garde_fous_facture(facture: Facture, date_bon: date | None, r: Regles) -> li
     return alertes
 
 
-REPONSES_SANS_ACHAT = {"non", "no", "aucun", "aucune", "rien", "0", "-", "n/a", "na"}
+REPONSES_SANS_ACHAT = {"non", "no", "nou", "aucun", "aucune", "rien", "0", "-", "n/a", "na", "s/o", "s/0", "so",
+                       "aucun achat", "pas d'achat", "pas d’achat"}
 
 
 def garde_fou_achat(achat: str, nb_factures: int, en_inventaire: bool = False) -> list[Alerte]:
@@ -177,7 +217,7 @@ def garde_fou_achat(achat: str, nb_factures: int, en_inventaire: bool = False) -
     declare = (achat or "").strip()
     if not declare:
         return []  # champ non rempli : rien à comparer
-    sans_achat = declare.lower() in REPONSES_SANS_ACHAT
+    sans_achat = " ".join(declare.lower().strip(" .!").split()) in REPONSES_SANS_ACHAT
     if not sans_achat and nb_factures == 0 and not en_inventaire:
         return [Alerte("achat_sans_facture",
                        f"Le technicien déclare un achat (« {declare} »), mais aucune facture n'a été trouvée "

@@ -229,3 +229,20 @@ def test_bon_pas_encore_facture_montre_seulement_le_blocage(tmp_path):
     bruit = {"rabais", "bon_a_perte", "bon_sans_revenu", "marge_faible", "excedent_sans_main_oeuvre",
              "transport_manquant", "transport_long"}
     assert not bruit & set(codes(p)) and p.rabais == {}
+
+
+
+def test_ligne_du_technicien_a_zero_remplacee_par_la_facture(tmp_path):
+    # Essai réel : le technicien inscrit « gypse » à 0 $; la ligne de la facture venait s'ajouter à côté.
+    bon = nouveau_bon()
+    bon.lignes.append(Ligne(503, "Matériel acheté", "gypse", 1.0, 0.0, None, "Matériel acheté", None))
+    p = analyser(bon, FauxClaude(PHOTO, FACTURE, TEXTE), tmp_path)
+    materiel = [l for l in p.lignes if l.produit == "Matériel acheté"]
+    assert len(materiel) == 1 and (materiel[0].id, materiel[0].external_id) == (503, "rona|A-1|1")
+
+
+def test_ligne_du_technicien_gardee_sans_facture(tmp_path):
+    bon = nouveau_bon()
+    bon.lignes.append(Ligne(503, "Matériel acheté", "gypse", 1.0, 0.0, None, "Matériel acheté", None))
+    p = analyser(bon, FauxClaude(PHOTO, PHOTO, TEXTE), tmp_path)
+    assert 503 not in p.lignes_retirees and any(l.id == 503 for l in p.lignes)

@@ -88,3 +88,9 @@ def test_note_vide_description_creee_a_partir_des_photos():
 def test_nombre_de_la_demande_accepte():
     _, alertes = rediger("posé détecteur", reponse_v2("Pose de 3 détecteurs."), CFG, demande="Installer 3 détecteurs")
     assert "redaction_chiffre" not in [a.code for a in alertes]
+
+
+def test_consignes_tirees_de_l_essai_reel():
+    from redaction import SYSTEME
+    for consigne in ("ne la\n  transforme pas en travail fait", "jamais les photos", "formule creuse"):
+        assert consigne in SYSTEME

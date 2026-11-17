@@ -73,7 +73,10 @@ quelqu'un : il est gardé et signalé s'il est hors grille (« tarif non standar
 ### Matériel
 Le matériel acheté est refacturé à partir des factures jointes au bon : une ligne par facture, au sous-total
 avant taxes + 15 % (écofrais, consignes et livraison compris; taxes exclues), quantité 1, articles en
-description. Une ligne « Matériel acheté » vide existante est réutilisée; une ligne vide inutile est retirée.
+description (un par ligne, sans le fournisseur, le numéro de facture ni les codes SKU : ceux-ci restent dans la
+colonne Origine). Une ligne « Matériel acheté » à 0 $, vide ou inscrite par le technicien (ex. « gypse »), est
+remplacée par la ligne de la facture; une ligne vide inutile est retirée. Une date de facture lue avec le jour et
+le mois inversés (11-04 lu 04-11) est remise à l'endroit quand l'inversion tombe près du bon.
 Chaque ligne porte la référence de sa facture (fournisseur + numéro) : une même facture ne peut jamais être
 refacturée deux fois, même sur un autre bon. Le matériel en inventaire est estimé par Hugo; une ligne
 « Matériel en inventaire » à 0 $ veut dire qu'il n'y a pas de matériel. Un achat facturé en inventaire n'a
@@ -112,6 +115,10 @@ marge est « inconnue ».
 
 ## Garde-fous
 
+Tant que « Facturer » n'a pas été cliqué, seul le blocage « heures non facturées » s'affiche : rabais,
+rentabilité et alertes de transport viennent des lignes de temps, qui n'existent pas encore. Une note texte ou
+une vidéo jointe au bon n'est pas envoyée à l'IA et ne déclenche aucune alerte.
+
 Bloquent le bon (statut « Bloqué ») :
 - Heures non facturées : des entrées de temps d'une minute et plus ne sont liées à aucune ligne, sur un bon sans
   ligne modifiée à la main. Cliquer « Facturer » dans Progression, puis réanalyser.
@@ -126,7 +133,10 @@ Passent le bon « À vérifier » :
 - Rentabilité : bon sans revenu, à perte ou sous la marge minimale.
 - Plus de 12 h pour un technicien dans une journée.
 - Facture à contrôler : total des lignes différent du sous-total (plus de 0,05 $), date à plus de 30 jours du
-  bon, ligne de plus de 1 000 $, pièce jointe incertaine.
+  bon ou dans le futur, ligne de plus de 1 000 $, pièce jointe incertaine (facture floue, page manquante, reçu de
+  stationnement).
+- Facture incomplète : aucun sous-total lu (souvent une page 1 de 2) : le montant vient des lignes lues.
+- Facture sans numéro lisible : la détection des factures refacturées en double ne peut pas la reconnaître.
 - Champ « Achat » du technicien contredit : achat déclaré sans facture jointe, ou « Non » avec une facture.
 - Description créée ou enrichie par l'IA, ou révision impossible.
 
@@ -184,6 +194,10 @@ consigne aux techniciens qui éviterait des corrections (ex. poinçonner l'aide 
   « Facturer » sur un bon dont une ligne a été modifiée à la main (fusion faite dans Progression).
 - 17 novembre 2026 : Harry à salaire fixe; « Bacs ordures / recyclage » au forfait; taux de base des
   techniciens inscrits à partir de la liste de paie.
+- 17 novembre 2026 (premiers résultats réels avec l'IA, 32 bons) : description du matériel limitée aux
+  articles; lignes du technicien à 0 $ remplacées par la facture; dates jour/mois inversées corrigées; alertes
+  « facture incomplète », « sans numéro » et « dans le futur »; réponses « S/o », « Nou » comprises comme
+  « pas d'achat »; fausses alertes retirées avant « Facturer » et pour les notes ou vidéos jointes.
 - Questions ouvertes (posées à Hugo le 17 novembre) : tolérance de quelques minutes avant d'arrondir au quart
   d'heure suivant, ou règle stricte; mise à 0 $ automatique des bons de ménage Immoblox; transport sur les
   interventions faites par Hugo lui-même.

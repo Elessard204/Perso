@@ -15,7 +15,8 @@ from progression import ErreurProgression
 from redaction import rediger
 from facturation import (ajuster_heures_transport, alertes_marge, bon_informatif, classer, estimer_marge,
                          evaluer_rabais)
-from regles import Regles, garde_fou_achat, garde_fous_facture, garde_fous_temps, ligne_materiel
+from regles import (Regles, corriger_date_facture, garde_fou_achat, garde_fous_facture, garde_fous_temps,
+                    ligne_materiel)
 
 
 def chemin_cache(cache: Path, bon: Bon, r: Regles, cfg: dict) -> Path:
@@ -35,6 +36,10 @@ EN_ATTENTE_DE_FACTURER = {"rabais", "bon_a_perte", "bon_sans_revenu", "marge_fai
                           "transport_manquant", "transport_long"}
 
 
+def _ligne_a_remplacer(l: Ligne) -> bool:
+    return classer(l) == "materiel" and l.id is not None and not l.external_id and l.prix == 0
+
+
 def _ligne_vide(l: Ligne) -> bool:
     return classer(l) == "materiel" and l.id is not None and not l.external_id and l.quantite == 0 and l.prix == 0
 
@@ -50,7 +55,9 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
 
     deja_refacturees = journal.factures_refacturees()
     deja_dans_le_bon = {l.external_id.rsplit("|", 1)[0] for l in bon.lignes if l.external_id}
-    vides = [l for l in lignes if _ligne_vide(l)]   # lignes « Matériel acheté » vides, réutilisées en premier
+    # Lignes « Matériel acheté » à 0 $ (vides, ou inscrites par le technicien : « gypse ») : remplacées par les
+    # factures, les vides en premier. Une ligne vide qui reste est retirée; celle du technicien est gardée.
+    vides = sorted((l for l in lignes if _ligne_a_remplacer(l)), key=lambda l: not _ligne_vide(l))
     vues: set[str] = set()
     analyses: list[AnalysePiece] = []
     photos: list[tuple[str, bytes]] = []
@@ -78,6 +85,7 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
         if f.cle in deja_dans_le_bon or deja_refacturees.get(f.cle) == bon.id:
             continue  # déjà refacturée dans ce bon lors d'un envoi précédent
         # Une facture refacturée dans un AUTRE bon est vérifiée par doublons_externes, à chaque affichage.
+        f.date = corriger_date_facture(f.date, bon.date_rv, r.jours_max_facture)   # jour et mois inversés
         alertes += garde_fous_facture(f, bon.date_rv, r)
         nouvelle = ligne_materiel(f, r.marge)
         if vides:
@@ -90,7 +98,7 @@ def analyser_bon(bon: Bon, progression, client, cfg: dict, r: Regles, journal, c
             cle_origine = nouvelle.external_id
         origine[cle_origine] = f"Facture {nom}, coût avant taxes + {r.marge * 100:g} %".replace(".", ",")
 
-    retirees = [l.id for l in vides]
+    retirees = [l.id for l in vides if _ligne_vide(l)]
     for i in retirees:
         origine[str(i)] = "Ligne « Matériel acheté » vide : retirée"
     # Transport en trop (deuxième trajet du jour, trajet de 0 min) : passé à 0 par ajuster_heures_transport.

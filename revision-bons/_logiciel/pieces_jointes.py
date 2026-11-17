@@ -70,7 +70,8 @@ frais compris, rabais déduits.
 Ne devine jamais un montant illisible : si un prix ou une quantité ne se lit pas clairement, classe la pièce
 « incertain » et explique pourquoi dans « raison ».
 Pour une photo ou une pièce incertaine, laisse fournisseur, numéro et date vides, sous_total null, lignes vide.
-« raison » : une courte phrase en français qui justifie le classement."""
+« raison » : en français, quelques mots pour une photo (au plus 10, ex. « Photo de chantier : mur réparé »),
+une courte phrase pour une facture ou une pièce incertaine."""
 
 
 def _incertain(piece: PieceJointe, raison: str) -> AnalysePiece:

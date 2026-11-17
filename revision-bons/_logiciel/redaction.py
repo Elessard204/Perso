@@ -31,6 +31,12 @@ Tu reçois la demande de départ (rédigée par le bureau), la note du technicie
 - N'invente jamais un travail, une pièce, une quantité ou un constat qui n'est ni dans la note, ni dans la
   demande, ni visible sur les photos. Dans le doute, reste vague plutôt que d'inventer.
 - Garde intacts les emplacements, équipements, marques, numéros de modèle, quantités et mesures.
+- Si la note est une demande, une question ou un besoin de conseil (« besoin d'un plombier pour… »), ne la
+  transforme pas en travail fait : reformule-la telle quelle, en français correct.
+- Décris les travaux, jamais les photos : pas de « a été photographié » ni de description de ce qu'on voit sur
+  une photo.
+- Pas de formule creuse (« selon la demande », « tel que demandé », « conformément à la demande ») et pas de
+  détail sans intérêt pour le client (température lue, nom d'une personne, marque d'un équipement non touché).
 - Pas de salutation, pas de signature, pas de Markdown : seulement la description.
 
 Réponds avec le texte dans « texte » et la liste des détails tirés des photos dans « ajouts_photos »
