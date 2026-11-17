@@ -89,7 +89,8 @@ def rediger(texte: str, client, cfg: dict, photos: list[tuple[str, bytes]] | Non
     ajouts = [a for a in (resultat.get("ajouts_photos") or []) if isinstance(a, str) and a.strip()]
     if ajouts:
         alertes.append(Alerte("description_enrichie",
-                              "Détails ajoutés d'après les photos, à vérifier : " + " · ".join(ajouts) + "."))
+                              "Détails ajoutés d'après les photos, à vérifier : "
+                              + " · ".join(a.strip().rstrip(".") for a in ajouts) + "."))
     absents = nombres_absents(f"{texte}\n{demande}\n{' '.join(ajouts)}", propose)
     if absents:
         alertes.append(Alerte(

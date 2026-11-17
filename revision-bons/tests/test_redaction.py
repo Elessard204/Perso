@@ -94,3 +94,15 @@ def test_consignes_tirees_de_l_essai_reel():
     from redaction import SYSTEME
     for consigne in ("ne la\n  transforme pas en travail fait", "jamais les photos", "formule creuse"):
         assert consigne in SYSTEME
+
+
+def test_pas_de_point_double_dans_l_alerte():
+    import json
+    from types import SimpleNamespace
+    from redaction import rediger
+    rep = {"texte": "Fenêtre colmatée.", "ajouts_photos": ["Fenêtre à battant."]}
+    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=lambda **k: SimpleNamespace(
+        stop_reason="end_turn", content=[SimpleNamespace(type="text", text=json.dumps(rep))]))))
+    _, alertes = rediger("fenetre colmate", client, {"modele": "x", "effort": "medium"})
+    message = next(a.message for a in alertes if a.code == "description_enrichie")
+    assert ".." not in message and message.endswith("Fenêtre à battant.")
