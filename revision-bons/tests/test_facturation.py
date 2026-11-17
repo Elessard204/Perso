@@ -33,7 +33,7 @@ def test_regles_v2():
     assert R.tarifs["Maintenance"] == {"service": "SELP", "heure": 45.0, "transport": 40.0}
     assert R.tarifs["Rénovation"] == {"service": "SRP", "heure": 85.0, "transport": 50.0}
     assert R.tarif_progression == "Appel de service"
-    assert (R.salaire_fixe, R.produits_forfait, R.seuil_rabais) == ([], [], 50.0)
+    assert (R.salaire_fixe, R.produits_forfait, R.seuil_rabais) == (["Harry Charlette"], ["Bacs ordures / recyclage"], 50.0)
 
 
 def test_classer():

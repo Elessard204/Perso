@@ -22,10 +22,10 @@ dans Progression. Sinon l'outil bloque le bon.
 Onglet Kilométrage : km à payer de chaque technicien par période de paie, à côté du km
 déclaré; « Valider la période », puis « Exporter Excel » pour la paie.
 
-Onglet Règles : toutes les règles et tous les garde-fous. À y inscrire : les taux de base
-des techniciens (cocher « Salaire fixe » pour Harry), les produits au forfait
-(« Bacs ordures / recyclage ») et, au besoin, le seuil de rabais. Les clés API se saisissent
-dans la section Connexions (gardées dans votre profil Windows).
+Onglet Règles : toutes les règles et tous les garde-fous. Déjà inscrits : Harry à salaire
+fixe et le produit « Bacs ordures / recyclage » au forfait. À inscrire : les taux de base des
+techniciens (pour la rentabilité). Les clés API se saisissent dans la section Connexions
+(gardées dans votre profil Windows).
 
 Onglet Historique : ce qui a été approuvé et écrit, et le relevé des rabais.
 

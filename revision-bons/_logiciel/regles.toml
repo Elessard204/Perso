@@ -7,9 +7,9 @@ marge = 0.15                     # coût avant taxes + 15 %
 refacturer_taxes = false
 [transports]
 regle = "un_par_visite"          # quantité 1 par entrée de transport
-salaire_fixe = []                # techniciens à salaire fixe : transport à 1, la route n'est jamais ajoutée en main-d'œuvre
+salaire_fixe = ["Harry Charlette"]   # techniciens à salaire fixe : transport à 1, la route n'est jamais ajoutée en main-d'œuvre
 [forfaits]
-produits = []                    # produits forfaitaires (ex. bacs) : les heures du bon ne sont pas facturées
+produits = ["Bacs ordures / recyclage"]   # produits forfaitaires (ex. bacs) : les heures du bon ne sont pas facturées
 [tarifs."Appel de service"]      # service SMMP
 service = "SMMP"
 heure = 65.0
