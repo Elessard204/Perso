@@ -140,9 +140,9 @@ L'écriture réelle reste verrouillée (`ecriture_validee = false`) jusqu'à l'e
 Progression, à partir du 27 novembre 2026, avec Hugo. À y vérifier : qu'une ligne générée par une entrée de temps
 garde son lien une fois recréée.
 
-## 9. Assistant
+## 9. Jarvis (assistant) et journal d'améliorations
 
-Bouton « Assistant » dans le bandeau, et « Pourquoi ? » à côté de chaque alerte de la fiche. L'assistant
+Bouton « Jarvis » dans le bandeau, et « Pourquoi ? » à côté de chaque alerte de la fiche. L'assistant
 (`assistant.py`) répond aux questions sur l'usage et les règles à partir de `assistant_guide.md`, des règles en
 vigueur (sans les taux des employés) et, quand une fiche est ouverte, du contexte du bon : lignes, règle qui a
 produit chaque valeur, alertes, entrées de temps. Il explique et conseille; il ne modifie jamais un bon ni les
@@ -151,6 +151,15 @@ les règles sont mis en cache entre les questions (environ 2 à 5 cents par ques
 réponse sont notées dans `_logiciel/questions/` (hors Git) et affichées dans l'onglet Historique : celles qui
 reviennent montrent où une règle ou l'outil n'est pas clair. `assistant_guide.md` se met à jour à chaque
 changement de règle.
+
+Jarvis tutoie. En mode solution (question d'amélioration, alerte inutile, cas non prévu), il part du cas réel,
+propose deux ou trois options avec avantage et risque, vérifie si l'idée est déjà notée et suggère de la noter.
+Le bouton « Recommander une amélioration » fait rédiger par Jarvis un brouillon (titre, problème, cas,
+solutions) que l'utilisateur vérifie avant d'enregistrer. Onglet Améliorations : la liste, un statut (Nouvelle,
+À discuter, Retenue, Écartée, Faite) et une note par recommandation, export Excel pour les revues avec Éric,
+Hugo et Claude. Journal par personne dans `_logiciel/recommandations/` (hors Git). L'outil « apprend » par ce
+cycle : chaque décision retenue modifie l'outil ou les règles et s'ajoute à la section « Décisions prises » du
+guide de Jarvis; Jarvis voit aussi les 40 dernières recommandations et leur statut.
 
 ## 10. Acceptation
 

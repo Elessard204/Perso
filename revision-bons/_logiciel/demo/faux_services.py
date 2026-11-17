@@ -246,7 +246,12 @@ class FauxClaude:
             return SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=texte)])
         textes = [b["text"] for b in kwargs["messages"][0]["content"] if b.get("type") == "text"]
         consigne = textes[-1] if textes else ""
-        if "Kilométrage inscrit" in consigne:
+        if "Conversation entre Hugo et Jarvis" in consigne:
+            code = consigne.split("Bon ouvert : ", 1)[1].split(" ", 1)[0] if "Bon ouvert : " in consigne else ""
+            reponse = {"titre": "Exemple de recommandation (démo)",
+                       "probleme": "En mode réel, Jarvis résume ici le problème soulevé dans la conversation.",
+                       "cas": f"Bon {code}" if code else "", "solutions": ["Solution recommandée", "Autre option"]}
+        elif "Kilométrage inscrit" in consigne:
             reponse = {"km": 52, "confiance": "haute"}
         elif "Note du technicien :" in consigne:
             original = consigne.split("Note du technicien :\n", 1)[1].strip()

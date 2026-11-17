@@ -32,8 +32,10 @@ import profil  # noqa: E402
 from facturation import evaluer_rabais  # noqa: E402
 from analyse import (analyser_bon, chemin_cache, doublons_externes, effacer_cache,  # noqa: E402
                      proposition_vers_dict, transports_en_double)
-from assistant import contexte_bon, contexte_regles, repondre  # noqa: E402
+from assistant import (STATUTS_RECO, contexte_bon, contexte_recommandations, contexte_regles,  # noqa: E402
+                       rediger_recommandation, repondre)
 from claude_client import creer_client  # noqa: E402
+from excel import Gras, ecrire_xlsx  # noqa: E402
 from envoi import envoyer  # noqa: E402
 from journal import Journal  # noqa: E402
 from km_calcul import periodes_proposees  # noqa: E402
@@ -172,7 +174,8 @@ class Application:
         self.chemin_regles = Path(chemin_regles) if chemin_regles else self.logiciel / "regles.toml"
         self.cfg = tomllib.loads((self.logiciel / "config.toml").read_text(encoding="utf-8"))
         self.journal = Journal(self.donnees / "journal", personne)
-        self.questions = Journal(self.donnees / "questions", personne)   # questions posées à l'assistant
+        self.questions = Journal(self.donnees / "questions", personne)   # questions posées à Jarvis
+        self.recommandations = Journal(self.donnees / "recommandations", personne)   # journal d'améliorations
         self.cache = self.donnees / "cache"
         self.verrou = threading.Lock()
         self.bons: dict[int, dict] = {}   # id -> {code, client, date, statut, raison, bon, proposition, approuve}
@@ -224,16 +227,10 @@ class Application:
             historique = []
         if not isinstance(historique, list) or not all(isinstance(e, dict) for e in historique):
             raise ErreurDemande("Historique de conversation invalide.")
-        regles = contexte_regles(charger_regles(self.chemin_regles))
-        contexte, code = "", ""
-        with self.verrou:
-            b = self.bons.get(int(bon_id)) if str(bon_id or "").isdigit() else None
-            if b and b.get("proposition") and b.get("bon"):
-                p = b["proposition"]
-                code = b["code"]
-                contexte = contexte_bon(b["bon"], p, b.get("statut_force") or p.statut, bool(b.get("approuve")))
+        regles, contexte, code = self._contexte_jarvis(bon_id)
+        recos = contexte_recommandations(self.liste_recommandations())
         try:
-            reponse = repondre(self.client_claude(), self.cfg["claude"], question, historique, regles, contexte)
+            reponse = repondre(self.client_claude(), self.cfg["claude"], question, historique, regles, contexte, recos)
         except ErreurDemande:
             raise
         except Exception as e:  # réseau, clé refusée, limite d'usage : message clair plutôt qu'une erreur brute
@@ -242,6 +239,94 @@ class Application:
         self.questions.inscrire("question", int(bon_id) if code else 0, "", {"question": question, "reponse": reponse,
                                                                              "code": code})
         return {"reponse": reponse}
+
+    def _contexte_jarvis(self, bon_id) -> tuple[str, str, str]:
+        """Règles en vigueur, contexte du bon ouvert (s'il est analysé) et son code."""
+        regles = contexte_regles(charger_regles(self.chemin_regles))
+        with self.verrou:
+            b = self.bons.get(int(bon_id)) if str(bon_id or "").isdigit() else None
+            if b and b.get("proposition") and b.get("bon"):
+                p = b["proposition"]
+                return regles, contexte_bon(b["bon"], p, b.get("statut_force") or p.statut, bool(b.get("approuve"))), b["code"]
+        return regles, "", ""
+
+    # ---------- journal d'améliorations ----------
+    def liste_recommandations(self) -> list[dict]:
+        """Chaque recommandation avec son dernier statut, les plus récentes d'abord."""
+        recos: dict[str, dict] = {}
+        for e in self.recommandations._tous():
+            d = e.get("details") or {}
+            if e.get("evenement") == "recommandation" and d.get("id"):
+                recos[d["id"]] = {**d, "horodatage": e.get("horodatage", ""), "personne": e.get("personne", ""),
+                                  "statut": "nouvelle", "note": "", "statut_par": "", "statut_le": ""}
+            elif e.get("evenement") == "statut_recommandation" and d.get("id") in recos:
+                recos[d["id"]].update(statut=d.get("statut", "nouvelle"), note=d.get("note", ""),
+                                      statut_par=e.get("personne", ""), statut_le=e.get("horodatage", ""))
+        return sorted(recos.values(), key=lambda r: r["horodatage"], reverse=True)
+
+    def brouillon_recommandation(self, historique=None, bon_id=None) -> dict:
+        """Jarvis rédige une recommandation à partir de la conversation; vide s'il n'y a pas de conversation."""
+        if historique is None:
+            historique = []
+        if not isinstance(historique, list) or not all(isinstance(e, dict) for e in historique):
+            raise ErreurDemande("Historique de conversation invalide.")
+        vide = {"titre": "", "probleme": "", "cas": "", "solutions": []}
+        if not any(str(e.get("question") or "").strip() for e in historique):
+            return vide
+        regles, contexte, code = self._contexte_jarvis(bon_id)
+        try:
+            brouillon = rediger_recommandation(self.client_claude(), self.cfg["claude"], historique, regles, contexte)
+        except ErreurDemande:
+            raise
+        except Exception as e:
+            raise ErreurDemande(f"Jarvis ne répond pas pour l'instant ({type(e).__name__}). La recommandation peut "
+                                "aussi s'écrire à la main.") from e
+        brouillon = brouillon or vide
+        if code and code not in brouillon["cas"]:
+            brouillon["cas"] = f"Bon {code}" + (f" : {brouillon['cas']}" if brouillon["cas"] else "")
+        return brouillon
+
+    def ajouter_recommandation(self, corps: dict) -> dict:
+        titre = " ".join(str(corps.get("titre") or "").split())[:150]
+        if not titre:
+            raise ErreurDemande("Donner un titre à la recommandation.")
+        solutions = corps.get("solutions") or []
+        if isinstance(solutions, str):
+            solutions = solutions.splitlines()
+        if not isinstance(solutions, list):
+            raise ErreurDemande("Liste des solutions invalide.")
+        bon_id = corps.get("bon_id")
+        code = ""
+        if str(bon_id or "").isdigit():
+            with self.verrou:
+                code = (self.bons.get(int(bon_id)) or {}).get("code", "")
+        details = {
+            "id": secrets.token_hex(4), "titre": titre,
+            "probleme": str(corps.get("probleme") or "").strip()[:3000],
+            "cas": str(corps.get("cas") or "").strip()[:3000],
+            "solutions": [str(s).strip()[:1000] for s in solutions if str(s).strip()][:10],
+            "code": code,
+        }
+        self.recommandations.inscrire("recommandation", int(bon_id) if code else 0, "", details)
+        return {"recommandations": self.liste_recommandations()}
+
+    def statut_recommandation(self, reco_id, statut, note="") -> dict:
+        if statut not in STATUTS_RECO:
+            raise ErreurDemande("Statut inconnu.")
+        if reco_id not in {r["id"] for r in self.liste_recommandations()}:
+            raise ErreurDemande("Recommandation introuvable.")
+        self.recommandations.inscrire("statut_recommandation", 0, "", {
+            "id": reco_id, "statut": statut, "note": " ".join(str(note or "").split())[:500]})
+        return {"recommandations": self.liste_recommandations()}
+
+    def export_recommandations(self) -> tuple[bytes, str]:
+        lignes = [[Gras(x) for x in ("Proposée le", "Par", "Bon", "Titre", "Problème", "Cas", "Solutions proposées",
+                                      "Statut", "Note", "Statut changé par")]]
+        for r in self.liste_recommandations():
+            lignes.append([r["horodatage"][:10], r["personne"], r.get("code", ""), r["titre"], r.get("probleme", ""),
+                           r.get("cas", ""), "\n".join(f"- {s}" for s in r.get("solutions", [])),
+                           STATUTS_RECO.get(r["statut"], r["statut"]), r.get("note", ""), r.get("statut_par", "")])
+        return ecrire_xlsx({"Améliorations": lignes}), f"Améliorations - Révision des bons - {date.today().isoformat()}.xlsx"
 
     def etat(self) -> dict:
         return {"demo": self.demo, "personne": self.personne, "cles": cles.etat(),
@@ -868,6 +953,12 @@ def creer_gestionnaire(app: Application):
                              {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nom)}"})
             elif chemin == "/km/reglages":
                 self.json(app.km_lire_reglages())
+            elif chemin == "/recommandations":
+                self.json({"recommandations": app.liste_recommandations()})
+            elif chemin == "/recommandations/export":
+                contenu, nom = app.export_recommandations()
+                self.envoyer(200, contenu, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(nom)}"})
             elif m := re.fullmatch(r"/bon/(\d+)", chemin):
                 self.json(app.detail(int(m.group(1))))
             elif m := re.fullmatch(r"/piece/(\d+)", chemin):
@@ -907,6 +998,12 @@ def creer_gestionnaire(app: Application):
                 self.json(app.km_rouvrir(corps.get("debut", ""), corps.get("raison", "")))
             elif chemin == "/km/reglages":
                 self.json(app.km_ecrire_reglages(corps))
+            elif chemin == "/recommandation/brouillon":
+                self.json(app.brouillon_recommandation(corps.get("historique"), corps.get("bon_id")))
+            elif chemin == "/recommandation":
+                self.json(app.ajouter_recommandation(corps))
+            elif chemin == "/recommandation/statut":
+                self.json(app.statut_recommandation(corps.get("id"), corps.get("statut"), corps.get("note", "")))
             elif chemin == "/assistant":
                 self.json(app.assistant(corps.get("question"), corps.get("bon_id"), corps.get("historique")))
             elif m := re.fullmatch(r"/bon/(\d+)/modifier", chemin):

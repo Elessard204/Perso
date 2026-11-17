@@ -43,7 +43,7 @@ l'empreinte sha256 de chacun, puis les décompresse dans `%LOCALAPPDATA%\ProgimR
 | `analyse.py` | Assemble la proposition d'un bon (cache par bon et date de modification) |
 | `journal.py` | Historique partagé, un fichier par personne dans `_logiciel/journal/` |
 | `envoi.py` | Construit et écrit les mises à jour (jamais de `null`, jamais les entrées de temps) |
-| `assistant.py` + `assistant_guide.md` | Assistant : répond aux questions sur l'usage et les règles, avec le contexte du bon ouvert; ne modifie rien. **Mettre `assistant_guide.md` à jour à chaque changement de règle.** Questions notées dans `_logiciel/questions/` |
+| `assistant.py` + `assistant_guide.md` | Jarvis, l'assistant : répond aux questions sur l'usage et les règles avec le contexte du bon ouvert, aide à trouver des améliorations et rédige les recommandations du journal d'améliorations; ne modifie rien. **Mettre `assistant_guide.md` à jour à chaque changement de règle (section « Décisions prises »).** Questions dans `_logiciel/questions/`, recommandations dans `_logiciel/recommandations/` |
 | `kilometrage.py`, `km_calcul.py`, `km_declare.py`, `cartes.py`, `excel.py` | Kilométrage des techniciens et export Excel |
 | `interface.py` + `interface.html` | Serveur local et page (onglets À réviser, Kilométrage, Règles, Historique) |
 | `demo/faux_services.py` | Faux Progression et faux Claude pour le mode démo |

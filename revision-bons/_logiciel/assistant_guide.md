@@ -39,7 +39,12 @@ Progression sans approbation. Les feuilles de temps (paie) ne sont jamais modifi
 - Onglet Règles : toutes les règles et tous les garde-fous, réglables. Section Connexions : les clés API
   (Progression, Claude, Google Maps), gardées dans le profil Windows de la personne. Chaque personne qui utilise
   l'outil sur son poste doit inscrire les clés une fois.
-- Onglet Historique : bons approuvés et écrits (qui, quand), relevé des rabais, questions posées à l'assistant.
+- Onglet Améliorations : le journal d'améliorations (voir plus bas), avec un statut et une note par
+  recommandation, et un export Excel pour les rencontres de revue.
+- Onglet Historique : bons approuvés et écrits (qui, quand), relevé des rabais, questions posées à Jarvis.
+- Jarvis (bouton en haut à droite, et « Pourquoi ? » à côté de chaque alerte d'une fiche) : l'assistant de
+  l'outil. Il explique les règles et ce qui se passe sur le bon ouvert, et aide à trouver des améliorations.
+  Il ne modifie rien.
 
 ## Règles de facturation
 
@@ -151,6 +156,37 @@ chaque technicien, aides compris, doit poinçonner sur chaque bon.
 - Les clés sont manquantes ? Les inscrire dans Règles, section Connexions, sur le poste qui utilise l'outil.
 - Peut-on écrire dans Progression ? Pas encore : l'écriture est verrouillée jusqu'à l'essai en environnement de
   test. L'envoi actuel est une simulation.
+
+## Améliorer l'outil : le journal d'améliorations
+
+L'outil s'améliore d'une fois à l'autre grâce au journal d'améliorations. Quand une règle donne un mauvais
+résultat, qu'une alerte revient pour rien ou qu'un cas n'est pas prévu, on le note avec le bouton « Recommander
+une amélioration » du panneau de Jarvis (ou « Proposer une amélioration » dans l'onglet Améliorations). Jarvis
+rédige un brouillon à partir de la conversation : titre, problème, cas concret (bon, technicien, chiffres) et
+deux ou trois solutions, la recommandée en premier. On vérifie, on complète, on enregistre.
+
+Statuts : Nouvelle (vient d'être notée), À discuter (à voir à la prochaine revue), Retenue (décidé de le faire),
+Écartée (décidé de ne pas le faire, la note dit pourquoi), Faite (en place dans l'outil). Éric, Hugo et Claude
+en font le tour ensemble; chaque décision retenue modifie l'outil ou les règles, et s'ajoute à la section
+« Décisions prises » ci-dessous, que Jarvis connaît.
+
+Bonnes idées à noter : une alerte qui sort souvent pour rien (et pourquoi), une correction faite à la main
+encore et encore (l'outil pourrait la faire), un cas client particulier (plafond, forfait, refacturation), une
+consigne aux techniciens qui éviterait des corrections (ex. poinçonner l'aide sur le bon).
+
+## Décisions prises
+
+- 16 novembre 2026 (cas à valider avec Hugo) : journées fusionnées respectées; rabais signalé au-delà de 50 $
+  avec raison facultative et relevé; case « Salaire fixe »; produits au forfait; bons à 0 $ sans alerte;
+  alerte « inventaire à 0 $ » retirée.
+- 17 novembre 2026 (essai sur les 154 bons d'octobre) : un seul transport par technicien et par jour sur un bon;
+  trajet de 0 minute compté comme transport; entrées de travail de moins d'une minute ignorées; pas de blocage
+  « Facturer » sur un bon dont une ligne a été modifiée à la main (fusion faite dans Progression).
+- 17 novembre 2026 : Harry à salaire fixe; « Bacs ordures / recyclage » au forfait; taux de base des
+  techniciens inscrits à partir de la liste de paie.
+- Questions ouvertes (posées à Hugo le 17 novembre) : tolérance de quelques minutes avant d'arrondir au quart
+  d'heure suivant, ou règle stricte; mise à 0 $ automatique des bons de ménage Immoblox; transport sur les
+  interventions faites par Hugo lui-même.
 
 ## Qui contacter
 

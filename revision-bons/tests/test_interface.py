@@ -575,3 +575,31 @@ def test_assistant_ne_modifie_rien(site):
     site("/assistant", {"question": "Approuve ce bon et mets 10 h.", "bon_id": bon["id"]})
     apres = site(f"/bon/{bon['id']}")[1]
     assert avant["proposition"] == apres["proposition"] and avant["liste"]["approuve"] == apres["liste"]["approuve"]
+
+
+def test_recommandations_brouillon_enregistrement_statut_export(site):
+    bons = charger_et_analyser(site)
+    bon = bons["BS-2001"]
+    code, b = site("/recommandation/brouillon", {"bon_id": bon["id"],
+                                                 "historique": [{"question": "Q", "reponse": "R"}]})
+    assert code == 200 and b["titre"] and isinstance(b["solutions"], list) and "BS-2001" in b["cas"]
+    code, r = site("/recommandation", {"titre": "Transport du magasin", "probleme": "Deux trajets le même jour.",
+                                      "cas": "BS-2001", "solutions": ["Un seul transport", ""], "bon_id": bon["id"]})
+    assert code == 200
+    [reco] = r["recommandations"]
+    assert (reco["titre"], reco["statut"], reco["solutions"], reco["code"]) == (
+        "Transport du magasin", "nouvelle", ["Un seul transport"], "BS-2001")
+    code, r = site("/recommandation/statut", {"id": reco["id"], "statut": "retenue", "note": "On le fait."})
+    assert code == 200 and (r["recommandations"][0]["statut"], r["recommandations"][0]["note"]) == ("retenue", "On le fait.")
+    assert site("/recommandations")[1]["recommandations"][0]["statut"] == "retenue"
+    assert site("/recommandation/statut", {"id": reco["id"], "statut": "bidon"})[0] == 400
+    assert site("/recommandation/statut", {"id": "inconnu", "statut": "faite"})[0] == 400
+    assert site("/recommandation", {"titre": "  ", "probleme": "x"})[0] == 400
+    assert site("/recommandation", {"titre": "x", "solutions": {"pas": "une liste"}})[0] == 400
+    code, entetes, corps = telecharger(site, "/recommandations/export")
+    assert code == 200 and corps[:2] == b"PK" and "attachment" in entetes["Content-Disposition"]
+
+
+def test_brouillon_sans_conversation_est_vide(site):
+    code, b = site("/recommandation/brouillon", {"historique": []})
+    assert code == 200 and b == {"titre": "", "probleme": "", "cas": "", "solutions": []}

@@ -177,10 +177,17 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
 .assistant-saisie .rangee button { margin-left: auto; }
 .alertes li .pourquoi { margin-left: 8px; color: inherit; text-decoration: underline; font-size: 12px; padding: 0; }
 .questions td.texte { max-width: 420px; white-space: pre-wrap; }
+.reco-formulaire { overflow: auto; padding: 14px 18px; display: grid; gap: 10px; align-content: start; }
+.reco-formulaire textarea { min-height: 80px; }
+.reco-formulaire .rangee { display: flex; gap: 8px; justify-content: flex-end; }
+.ameliorations td.texte { white-space: pre-wrap; min-width: 180px; }
+.ameliorations td select { width: auto; }
+.ameliorations td input { min-width: 160px; }
+.assistant-saisie .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 @media (max-width: 860px) {
   .entete { padding: 0 8px; }
-  .onglets { gap: 0; }
-  .onglets button { padding: 0 10px; font-size: 13px; }
+  .onglets { gap: 0; overflow-x: auto; }
+  .onglets button { padding: 0 10px; font-size: 13px; flex: none; }
   .deux { grid-template-columns: 1fr; }
   .page { padding: 16px; }
   .piste { width: 120px; }
@@ -193,7 +200,7 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
   <img src="/logo.png" alt="Progim">
   <div class="bandeau-titre"><b>Révision des bons</b><span>Bons de service Progression avant facturation</span></div>
   <span class="espace"></span>
-  <button type="button" class="engageant" id="ouvrir-assistant">Assistant</button>
+  <button type="button" class="engageant" id="ouvrir-assistant">Jarvis</button>
   <span class="note" id="qui"></span>
 </div></div>
 <div class="demo" id="bandeau-demo" hidden>Mode démo : bons fictifs, rien n'est lu ni écrit dans Progression.</div>
@@ -202,6 +209,7 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
     <button type="button" data-vue="reviser" aria-selected="true">À réviser</button>
     <button type="button" data-vue="kilometrage" aria-selected="false">Kilométrage</button>
     <button type="button" data-vue="regles" aria-selected="false">Règles</button>
+    <button type="button" data-vue="ameliorations" aria-selected="false">Améliorations</button>
     <button type="button" data-vue="historique" aria-selected="false">Historique</button>
   </nav>
 </div></div>
@@ -397,6 +405,24 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
   </section>
 </main>
 
+<!-- ===== Améliorations ===== -->
+<main class="page" id="vue-ameliorations" hidden>
+  <section class="outils">
+    <div><p class="surtitre">Journal d'améliorations</p>
+      <p class="note">Les problèmes, cas et solutions notés avec Jarvis, à passer en revue avec Éric pour améliorer l'outil et les règles.</p></div>
+    <span class="espace"></span>
+    <button type="button" class="engageant" id="proposer-amelioration">Proposer une amélioration</button>
+    <a class="lien-export" id="exporter-ameliorations" download>Exporter Excel</a>
+  </section>
+  <p class="message" id="message-ameliorations" role="status"></p>
+  <section class="tableau-travail">
+    <div class="grille ameliorations"><table>
+      <thead><tr><th>Proposée le</th><th>Par</th><th>Bon</th><th>Amélioration</th><th>Cas</th><th>Solutions proposées</th><th>Statut</th><th>Note</th></tr></thead>
+      <tbody id="ameliorations-corps"></tbody>
+    </table><div class="vide" id="ameliorations-vide">Aucune recommandation pour l'instant. Demandez à Jarvis, ou cliquez sur « Proposer une amélioration ».</div></div>
+  </section>
+</main>
+
 <!-- ===== Historique ===== -->
 <main class="page" id="vue-historique" hidden>
   <section class="tableau-travail">
@@ -408,7 +434,7 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
     </table><div class="vide" id="rabais-vide">Aucun rabais pour l'instant.</div></div>
   </section>
   <section class="tableau-travail">
-    <div class="entete-releve"><p class="surtitre">Questions à l'assistant</p>
+    <div class="entete-releve"><p class="surtitre">Questions à Jarvis</p>
       <p class="note">Les 100 dernières questions. Celles qui reviennent montrent où une règle ou l'outil n'est pas clair.</p></div>
     <div class="grille questions"><table>
       <thead><tr><th>Quand</th><th>Qui</th><th>Bon</th><th>Question</th><th>Réponse</th></tr></thead>
@@ -457,26 +483,38 @@ dialog#assistant { margin: 0 0 0 auto; width: min(500px, 100vw); max-width: 100v
     </div>
     <div class="fiche-pied">
       <p class="message" id="message-fiche" role="status"></p>
-      <button type="button" id="assistant-fiche">Demander à l'assistant</button>
+      <button type="button" id="assistant-fiche">Demander à Jarvis</button>
       <button type="button" id="fermer-fiche">Fermer</button>
       <button type="button" class="principal" id="approuver-fiche">Approuver ce bon</button>
     </div>
   </div>
 </dialog>
 
-<!-- ===== Assistant ===== -->
+<!-- ===== Jarvis (assistant) ===== -->
 <dialog id="assistant" aria-labelledby="assistant-titre">
   <div class="assistant">
-    <div class="assistant-tete"><h2 id="assistant-titre">Assistant</h2>
+    <div class="assistant-tete"><h2 id="assistant-titre">Jarvis</h2>
       <button type="button" class="lien-bouton" id="nouvelle-conversation">Nouvelle conversation</button>
       <button type="button" id="fermer-assistant">Fermer</button></div>
     <div class="assistant-contexte"><p class="note" id="assistant-contexte"></p></div>
     <div class="conversation" id="conversation" aria-live="polite"></div>
+    <form class="reco-formulaire" id="reco-formulaire" hidden>
+      <p class="surtitre">Recommander une amélioration</p>
+      <p class="note" id="reco-aide">Vérifiez et complétez, puis enregistrez : la recommandation va dans l'onglet Améliorations.</p>
+      <div class="champ"><label for="reco-titre">Titre</label><input id="reco-titre" maxlength="150"></div>
+      <div class="champ"><label for="reco-probleme">Problème</label><textarea id="reco-probleme" maxlength="3000"></textarea></div>
+      <div class="champ"><label for="reco-cas">Cas (bon, technicien, chiffres)</label><textarea id="reco-cas" maxlength="3000"></textarea></div>
+      <div class="champ"><label for="reco-solutions">Solutions proposées (une par ligne, la recommandée en premier)</label><textarea id="reco-solutions"></textarea></div>
+      <p class="message" id="message-reco" role="status"></p>
+      <div class="rangee"><button type="button" id="annuler-reco">Annuler</button>
+        <button type="submit" class="principal" id="enregistrer-reco">Enregistrer la recommandation</button></div>
+    </form>
     <form class="assistant-saisie" id="assistant-formulaire">
-      <label class="note" for="assistant-question">L'assistant explique les règles et l'usage de l'outil. Il ne modifie rien.</label>
+      <label class="note" for="assistant-question">Jarvis explique les règles et l'usage de l'outil, et aide à trouver des améliorations. Il ne modifie rien.</label>
       <textarea id="assistant-question" maxlength="2000" placeholder="ex. Pourquoi ce transport est barré ?"></textarea>
       <div class="rangee"><p class="message" id="message-assistant" role="status"></p>
         <button type="submit" class="principal" id="envoyer-question">Envoyer</button></div>
+      <div class="actions"><button type="button" class="lien-bouton" id="recommander">Recommander une amélioration</button></div>
     </form>
   </div>
 </dialog>
@@ -506,11 +544,12 @@ async function api(chemin, corps) {
 
 // ---------- onglets ----------
 function montrer(vue) {
-  ["reviser", "kilometrage", "regles", "historique"].forEach(v => $("vue-" + v).hidden = v !== vue);
+  ["reviser", "kilometrage", "regles", "ameliorations", "historique"].forEach(v => $("vue-" + v).hidden = v !== vue);
   document.querySelectorAll(".onglets button").forEach(b => b.setAttribute("aria-selected", b.dataset.vue === vue));
   if (vue === "kilometrage") chargerKm();
   if (vue === "regles") chargerRegles();
   if (vue === "historique") chargerHistorique();
+  if (vue === "ameliorations") chargerAmeliorations();
 }
 document.querySelectorAll(".onglets button").forEach(b => b.addEventListener("click", () => montrer(b.dataset.vue)));
 
@@ -1058,16 +1097,49 @@ function bonOuvert() { return $("fiche").open && ficheDetail ? { id: ficheId, co
 function afficherConversation(enAttente) {
   const bulles = conversation.map(e => `<div class="bulle question">${echapper(e.question)}</div>`
     + (e.reponse ? `<div class="bulle reponse">${echapper(e.reponse)}</div>` : ""));
-  if (enAttente) bulles.push('<div class="bulle reponse attente">L’assistant réfléchit…</div>');
+  if (enAttente) bulles.push('<div class="bulle reponse attente">Jarvis réfléchit…</div>');
   $("conversation").innerHTML = bulles.join("") || '<p class="note">Posez une question sur une règle, une alerte ou '
-    + "l'utilisation de l'outil. Ouvert depuis la fiche d'un bon, l'assistant explique ce qui se passe sur ce bon.</p>";
+    + "l'utilisation de l'outil, ou demandez comment l'améliorer. Ouvert depuis la fiche d'un bon, Jarvis explique ce "
+    + "qui se passe sur ce bon.</p>";
   $("conversation").scrollTop = $("conversation").scrollHeight;
 }
+function montrerFormulaireReco(visible) {
+  $("reco-formulaire").hidden = !visible;
+  $("conversation").hidden = visible; $("assistant-formulaire").hidden = visible;
+}
+async function ouvrirFormulaireReco() {
+  const b = bonOuvert(), historique = conversation.filter(e => e.reponse).map(e => ({ question: e.question, reponse: e.reponse }));
+  ["reco-titre", "reco-probleme", "reco-cas", "reco-solutions"].forEach(id => $(id).value = "");
+  message("message-reco", ""); montrerFormulaireReco(true);
+  if (!historique.length) { if (b) $("reco-cas").value = `Bon ${b.code}`; $("reco-titre").focus(); return; }
+  $("enregistrer-reco").disabled = true; message("message-reco", "Jarvis rédige la recommandation à partir de la conversation…", true);
+  try {
+    const r = await api("/recommandation/brouillon", { historique, bon_id: b ? b.id : null });
+    $("reco-titre").value = r.titre; $("reco-probleme").value = r.probleme; $("reco-cas").value = r.cas;
+    $("reco-solutions").value = (r.solutions || []).join("\n"); message("message-reco", "");
+  } catch (e) { message("message-reco", e.message); }
+  finally { $("enregistrer-reco").disabled = false; $("reco-titre").focus(); }
+}
+$("recommander").addEventListener("click", ouvrirFormulaireReco);
+$("annuler-reco").addEventListener("click", () => montrerFormulaireReco(false));
+$("reco-formulaire").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const b = bonOuvert();
+  try {
+    $("enregistrer-reco").disabled = true;
+    await api("/recommandation", { titre: $("reco-titre").value, probleme: $("reco-probleme").value, cas: $("reco-cas").value,
+      solutions: $("reco-solutions").value.split("\n"), bon_id: b ? b.id : null });
+    montrerFormulaireReco(false);
+    message("message-assistant", "Recommandation notée dans l'onglet Améliorations. Merci !", true);
+    if (!$("vue-ameliorations").hidden) chargerAmeliorations();
+  } catch (e) { message("message-reco", e.message); }
+  finally { $("enregistrer-reco").disabled = false; }
+});
 function ouvrirAssistant(question) {
   const b = bonOuvert();
   $("assistant-contexte").textContent = b ? `Contexte : bon ${b.code} (ses lignes, ses alertes et son temps inscrit).`
-    : "Contexte : aucun bon ouvert. Pour une question sur un bon, ouvrez sa fiche puis l'assistant.";
-  afficherConversation(false); message("message-assistant", "");
+    : "Contexte : aucun bon ouvert. Pour une question sur un bon, ouvrez sa fiche puis « Demander à Jarvis ».";
+  montrerFormulaireReco(false); afficherConversation(false); message("message-assistant", "");
   if (!$("assistant").open) $("assistant").showModal();
   if (question) { $("assistant-question").value = question; envoyerQuestion(); } else $("assistant-question").focus();
 }
@@ -1098,6 +1170,34 @@ $("fiche-alertes").addEventListener("click", ev => {
   const alerte = ficheDetail.proposition.alertes[Number(bouton.dataset.i)];
   ouvrirAssistant(`Pourquoi cette alerte sur ce bon : « ${alerte.message} » ? Que dois-je faire ?`);
 });
+
+// ---------- journal d'améliorations ----------
+const STATUTS_RECO = { nouvelle: "Nouvelle", a_discuter: "À discuter", retenue: "Retenue", ecartee: "Écartée", faite: "Faite" };
+async function chargerAmeliorations() {
+  let recos = [];
+  try { recos = (await api("/recommandations")).recommandations; } catch (e) { message("message-ameliorations", e.message); return; }
+  $("exporter-ameliorations").href = `/recommandations/export?jeton=${JETON}`;
+  $("ameliorations-vide").hidden = recos.length > 0;
+  $("ameliorations-corps").innerHTML = recos.map(r => `<tr data-id="${echapper(r.id)}">
+    <td class="discret">${echapper((r.horodatage || "").slice(0, 10))}</td><td>${echapper(r.personne)}</td>
+    <td class="code">${echapper(r.code || "")}</td>
+    <td class="texte"><b>${echapper(r.titre)}</b>${r.probleme ? "\n" + echapper(r.probleme) : ""}</td>
+    <td class="texte">${echapper(r.cas || "")}</td>
+    <td class="texte">${(r.solutions || []).map(s => "– " + echapper(s)).join("\n")}</td>
+    <td><select class="reco-statut" aria-label="Statut">${Object.entries(STATUTS_RECO).map(([k, v]) =>
+      `<option value="${k}"${k === r.statut ? " selected" : ""}>${v}</option>`).join("")}</select></td>
+    <td><input class="reco-note" maxlength="500" value="${echapper(r.note || "")}" aria-label="Note" placeholder="ex. décidé avec Éric le …"></td></tr>`).join("");
+}
+$("ameliorations-corps").addEventListener("change", async ev => {
+  const tr = ev.target.closest("tr");
+  if (!tr || !ev.target.matches(".reco-statut, .reco-note")) return;
+  try {
+    await api("/recommandation/statut", { id: tr.dataset.id, statut: tr.querySelector(".reco-statut").value,
+      note: tr.querySelector(".reco-note").value });
+    message("message-ameliorations", "Statut enregistré.", true);
+  } catch (e) { message("message-ameliorations", e.message); }
+});
+$("proposer-amelioration").addEventListener("click", () => { ouvrirAssistant(); ouvrirFormulaireReco(); });
 
 // ---------- démarrage ----------
 (async function demarrer() {
