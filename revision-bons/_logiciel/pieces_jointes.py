@@ -8,12 +8,19 @@ from datetime import date
 from claude_client import demander_json
 from modele import AnalysePiece, Facture, LigneFacture, PieceJointe
 
-try:
-    import anthropic
-    REFUS_DE_LA_PIECE: tuple = (anthropic.BadRequestError, anthropic.RequestTooLargeError,
-                                anthropic.UnprocessableEntityError)
-except ImportError:  # mode démo sans le module
-    REFUS_DE_LA_PIECE = ()
+
+
+def _refus_de_la_piece() -> tuple:
+    """Erreurs du SDK propres à une pièce (inutile de réessayer).
+
+    Le SDK de Claude compte des milliers de fichiers : il n'est chargé qu'à la première analyse, jamais à
+    l'ouverture de l'outil (sinon la page met de longues secondes à s'ouvrir sur un poste Windows).
+    """
+    try:
+        import anthropic
+    except ImportError:  # mode démo sans le module
+        return ()
+    return (anthropic.BadRequestError, anthropic.RequestTooLargeError, anthropic.UnprocessableEntityError)
 
 TYPES_LISIBLES = {"application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"}
 TAILLE_MAX = 22 * 1024 * 1024        # PDF : la requête à l'API est limitée à 32 Mo une fois encodée
@@ -93,9 +100,11 @@ def analyser_piece(piece: PieceJointe, contenu: bytes, client, cfg: dict) -> Ana
 
     try:
         resultat = demander_json(client, cfg, [bloc, texte], SCHEMA, SYSTEME)
-    except REFUS_DE_LA_PIECE:
+    except Exception as e:
         # PDF protégé ou corrompu, image refusée : propre à cette pièce, inutile de réessayer.
         # Les erreurs temporaires (429, 5xx, réseau) remontent : le bon reste « à analyser ».
+        if not isinstance(e, _refus_de_la_piece()):
+            raise
         return _incertain(piece, "Pièce refusée par l'IA (fichier protégé, corrompu ou trop lourd).")
     if resultat is None:
         return _incertain(piece, "L'IA n'a pas pu lire cette pièce (réponse refusée ou invalide).")

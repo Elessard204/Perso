@@ -1033,6 +1033,15 @@ def doit_arreter(app: Application, inactif_depuis: float) -> bool:
     return inactif_depuis > DELAI_ARRET
 
 
+def precharger_sdk() -> None:
+    """Charge le SDK de Claude en arrière-plan, une fois la page ouverte : la première analyse ou la première
+    question à Jarvis n'attend pas. Jamais avant l'ouverture : ses milliers de fichiers retardaient la page."""
+    try:
+        import anthropic  # noqa: F401
+    except Exception:
+        pass
+
+
 def surveiller(serveur: ThreadingHTTPServer, app: Application) -> None:
     while True:
         time.sleep(10)
@@ -1051,6 +1060,8 @@ if __name__ == "__main__":
         threading.Thread(target=surveiller, args=(serveur, app), daemon=True).start()
     if "--sans-navigateur" not in sys.argv:
         webbrowser.open(adresse)
+    if not demo:
+        threading.Thread(target=precharger_sdk, daemon=True).start()
     print(f"Révision des bons ouverte dans le navigateur : {adresse}" + (" (démo)" if demo else ""))
     print("Cette fenêtre se ferme toute seule quelques minutes après la fermeture de la page.")
     serveur.serve_forever()

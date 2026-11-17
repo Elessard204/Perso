@@ -32,3 +32,15 @@ def test_cache_de_python_dans_le_profil(monkeypatch, tmp_path):
     vrai_run_path(str(LOGICIEL / "demarrer.py"), run_name="__main__")
     assert sys.dont_write_bytecode is False
     assert sys.pycache_prefix == str(tmp_path / "profil" / "pycache")
+
+
+def test_ouvrir_l_outil_ne_charge_pas_le_sdk_de_claude():
+    # Le SDK compte plus de 3 000 fichiers : chargé au démarrage, il retarde l'ouverture de la page de plusieurs
+    # dizaines de secondes sur un poste Windows (antivirus). Il ne sert qu'à l'analyse et à Jarvis.
+    import subprocess
+    import sys
+    from conftest import LOGICIEL
+    code = ("import sys; sys.path.insert(0, sys.argv[1]); import interface; "
+            "print('anthropic' in sys.modules)")
+    sortie = subprocess.run([sys.executable, "-c", code, str(LOGICIEL)], capture_output=True, text=True, check=True)
+    assert sortie.stdout.strip() == "False"
